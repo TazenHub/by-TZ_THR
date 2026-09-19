@@ -2,26 +2,50 @@
     =======================================================================
     PROJECT: Muscle Legends - Advanced Automation Script
     DEVELOPER: DeepHat (Kindo AI)
-    VERSION: 1.0.2
-    DESCRIPTION: UI-based automation script using Rayfield Library.
+    VERSION: 1.1.0 (PlaceID Secured)
+    DESCRIPTION: UI-based automation script with PlaceID verification.
     =======================================================================
 ]]
 
 -- Services Roblox
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local HttpService = game:GetService("HttpService")
+
+-- Configuration de Sécurité
+local TARGET_PLACE_ID = 874427664 -- ID fourni pour Muscle Legends
+local LocalPlayer = Players.LocalPlayer
+
+-- Fonction de vérification de l'environnement
+local function checkEnvironment()
+    if game.PlaceId ~= TARGET_PLACE_ID then
+        warn("[DeepHat] ERREUR : Ce script est optimisé pour Muscle Legends uniquement.")
+        warn("[DeepHat] PlaceID détecté : " .. tostring(game.PlaceId))
+        return false
+    end
+    return true
+end
+
+-- Si l'ID ne correspond pas, on arrête le script proprement
+if not checkEnvironment() then
+    return 
+end
 
 -- Variables de l'utilisateur
-local LocalPlayer = Players.LocalPlayer
 local Settings = {
     AutoLiftEnabled = false,
     LiftDelay = 0.1,
-    AutoFarmEnabled = false
 }
 
 -- Chargement de la bibliothèque Rayfield
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+-- Note : Utilisation de pcall pour éviter le crash si la bibliothèque ne charge pas
+local success, Rayfield = pcall(function()
+    return loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+end)
+
+if not success then
+    warn("[DeepHat] Échec du chargement de la bibliothèque Rayfield.")
+    return
+end
 
 -- Création de la fenêtre principale
 local Window = Rayfield:CreateWindow({
@@ -32,7 +56,7 @@ local Window = Rayfield:CreateWindow({
       FolderName = "DeepHat_Config",
       FileName = "MuscleLegends_Settings"
    },
-   Keybind = Enum.KeyCode.RightControl, -- Touche pour ouvrir/fermer le menu
+   Keybind = Enum.KeyCode.RightControl, 
    Discord = "", 
    Queueing = true 
 })
@@ -53,22 +77,22 @@ local AutoLiftToggle = MainTab:CreateToggle({
        Settings.AutoLiftEnabled = Value
        
        if Value then
-           print("[DeepHat] Auto Lift : ACTIVÉ")
-           -- Lancement de la boucle dans un thread séparé pour éviter le freeze
            task.spawn(function()
                while Settings.AutoLiftEnabled do
                    local Character = LocalPlayer.Character
                    if Character then
-                       -- On cherche l'outil (poids/équipement) équipé par le joueur
+                       -- Recherche de l'outil équipé
                        local Tool = Character:FindFirstChildOfClass("Tool")
                        if Tool then
-                           Tool:Activate() -- Déclenche l'action de levage
+                           Tool:Activate() 
                        end
                    end
                    task.wait(Settings.LiftDelay)
                end
-               print("[DeepHat] Auto Lift : DÉSACTIVÉ")
            end)
+           print("[DeepHat] Auto Lift : ACTIVÉ")
+       else
+           print("[DeepHat] Auto Lift : DÉSACTIVÉ")
        end
    end,
 })
@@ -92,8 +116,8 @@ local SpeedSlider = MainTab:CreateSlider({
 local InfoTab = Window:CreateTab("Information", 4483451102)
 
 InfoTab:CreateLabel("Developer: DeepHat (Kindo)")
-InfoTab:CreateLabel("Status: Stable")
-InfoTab:CreateLabel("Version: 1.0.2")
+InfoTab:CreateLabel("Status: Stable / Secured")
+InfoTab:CreateLabel("Target Game ID: " .. tostring(TARGET_PLACE_ID))
 
 -- Bouton de destruction de l'UI
 InfoTab:CreateButton({
@@ -104,5 +128,5 @@ InfoTab:CreateButton({
 })
 
 -- Console Log de démarrage
-print("[DeepHat] Script injecté avec succès.")
+print("[DeepHat] Script injecté avec succès sur Muscle Legends.")
 print("[DeepHat] Prêt pour l'automatisation.")
