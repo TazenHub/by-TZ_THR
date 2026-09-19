@@ -1,0 +1,108 @@
+--[[
+    =======================================================================
+    PROJECT: Muscle Legends - Advanced Automation Script
+    DEVELOPER: DeepHat (Kindo AI)
+    VERSION: 1.0.2
+    DESCRIPTION: UI-based automation script using Rayfield Library.
+    =======================================================================
+]]
+
+-- Services Roblox
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+
+-- Variables de l'utilisateur
+local LocalPlayer = Players.LocalPlayer
+local Settings = {
+    AutoLiftEnabled = false,
+    LiftDelay = 0.1,
+    AutoFarmEnabled = false
+}
+
+-- Chargement de la bibliothèque Rayfield
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+-- Création de la fenêtre principale
+local Window = Rayfield:CreateWindow({
+   Name = "DeepHat | Muscle Legends",
+   SubTitle = "Advanced Automation Suite",
+   ConfigurationSaving = {
+      Enabled = true,
+      FolderName = "DeepHat_Config",
+      FileName = "MuscleLegends_Settings"
+   },
+   Keybind = Enum.KeyCode.RightControl, -- Touche pour ouvrir/fermer le menu
+   Discord = "", 
+   Queueing = true 
+})
+
+-- Création de l'onglet principal
+local MainTab = Window:CreateTab("Automation", 4483451102) 
+
+-- SECTION: AUTO LIFT
+MainTab:CreateSection("Core Features")
+
+local AutoLiftToggle = MainTab:CreateToggle({
+   Name = "Free Auto Lift (Gamepass Mode)",
+   CurrentValue = false,
+   Flag = "AutoLiftFlag", 
+   Info = "Simule l'entraînement automatique pour augmenter vos statistiques.",
+   Position = "Top",
+   Callback = function(Value)
+       Settings.AutoLiftEnabled = Value
+       
+       if Value then
+           print("[DeepHat] Auto Lift : ACTIVÉ")
+           -- Lancement de la boucle dans un thread séparé pour éviter le freeze
+           task.spawn(function()
+               while Settings.AutoLiftEnabled do
+                   local Character = LocalPlayer.Character
+                   if Character then
+                       -- On cherche l'outil (poids/équipement) équipé par le joueur
+                       local Tool = Character:FindFirstChildOfClass("Tool")
+                       if Tool then
+                           Tool:Activate() -- Déclenche l'action de levage
+                       end
+                   end
+                   task.wait(Settings.LiftDelay)
+               end
+               print("[DeepHat] Auto Lift : DÉSACTIVÉ")
+           end)
+       end
+   end,
+})
+
+-- SECTION: CONFIGURATION
+MainTab:CreateSection("Settings Optimization")
+
+local SpeedSlider = MainTab:CreateSlider({
+   Name = "Lift Speed (Delay)",
+   Range = {0.01, 0.5},
+   Increment = 0.01,
+   Suffix = "s",
+   CurrentValue = 0.1,
+   Flag = "LiftSpeedFlag",
+   Callback = function(Value)
+       Settings.LiftDelay = Value
+   end,
+})
+
+-- SECTION: INFO
+local InfoTab = Window:CreateTab("Information", 4483451102)
+
+InfoTab:CreateLabel("Developer: DeepHat (Kindo)")
+InfoTab:CreateLabel("Status: Stable")
+InfoTab:CreateLabel("Version: 1.0.2")
+
+-- Bouton de destruction de l'UI
+InfoTab:CreateButton({
+   Name = "Destroy UI",
+   Callback = function()
+       Rayfield:Destroy()
+   end,
+})
+
+-- Console Log de démarrage
+print("[DeepHat] Script injecté avec succès.")
+print("[DeepHat] Prêt pour l'automatisation.")
