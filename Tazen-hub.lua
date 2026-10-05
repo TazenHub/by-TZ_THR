@@ -50,23 +50,115 @@ local MainTab = Window:CreateTab("Fast Rebirth", nil) -- Title, Image
 
 local autoRebirthActive = false
 
+-- Détection dynamique du boost x2 Rebirths
+local function isRebirthBoostPet(pet)
+local boostAttr = pet:GetAttribute("SpecialBoost") or pet:GetAttribute("Boost") or pet:GetAttribute("RebirthBoost")
+if boostAttr and string.find(tostring(boostAttr):lower(), "rebirth") then
+return true
+end
+
+local rebirthObj = pet:FindFirstChild("Rebirths")
+or pet:FindFirstChild("RebirthBoost")
+or pet:FindFirstChild("x2 Rebirths")
+if rebirthObj then return true end
+
+local statsFolder = pet:FindFirstChild("Stats") or pet:FindFirstChild("Boosts")
+if statsFolder then
+for _, child in ipairs(statsFolder:GetChildren()) do
+if string.find(child.Name:lower(), "rebirth") then
+return true
+end
+end
+end
+
+return false
+end
+
+-- Détection dynamique du Rep Speed
+local function getRepSpeedValue(pet)
+local repSpeedObj = pet:FindFirstChild("RepSpeed") or pet:FindFirstChild("Rep Speed")
+if repSpeedObj and (repSpeedObj:IsA("NumberValue") or repSpeedObj:IsA("IntValue")) then
+return repSpeedObj.Value
+end
+
+local attr = pet:GetAttribute("RepSpeed") or pet:GetAttribute("Rep Speed")
+if attr then return tonumber(attr) or 0 end
+
+return 0
+end
+
 local Toggle = MainTab:CreateToggle({
-    Name = "Auto rebirth",
-    CurrentValue = false,
-    Flag = "Auto Rebirth",
-    Callback = function(Value)
-        autoRebirthActive = Value
-        
-        if autoRebirthActive then
-            task.spawn(function()
-                local ReplicatedStorage = game:GetService("ReplicatedStorage")
-                local Event = ReplicatedStorage.rEvents.rebirthRemote
-                
-                while autoRebirthActive do
-                    Event:InvokeServer("rebirthRequest")
-                    task.wait(0.1) -- Ajuste le délai (en secondes) si nécessaire
-                end
-            end)
-        end
-    end,
-})end
+Name = "Auto rebirth",
+CurrentValue = false,
+Flag = "Auto Rebirth",
+Callback = function(Value)
+autoRebirthActive = Value
+
+if autoRebirthActive then
+task.spawn(function()
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local rebirthRemote = ReplicatedStorage.rEvents.rebirthRemote
+local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
+
+-- Fonction pour déséquiper TOUS les pets
+local function unequipAllPets(petsFolder)
+for _, folderName in ipairs({"Unique", "Rare", "Epic", "Mythic", "Legendary"}) do
+local folder = petsFolder:FindFirstChild(folderName)
+if folder then
+for _, pet in ipairs(folder:GetChildren()) do
+equipPetEvent:FireServer("unequipPet", pet)
+task.wait(0.02)
+end
+end
+end
+end
+
+while autoRebirthActive do
+local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+
+if petsFolder then
+-- 1. ÉQUIPEMENT DES PETS x2 REBIRTHS (AVANT RENAISSANCE)
+unequipAllPets(petsFolder)
+
+if petsFolder:FindFirstChild("Unique") then
+for _, pet in ipairs(petsFolder.Unique:GetChildren()) do
+if isRebirthBoostPet(pet) then
+equipPetEvent:FireServer("equipPet", pet)
+task.wait(0.03)
+end
+end
+end
+
+-- 2. RENAISSANCE
+rebirthRemote:InvokeServer("rebirthRequest")
+
+-- 3. ÉQUIPEMENT DES PETS REP SPEED (POUR LA RECHARGE)
+unequipAllPets(petsFolder)
+
+if petsFolder:FindFirstChild("Unique") then
+local repPets = {}
+for _, pet in ipairs(petsFolder.Unique:GetChildren()) do
+local boost = getRepSpeedValue(pet)
+if boost > 0 then
+table.insert(repPets, {Instance = pet, Boost = boost})
+end
+end
+table.sort(repPets, function(a, b) return a.Boost > b.Boost end)
+
+for _, entry in ipairs(repPets) do
+equipPetEvent:FireServer("equipPet", entry.Instance)
+task.wait(0.03)
+end
+end
+end
+
+-- 4. ATTENTE DU COOLDOWN (6 secondes)
+task.wait(6)
+end
+end)
+end
+end,
+})
