@@ -1,45 +1,53 @@
-if game.PlaceId == 3623096087 then
+-- Fast Farm - Muscle Legends (Delta)
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
 
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+local farming = false
+local delay = 0.01 -- plus bas = plus rapide (risque de lag)
 
-local Window = Rayfield:CreateWindow({
-   Name = "Tazen hub V1 by TZN_THR",
-   Icon = 0, -- Icon in Topbar. Can use Lucide Icons (string) or Roblox Image (number). 0 to use no icon (default).
-   LoadingTitle = "Welcome to Tazen hub",
-   LoadingSubtitle = "by TZN_THR",
-   ShowText = "Rayfield", -- for mobile users to unhide Rayfield, change if you'd like
-   Theme = "Default", -- Check https://docs.sirius.menu/rayfield/configuration/themes
+-- GUI minimaliste
+local gui = Instance.new("ScreenGui")
+gui.Name = "FastFarmGUI"
+gui.ResetOnSpawn = false
+gui.Parent = (gethui and gethui()) or game:GetService("CoreGui")
 
-   ToggleUIKeybind = "K", -- The keybind to toggle the UI visibility (string like "K" or Enum.KeyCode)
+local btn = Instance.new("TextButton")
+btn.Size = UDim2.new(0, 140, 0, 40)
+btn.Position = UDim2.new(0, 20, 0.5, 0)
+btn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+btn.TextColor3 = Color3.new(1, 1, 1)
+btn.Text = "Farm : OFF"
+btn.Active = true
+btn.Draggable = true
+btn.Parent = gui
 
-   DisableRayfieldPrompts = false,
-   DisableBuildWarnings = false, -- Prevents Rayfield from emitting warnings when the script has a version mismatch with the interface.
-
-   -- Heartbeat = "https://www.sentivel.com/api/heartbeat/<your token>", -- Pings your Sentivel heartbeat while Rayfield is open, so you can see whether your script is running
-
-   -- ScriptID = "sid_xxxxxxxxxxxx", -- Your Script ID from developer.sirius.menu — enables analytics, managed keys, and script hosting
-
-   ConfigurationSaving = {
-      Enabled = true,
-      FolderName = nil, -- Create a custom folder for your hub/game
-      FileName = "Big Hub"
-   },
-
-   Discord = {
-      Enabled = false, -- Prompt the user to join your Discord server if their executor supports it
-      Invite = "noinvitelink", -- The Discord invite code, do not include Discord.gg/. E.g. Discord.gg/ABCD would be ABCD
-      RememberJoins = true -- Set this to false to make them join the Discord every time they load it up
-   },
-
-   KeySystem = false, -- Set this to true to use our key system
-   KeySettings = {
-      Title = "Untitled",
-      Subtitle = "Key System",
-      Note = "No method of obtaining the key is provided", -- Use this to tell the user how to get a key
-      FileName = "Key", -- It is recommended to use something unique, as other scripts using Rayfield may overwrite your key file
-      SaveKey = true, -- The user's key will be saved, but if you change the key, they will be unable to use your script
-      GrabKeyFromSite = false, -- If this is true, set Key below to the RAW site you would like Rayfield to get the key from
-      Key = {"Hello"} -- List of keys that the system will accept, can be RAW file links (pastebin, github, etc.) or simple strings ("hello", "key22")
-   }
-})
+-- Équipe un outil (ex: "Weight") depuis le sac
+local function equipTool(name)
+    local char = player.Character
+    if not char then return end
+    if char:FindFirstChild(name) then return end
+    local tool = player.Backpack:FindFirstChild(name)
+    if tool then
+        char.Humanoid:EquipTool(tool)
+    end
 end
+
+local TOOL_NAME = "Weight" -- change selon l'outil (Weight, Pushups, Situps...)
+
+btn.MouseButton1Click:Connect(function()
+    farming = not farming
+    btn.Text = farming and "Farm : ON" or "Farm : OFF"
+    btn.BackgroundColor3 = farming and Color3.fromRGB(40, 160, 60) or Color3.fromRGB(180, 40, 40)
+
+    if farming then
+        task.spawn(function()
+            while farming do
+                pcall(function()
+                    equipTool(TOOL_NAME)
+                    player.muscleEvent:FireServer("rep")
+                end)
+                task.wait(delay)
+            end
+        end)
+    end
+end)
