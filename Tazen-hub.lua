@@ -187,57 +187,32 @@ local Toggle = MainTab:CreateToggle({
 local FastRepTab = Window:CreateTab("Fast Rep", nil) -- Title, Image
    local Section = FastRepTab:CreateSection("Fast Rep and pace")
 
-
 local fastRepActive = false
 
--- Fonction pour trouver automatiquement le RemoteEvent de Rep
-local function findRepRemote()
-    local Players = game:GetService("Players")
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local LocalPlayer = Players.LocalPlayer
-
-    -- 1. Scan du personnage et du joueur
-    if LocalPlayer.Character then
-        local found = LocalPlayer.Character:FindFirstChild("muscleEvent", true) or LocalPlayer.Character:FindFirstChild("repEvent", true)
-        if found then return found end
-    end
-
-    local playerFound = LocalPlayer:FindFirstChild("muscleEvent", true) or LocalPlayer:FindFirstChild("repEvent", true)
-    if playerFound then return playerFound end
-
-    -- 2. Scan global dans ReplicatedStorage
-    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
-        if obj:IsA("RemoteEvent") and (obj.Name:lower():find("muscle") or obj.Name:lower():find("rep")) then
-            return obj
-        end
-    end
-
-    return nil
-end
-
 local Toggle = FastRepTab:CreateToggle({
-    Name = "Fast Rep (Universal)",
+    Name = "Fast Rep",
     CurrentValue = false,
-    Flag = "Fast Rep Universal",
+    Flag = "Fast Rep",
     Callback = function(Value)
         fastRepActive = Value
         
         if fastRepActive then
             task.spawn(function()
-                local repRemote = findRepRemote()
-
-                if not repRemote then
-                    warn("[Fast Rep] Impossible de localiser le RemoteEvent de rep.")
-                    return
-                end
-
-                -- Boucle d'envoi rapide
+                local player = game:GetService("Players").LocalPlayer
+                
                 while fastRepActive do
-                    -- Teste l'envoi direct
-                    repRemote:FireServer("rep")
-                    repRemote:FireServer() -- Certains jeux n'attendent aucun argument
-                    
-                    task.wait(0.01) -- Cadence stable pour éviter le blocage du thread
+                    -- S'exécute sur n'importe quelle machine sans rééquiper l'haltère
+                    pcall(function()
+                        local muscleEvent = player:FindFirstChild("muscleEvent")
+                        if muscleEvent then
+                            -- Paquet de 25 requêtes par frame pour atteindre la vitesse max
+                            for i = 1, 25 do
+                                if not fastRepActive then break end
+                                muscleEvent:FireServer("rep")
+                            end
+                        end
+                    end)
+                    task.wait() -- Vitesse maximale sans crash
                 end
             end)
         end
