@@ -76,9 +76,9 @@ local function getPetScore(pet)
 end
 
 local Toggle = MainTab:CreateToggle({
-    Name = "Auto rebirth",
+    Name = "Fast rebirth",
     CurrentValue = false,
-    Flag = "Auto Rebirth",
+    Flag = "Fast Rebirth",
     Callback = function(Value)
         autoRebirthActive = Value
         
@@ -186,7 +186,7 @@ local Toggle = MainTab:CreateToggle({
     local MainSection = MainTab:CreateSection("Auto Rebirth (No Pack)")
 
     local Toggle = MainTab:CreateToggle({
-    Name = "Auto rebirth no pack",
+    Name = "Auto rebirth",
     CurrentValue = false,
     Flag = "Auto Rebirth",
     Callback = function(Value)
