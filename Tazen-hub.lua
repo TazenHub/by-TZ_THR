@@ -43,3 +43,13 @@ local Window = Rayfield:CreateWindow({
    }
 })
 end
+
+local MainTab = Window:CreateTab("Fast Rebirth", 4483362458) -- Title, Image
+local MainSection = MainTab:CreateSection("Fast Rebirth (Pack)")
+
+Rayfield:Notify({
+   Title = "Thank you for using Tazen hub",
+   Content = "Have fun and enjoy the script!",
+   Duration = 6.5,
+   Image = 4483362458,
+})
