@@ -1,4 +1,3 @@
--- Fast Farm - Muscle Legends (Delta)
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 
