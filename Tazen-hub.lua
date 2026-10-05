@@ -144,4 +144,4 @@ local Toggle = MainTab:CreateToggle({
             end)
         end
     end,
-})
+})end
