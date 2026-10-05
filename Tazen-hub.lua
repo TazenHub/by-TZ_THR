@@ -47,19 +47,17 @@ local Window = Rayfield:CreateWindow({
 
 local MainTab = Window:CreateTab("Fast Rebirth", nil) -- Title, Image
     local MainSection = MainTab:CreateSection("Fast Rebirth (Pack)")
-
 local autoRebirthActive = false
 
--- Liste des noms exacts des pets qui possèdent du Rep Speed
-local repSpeedPetNames = {
-    ["Mythic Boss Pet"] = true,
-    ["Legendary Boss Pet"] = true,
-    ["Epic Boss Pet"] = true,
+-- Priorités des pets Rep Speed (0 = Priorité absolue, 5 = Dernier recours)
+local repSpeedPetPriorities = {
+    ["Omega Overlord"] = 1,
+    ["Mythic Boss Pet"] = 2,
+    ["Legendary Boss Pet"] = 3,
+    ["Epic Boss Pet"] = 4,
 }
 
--- Fonction pour lire la stat/niveau afin de classer les plus forts
 local function getPetScore(pet)
-    -- Recherche de la valeur de Rep Speed si présente
     local repSpeedObj = pet:FindFirstChild("RepSpeed") or pet:FindFirstChild("Rep Speed")
     if repSpeedObj and (repSpeedObj:IsA("NumberValue") or repSpeedObj:IsA("IntValue")) then
         return repSpeedObj.Value
@@ -68,7 +66,6 @@ local function getPetScore(pet)
     local attr = pet:GetAttribute("RepSpeed") or pet:GetAttribute("Rep Speed")
     if attr then return tonumber(attr) or 0 end
 
-    -- Sinon tri basé sur le niveau du pet
     local levelObj = pet:FindFirstChild("Level") or pet:FindFirstChild("Lvl")
     if levelObj and levelObj.Value then
         return tonumber(levelObj.Value) or 0
@@ -93,14 +90,13 @@ local Toggle = MainTab:CreateToggle({
                 local rebirthRemote = ReplicatedStorage.rEvents.rebirthRemote
                 local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
                 
-                -- Fonction pour déséquiper TOUS les pets
                 local function unequipAllPets(petsFolder)
                     for _, folderName in ipairs({"Unique", "Rare", "Epic", "Mythic", "Legendary"}) do
                         local folder = petsFolder:FindFirstChild(folderName)
                         if folder then
                             for _, pet in ipairs(folder:GetChildren()) do
                                 equipPetEvent:FireServer("unequipPet", pet)
-                                task.wait(0.02)
+                                task.wait()
                             end
                         end
                     end
@@ -110,7 +106,7 @@ local Toggle = MainTab:CreateToggle({
                     local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
                     
                     if petsFolder then
-                        -- 1. ÉQUIPEMENT DES TITANIUM HYDRA (AVANT RENAISSANCE)
+                        -- 1. ÉQUIPEMENT ULTRA-RAPIDE DES TITANIUM HYDRA (AVANT RENAISSANCE)
                         unequipAllPets(petsFolder)
                         
                         for _, folderName in ipairs({"Unique", "Rare", "Epic", "Mythic", "Legendary"}) do
@@ -122,7 +118,7 @@ local Toggle = MainTab:CreateToggle({
                                     
                                     if pName == "Titanium Hydra" then
                                         equipPetEvent:FireServer("equipPet", pet)
-                                        task.wait(0.03)
+                                        task.wait()
                                     end
                                 end
                             end
@@ -131,10 +127,13 @@ local Toggle = MainTab:CreateToggle({
                         -- 2. RENAISSANCE
                         rebirthRemote:InvokeServer("rebirthRequest")
 
-                        -- 3. ÉQUIPEMENT DES MEILLEURS PETS REP SPEED (APRS RENAISSANCE)
+                        -- 3. ÉQUIPEMENT PAR PRIORITÉ DES PETS REP SPEED (APRÈS RENAISSANCE)
                         unequipAllPets(petsFolder)
 
                         local repPets = {}
+                        local uniqueFolder = petsFolder:FindFirstChild("Unique")
+                        local priority4Pet = uniqueFolder and uniqueFolder:GetChildren()[4] -- Pet ciblé dans la vidéo
+
                         for _, folderName in ipairs({"Unique", "Rare", "Epic", "Mythic", "Legendary"}) do
                             local folder = petsFolder:FindFirstChild(folderName)
                             if folder then
@@ -142,28 +141,39 @@ local Toggle = MainTab:CreateToggle({
                                     local pName = pet.Name
                                     if pet:FindFirstChild("PetName") then pName = pet.PetName.Value end
 
-                                    -- Vérifie si le pet fait partie de la liste Rep Speed
-                                    if repSpeedPetNames[pName] then
-                                        table.insert(repPets, {Instance = pet, Score = getPetScore(pet)})
+                                    local priority = repSpeedPetPriorities[pName] or 5
+                                    
+                                    -- Si c'est le pet exact [4] du dossier Unique, priorité absolue (0)
+                                    if priority4Pet and pet == priority4Pet then
+                                        priority = 0
+                                    end
+
+                                    if priority < 5 or priority4Pet == pet then
+                                        table.insert(repPets, {
+                                            Instance = pet, 
+                                            Priority = priority, 
+                                            Score = getPetScore(pet)
+                                        })
                                     end
                                 end
                             end
                         end
 
-                        -- Tri du plus fort au moins fort
-                        table.sort(repPets, function(a, b) return a.Score > b.Score end)
+                        -- Tri : Priorité 0 en premier, puis 1, 2, 3, 4
+                        table.sort(repPets, function(a, b)
+                            if a.Priority == b.Priority then
+                                return a.Score > b.Score
+                            end
+                            return a.Priority < b.Priority
+                        end)
 
-                        -- Équipement automatique des meilleurs pets détectés
+                        -- Équipement automatique ultra-rapide
                         for _, entry in ipairs(repPets) do
                             equipPetEvent:FireServer("equipPet", entry.Instance)
-                            task.wait(0.03)
+                            task.wait()
                         end
                     end
                     
-                    -- 4. ATTENTE DU COOLDOWN (6 SECONDES)
-                    task.wait(6)
-                end
-            end)
-        end
-    end,
-})end
+                    -- 4. COOLDOWN EXACT (6 SECONDES)
+                    
+
