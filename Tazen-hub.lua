@@ -182,3 +182,33 @@ local Toggle = MainTab:CreateToggle({
         end
     end,
 })end
+
+
+local fastRepActive = false
+
+local FastRepToggle = MainTab:CreateToggle({
+    Name = "Auto Rep",
+    CurrentValue = false,
+    Flag = "Auto Rep",
+    Callback = function(Value)
+        fastRepActive = Value
+        
+        if fastRepActive then
+            task.spawn(function()
+                local Players = game:GetService("Players")
+                local LocalPlayer = Players.LocalPlayer
+                local muscleEvent = LocalPlayer:FindFirstChild("muscleEvent")
+                
+                if not muscleEvent then
+                    warn("muscleEvent introuvable !")
+                    return
+                end
+                
+                while fastRepActive do
+                    muscleEvent:FireServer("rep")
+                    task.wait() -- S'exécute à chaque frame sans aucun délai
+                end
+            end)
+        end
+    end,
+})end
