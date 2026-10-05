@@ -200,16 +200,26 @@ local Toggle = FastRepTab:CreateToggle({
         if fastRepActive then
             task.spawn(function()
                 local Players = game:GetService("Players")
+                local ReplicatedStorage = game:GetService("ReplicatedStorage")
                 local LocalPlayer = Players.LocalPlayer
-                local muscleEvent = LocalPlayer:WaitForChild("muscleEvent")
                 
+                -- Recherche dynamique pour éviter de bloquer le script
+                local muscleEvent = LocalPlayer:FindFirstChild("muscleEvent") 
+                    or (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("muscleEvent"))
+                    or (ReplicatedStorage:FindFirstChild("rEvents") and ReplicatedStorage.rEvents:FindFirstChild("muscleEvent"))
+                    or ReplicatedStorage:FindFirstChild("muscleEvent")
+
+                if not muscleEvent then
+                    warn("[Fast Rep] Impossible de trouver muscleEvent !")
+                    return
+                end
+
                 while fastRepActive do
-                    -- Envoi de plusieurs requêtes par frame pour maximiser le débit
-                    for i = 1, 20 do
+                    for i = 1, 35 do
                         if not fastRepActive then break end
                         muscleEvent:FireServer("rep")
                     end
-                    task.wait() -- Attente minimale par frame
+                    task.wait()
                 end
             end)
         end
