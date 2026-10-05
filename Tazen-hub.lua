@@ -1,53 +1,88 @@
--- Fast Farm - Muscle Legends (Delta)
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+
 local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 
-local farming = false
-local delay = 0.01 -- plus bas = plus rapide (risque de lag)
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "AutoRepGui"
+screenGui.Parent = playerGui
 
--- GUI minimaliste
-local gui = Instance.new("ScreenGui")
-gui.Name = "FastFarmGUI"
-gui.ResetOnSpawn = false
-gui.Parent = (gethui and gethui()) or game:GetService("CoreGui")
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 200, 0, 100)
+frame.Position = UDim2.new(0.5, -100, 0.5, -50)
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.Parent = screenGui
 
-local btn = Instance.new("TextButton")
-btn.Size = UDim2.new(0, 140, 0, 40)
-btn.Position = UDim2.new(0, 20, 0.5, 0)
-btn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
-btn.TextColor3 = Color3.new(1, 1, 1)
-btn.Text = "Farm : OFF"
-btn.Active = true
-btn.Draggable = true
-btn.Parent = gui
+local toggleButton = Instance.new("TextButton")
+toggleButton.Size = UDim2.new(1, -20, 0, 40)
+toggleButton.Position = UDim2.new(0, 10, 0, 10)
+toggleButton.Text = "Start Auto Rep"
+toggleButton.BackgroundColor3 = Color3.fromRGB(70, 130, 180)
+toggleButton.Parent = frame
 
--- Équipe un outil (ex: "Weight") depuis le sac
-local function equipTool(name)
-    local char = player.Character
-    if not char then return end
-    if char:FindFirstChild(name) then return end
-    local tool = player.Backpack:FindFirstChild(name)
-    if tool then
-        char.Humanoid:EquipTool(tool)
-    end
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(1, -20, 0, 40)
+statusLabel.Position = UDim2.new(0, 10, 0, 60)
+statusLabel.Text = "Status: Stopped"
+statusLabel.BackgroundTransparency = 1
+statusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+statusLabel.Parent = frame
+
+local repRemote = ReplicatedStorage:FindFirstChild("RepRemote")
+if not repRemote then
+    warn("[AutoRep] RepRemote not found in ReplicatedStorage.")
 end
 
-local TOOL_NAME = "Weight" -- change selon l'outil (Weight, Pushups, Situps...)
+local autoRepEnabled = false
+local repThread
 
-btn.MouseButton1Click:Connect(function()
-    farming = not farming
-    btn.Text = farming and "Farm : ON" or "Farm : OFF"
-    btn.BackgroundColor3 = farming and Color3.fromRGB(40, 160, 60) or Color3.fromRGB(180, 40, 40)
+local function startAutoRep()
+    if autoRepEnabled or not repRemote then return end
+    autoRepEnabled = true
+    statusLabel.Text = "Status: Running"
+    toggleButton.Text = "Stop Auto Rep"
+    repThread = task.spawn(function()
+        while autoRepEnabled do
+            repRemote:FireServer()
+            task.wait(1 / 700)
+        end
+    end)
+end
 
-    if farming then
-        task.spawn(function()
-            while farming do
-                pcall(function()
-                    equipTool(TOOL_NAME)
-                    player.muscleEvent:FireServer("rep")
-                end)
-                task.wait(delay)
-            end
-        end)
+local function stopAutoRep()
+    if not autoRepEnabled then return end
+    autoRepEnabled = false
+    statusLabel.Text = "Status: Stopped"
+    toggleButton.Text = "Start Auto Rep"
+    repThread = nil
+end
+
+toggleButton.MouseButton1Click:Connect(function()
+    if autoRepEnabled then
+        stopAutoRep()
+    else
+        startAutoRep()
+    end
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.F5 then
+        if autoRepEnabled then
+            stopAutoRep()
+        else
+            startAutoRep()
+        end
+    end
+end)
+
+player.AncestryChanged:Connect(function(child, parent)
+    if not parent then
+        stopAutoRep()
+        screenGui:Destroy()
     end
 end)
