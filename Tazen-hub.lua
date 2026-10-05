@@ -42,20 +42,19 @@ local Window = Rayfield:CreateWindow({
       Key = {"Hello"} -- List of keys that the system will accept, can be RAW file links (pastebin, github, etc.) or simple strings ("hello", "key22")
    }
 })
-end
 
 local MainTab = Window:CreateTab("Fast Rebirth", nil) -- Title, Image
-local MainSection = MainTab:CreateSection("Fast Rebirth (Pack)")
+    local MainSection = MainTab:CreateSection("Fast Rebirth (Pack)")
 
-local Toggle = MainTab:CreateToggle({
-   Name = "Toggle Example",
-   CurrentValue = false,
-   Flag = "Auto Rebirth", -- A flag is the identifier for the configuration file; make sure every element has a different flag if you're using configuration saving to ensure no overlaps
-   Callback = function(Value)
-        local Event = game:GetService("ReplicatedStorage").rEvents.rebirthRemote
-        Event:InvokeServer(
-            "rebirthRequest"
-    ) -- The function that takes place when the toggle is pressed
-   -- The variable (Value) is a boolean on whether the toggle is true or false
-   end,
-})
+    local Toggle = MainTab:CreateToggle({
+    Name = "Toggle Example",
+    CurrentValue = false,
+    Flag = "Auto Rebirth", -- A flag is the identifier for the configuration file; make sure every element has a different flag if you're using configuration saving to ensure no overlaps
+    Callback = function(Value)
+            local Event = game:GetService("ReplicatedStorage").rEvents.rebirthRemote
+            Event:InvokeServer(
+                "rebirthRequest"
+        ) -- The function that takes place when the toggle is pressed
+    -- The variable (Value) is a boolean on whether the toggle is true or false
+    end,
+    }) end
