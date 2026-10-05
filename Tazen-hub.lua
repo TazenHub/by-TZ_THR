@@ -50,115 +50,120 @@ local MainTab = Window:CreateTab("Fast Rebirth", nil) -- Title, Image
 
 local autoRebirthActive = false
 
--- Détection dynamique du boost x2 Rebirths
-local function isRebirthBoostPet(pet)
-local boostAttr = pet:GetAttribute("SpecialBoost") or pet:GetAttribute("Boost") or pet:GetAttribute("RebirthBoost")
-if boostAttr and string.find(tostring(boostAttr):lower(), "rebirth") then
-return true
-end
+-- Liste des noms exacts des pets qui possèdent du Rep Speed
+local repSpeedPetNames = {
+    ["Mythic Boss Pet"] = true,
+    ["Legendary Boss Pet"] = true,
+    ["Epic Boss Pet"] = true,
+}
 
-local rebirthObj = pet:FindFirstChild("Rebirths")
-or pet:FindFirstChild("RebirthBoost")
-or pet:FindFirstChild("x2 Rebirths")
-if rebirthObj then return true end
+-- Fonction pour lire la stat/niveau afin de classer les plus forts
+local function getPetScore(pet)
+    -- Recherche de la valeur de Rep Speed si présente
+    local repSpeedObj = pet:FindFirstChild("RepSpeed") or pet:FindFirstChild("Rep Speed")
+    if repSpeedObj and (repSpeedObj:IsA("NumberValue") or repSpeedObj:IsA("IntValue")) then
+        return repSpeedObj.Value
+    end
 
-local statsFolder = pet:FindFirstChild("Stats") or pet:FindFirstChild("Boosts")
-if statsFolder then
-for _, child in ipairs(statsFolder:GetChildren()) do
-if string.find(child.Name:lower(), "rebirth") then
-return true
-end
-end
-end
+    local attr = pet:GetAttribute("RepSpeed") or pet:GetAttribute("Rep Speed")
+    if attr then return tonumber(attr) or 0 end
 
-return false
-end
+    -- Sinon tri basé sur le niveau du pet
+    local levelObj = pet:FindFirstChild("Level") or pet:FindFirstChild("Lvl")
+    if levelObj and levelObj.Value then
+        return tonumber(levelObj.Value) or 0
+    end
 
--- Détection dynamique du Rep Speed
-local function getRepSpeedValue(pet)
-local repSpeedObj = pet:FindFirstChild("RepSpeed") or pet:FindFirstChild("Rep Speed")
-if repSpeedObj and (repSpeedObj:IsA("NumberValue") or repSpeedObj:IsA("IntValue")) then
-return repSpeedObj.Value
-end
-
-local attr = pet:GetAttribute("RepSpeed") or pet:GetAttribute("Rep Speed")
-if attr then return tonumber(attr) or 0 end
-
-return 0
+    return 1
 end
 
 local Toggle = MainTab:CreateToggle({
-Name = "Auto rebirth",
-CurrentValue = false,
-Flag = "Auto Rebirth",
-Callback = function(Value)
-autoRebirthActive = Value
+    Name = "Auto rebirth",
+    CurrentValue = false,
+    Flag = "Auto Rebirth",
+    Callback = function(Value)
+        autoRebirthActive = Value
+        
+        if autoRebirthActive then
+            task.spawn(function()
+                local ReplicatedStorage = game:GetService("ReplicatedStorage")
+                local Players = game:GetService("Players")
+                local LocalPlayer = Players.LocalPlayer
+                
+                local rebirthRemote = ReplicatedStorage.rEvents.rebirthRemote
+                local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
+                
+                -- Fonction pour déséquiper TOUS les pets
+                local function unequipAllPets(petsFolder)
+                    for _, folderName in ipairs({"Unique", "Rare", "Epic", "Mythic", "Legendary"}) do
+                        local folder = petsFolder:FindFirstChild(folderName)
+                        if folder then
+                            for _, pet in ipairs(folder:GetChildren()) do
+                                equipPetEvent:FireServer("unequipPet", pet)
+                                task.wait(0.02)
+                            end
+                        end
+                    end
+                end
 
-if autoRebirthActive then
-task.spawn(function()
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
+                while autoRebirthActive do
+                    local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+                    
+                    if petsFolder then
+                        -- 1. ÉQUIPEMENT DES TITANIUM HYDRA (AVANT RENAISSANCE)
+                        unequipAllPets(petsFolder)
+                        
+                        for _, folderName in ipairs({"Unique", "Rare", "Epic", "Mythic", "Legendary"}) do
+                            local folder = petsFolder:FindFirstChild(folderName)
+                            if folder then
+                                for _, pet in ipairs(folder:GetChildren()) do
+                                    local pName = pet.Name
+                                    if pet:FindFirstChild("PetName") then pName = pet.PetName.Value end
+                                    
+                                    if pName == "Titanium Hydra" then
+                                        equipPetEvent:FireServer("equipPet", pet)
+                                        task.wait(0.03)
+                                    end
+                                end
+                            end
+                        end
 
-local rebirthRemote = ReplicatedStorage.rEvents.rebirthRemote
-local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
+                        -- 2. RENAISSANCE
+                        rebirthRemote:InvokeServer("rebirthRequest")
 
--- Fonction pour déséquiper TOUS les pets
-local function unequipAllPets(petsFolder)
-for _, folderName in ipairs({"Unique", "Rare", "Epic", "Mythic", "Legendary"}) do
-local folder = petsFolder:FindFirstChild(folderName)
-if folder then
-for _, pet in ipairs(folder:GetChildren()) do
-equipPetEvent:FireServer("unequipPet", pet)
-task.wait(0.02)
-end
-end
-end
-end
+                        -- 3. ÉQUIPEMENT DES MEILLEURS PETS REP SPEED (APRS RENAISSANCE)
+                        unequipAllPets(petsFolder)
 
-while autoRebirthActive do
-local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+                        local repPets = {}
+                        for _, folderName in ipairs({"Unique", "Rare", "Epic", "Mythic", "Legendary"}) do
+                            local folder = petsFolder:FindFirstChild(folderName)
+                            if folder then
+                                for _, pet in ipairs(folder:GetChildren()) do
+                                    local pName = pet.Name
+                                    if pet:FindFirstChild("PetName") then pName = pet.PetName.Value end
 
-if petsFolder then
--- 1. ÉQUIPEMENT DES PETS x2 REBIRTHS (AVANT RENAISSANCE)
-unequipAllPets(petsFolder)
+                                    -- Vérifie si le pet fait partie de la liste Rep Speed
+                                    if repSpeedPetNames[pName] then
+                                        table.insert(repPets, {Instance = pet, Score = getPetScore(pet)})
+                                    end
+                                end
+                            end
+                        end
 
-if petsFolder:FindFirstChild("Unique") then
-for _, pet in ipairs(petsFolder.Unique:GetChildren()) do
-if isRebirthBoostPet(pet) then
-equipPetEvent:FireServer("equipPet", pet)
-task.wait(0.03)
-end
-end
-end
+                        -- Tri du plus fort au moins fort
+                        table.sort(repPets, function(a, b) return a.Score > b.Score end)
 
--- 2. RENAISSANCE
-rebirthRemote:InvokeServer("rebirthRequest")
-
--- 3. ÉQUIPEMENT DES PETS REP SPEED (POUR LA RECHARGE)
-unequipAllPets(petsFolder)
-
-if petsFolder:FindFirstChild("Unique") then
-local repPets = {}
-for _, pet in ipairs(petsFolder.Unique:GetChildren()) do
-local boost = getRepSpeedValue(pet)
-if boost > 0 then
-table.insert(repPets, {Instance = pet, Boost = boost})
-end
-end
-table.sort(repPets, function(a, b) return a.Boost > b.Boost end)
-
-for _, entry in ipairs(repPets) do
-equipPetEvent:FireServer("equipPet", entry.Instance)
-task.wait(0.03)
-end
-end
-end
-
--- 4. ATTENTE DU COOLDOWN (6 secondes)
-task.wait(6)
-end
-end)
-end
-end,
+                        -- Équipement automatique des meilleurs pets détectés
+                        for _, entry in ipairs(repPets) do
+                            equipPetEvent:FireServer("equipPet", entry.Instance)
+                            task.wait(0.03)
+                        end
+                    end
+                    
+                    -- 4. ATTENTE DU COOLDOWN (6 SECONDES)
+                    task.wait(6)
+                end
+            end)
+        end
+    end,
 })end
