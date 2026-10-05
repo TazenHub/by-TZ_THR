@@ -2,7 +2,7 @@ local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 
 local farming = false
-local delay = 0.01 -- plus bas = plus rapide (risque de lag)
+local delay = 0.0000000001 -- plus bas = plus rapide (risque de lag)
 
 -- GUI minimaliste
 local gui = Instance.new("ScreenGui")
