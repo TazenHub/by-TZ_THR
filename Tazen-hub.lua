@@ -185,7 +185,7 @@ local Toggle = MainTab:CreateToggle({
 
 
 local FastRepTab = Window:CreateTab("Fast Rep", nil) -- Title, Image
-
+   local Section = FastRepTab:CreateSection("Fast Rep and pace")
 
 
 local fastRepActive = false
