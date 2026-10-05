@@ -42,17 +42,9 @@ local Window = Rayfield:CreateWindow({
       Key = {"Hello"} -- List of keys that the system will accept, can be RAW file links (pastebin, github, etc.) or simple strings ("hello", "key22")
    }
 })
-end
 
-local MainTab = Window:CreateTab("Fast Rebirth", 4483362458) -- Title, Image
+local MainTab = Window:CreateTab("Fast Rebirth", nil) -- Title, Image
 local MainSection = MainTab:CreateSection("Fast Rebirth (Pack)")
-
-Rayfield:Notify({
-   Title = "Thank you for using Tazen hub",
-   Content = "Have fun and enjoy the script!",
-   Duration = 6.5,
-   Image = 4483362458,
-})
 
 local Toggle = MainTab:CreateToggle({
    Name = "Toggle Example",
