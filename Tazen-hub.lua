@@ -198,20 +198,37 @@ local Toggle = FastRepTab:CreateToggle({
         
         if fastRepActive then
             task.spawn(function()
-                local player = game:GetService("Players").LocalPlayer
+                local Players = game:GetService("Players")
+                local ReplicatedStorage = game:GetService("ReplicatedStorage")
+                local LocalPlayer = Players.LocalPlayer
                 
                 while fastRepActive do
-                    -- S'exécute sur n'importe quelle machine sans rééquiper l'haltère
                     pcall(function()
-                        local muscleEvent = player:FindFirstChild("muscleEvent")
-                        if muscleEvent then
-                            -- Paquet de 25 requêtes par frame pour atteindre la vitesse max
-                            for i = 1, 25 do
+                        -- 1. Recherche du RemoteEvent
+                        local muscleEvent = nil
+                        
+                        -- On vérifie s'il est dans le joueur
+                        if LocalPlayer:FindFirstChild("muscleEvent") then
+                            muscleEvent = LocalPlayer.muscleEvent
+                        -- On vérifie s'il est dans le personnage
+                        elseif LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("muscleEvent") then
+                            muscleEvent = LocalPlayer.Character.muscleEvent
+                        -- On vérifie s'il est dans ReplicatedStorage
+                        elseif ReplicatedStorage:FindFirstChild("muscleEvent") then
+                            muscleEvent = ReplicatedStorage.muscleEvent
+                        elseif ReplicatedStorage:FindFirstChild("rEvents") and ReplicatedStorage.rEvents:FindFirstChild("muscleEvent") then
+                            muscleEvent = ReplicatedStorage.rEvents.muscleEvent
+                        end
+
+                        -- 2. Exécution si le RemoteEvent est trouvé
+                        if muscleEvent and typeof(muscleEvent) == "Instance" and muscleEvent:IsA("RemoteEvent") then
+                            for i = 1, 20 do
                                 if not fastRepActive then break end
                                 muscleEvent:FireServer("rep")
                             end
                         end
                     end)
+                    
                     task.wait() -- Vitesse maximale sans crash
                 end
             end)
