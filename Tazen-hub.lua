@@ -190,36 +190,54 @@ local FastRepTab = Window:CreateTab("Fast Rep", nil) -- Title, Image
 
 local fastRepActive = false
 
+-- Fonction pour trouver automatiquement le RemoteEvent de Rep
+local function findRepRemote()
+    local Players = game:GetService("Players")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local LocalPlayer = Players.LocalPlayer
+
+    -- 1. Scan du personnage et du joueur
+    if LocalPlayer.Character then
+        local found = LocalPlayer.Character:FindFirstChild("muscleEvent", true) or LocalPlayer.Character:FindFirstChild("repEvent", true)
+        if found then return found end
+    end
+
+    local playerFound = LocalPlayer:FindFirstChild("muscleEvent", true) or LocalPlayer:FindFirstChild("repEvent", true)
+    if playerFound then return playerFound end
+
+    -- 2. Scan global dans ReplicatedStorage
+    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+        if obj:IsA("RemoteEvent") and (obj.Name:lower():find("muscle") or obj.Name:lower():find("rep")) then
+            return obj
+        end
+    end
+
+    return nil
+end
+
 local Toggle = FastRepTab:CreateToggle({
-    Name = "Fast Rep",
+    Name = "Fast Rep (Universal)",
     CurrentValue = false,
-    Flag = "Fast Rep",
+    Flag = "Fast Rep Universal",
     Callback = function(Value)
         fastRepActive = Value
         
         if fastRepActive then
             task.spawn(function()
-                local Players = game:GetService("Players")
-                local ReplicatedStorage = game:GetService("ReplicatedStorage")
-                local LocalPlayer = Players.LocalPlayer
-                
-                -- Recherche dynamique pour éviter de bloquer le script
-                local muscleEvent = LocalPlayer:FindFirstChild("muscleEvent") 
-                    or (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("muscleEvent"))
-                    or (ReplicatedStorage:FindFirstChild("rEvents") and ReplicatedStorage.rEvents:FindFirstChild("muscleEvent"))
-                    or ReplicatedStorage:FindFirstChild("muscleEvent")
+                local repRemote = findRepRemote()
 
-                if not muscleEvent then
-                    warn("[Fast Rep] Impossible de trouver muscleEvent !")
+                if not repRemote then
+                    warn("[Fast Rep] Impossible de localiser le RemoteEvent de rep.")
                     return
                 end
 
+                -- Boucle d'envoi rapide
                 while fastRepActive do
-                    for i = 1, 35 do
-                        if not fastRepActive then break end
-                        muscleEvent:FireServer("rep")
-                    end
-                    task.wait()
+                    -- Teste l'envoi direct
+                    repRemote:FireServer("rep")
+                    repRemote:FireServer() -- Certains jeux n'attendent aucun argument
+                    
+                    task.wait(0.01) -- Cadence stable pour éviter le blocage du thread
                 end
             end)
         end
