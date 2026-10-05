@@ -185,8 +185,8 @@ local Toggle = MainTab:CreateToggle({
 
 local fastRepActive = false
 
-local FastRepToggle = MainTab:CreateToggle({
-    Name = "Fast Rep (1000/s)",
+local Toggle = MainTab:CreateToggle({
+    Name = "Fast Rep",
     CurrentValue = false,
     Flag = "Fast Rep",
     Callback = function(Value)
