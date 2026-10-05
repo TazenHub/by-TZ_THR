@@ -182,32 +182,3 @@ local Toggle = MainTab:CreateToggle({
         end
     end,
 })end
-
-local fastRepActive = false
-
-local FastRepToggle = MainTab:CreateToggle({
-    Name = "Fast Rep (1000/s)",
-    CurrentValue = false,
-    Flag = "Fast Rep",
-    Callback = function(Value)
-        fastRepActive = Value
-        
-        if fastRepActive then
-            task.spawn(function()
-                local Players = game:GetService("Players")
-                local LocalPlayer = Players.LocalPlayer
-                local muscleEvent = LocalPlayer:WaitForChild("muscleEvent")
-                
-                while fastRepActive do
-                    -- Envoi de plusieurs requêtes par frame pour maximiser le débit
-                    for i = 1, 20 do
-                        if not fastRepActive then break end
-                        muscleEvent:FireServer("rep")
-                    end
-                    task.wait() -- Attente minimale par frame
-                end
-            end)
-        end
-    end,
-})end
-
