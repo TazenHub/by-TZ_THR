@@ -183,9 +183,14 @@ local Toggle = MainTab:CreateToggle({
     end,
 })end
 
+
+local FastRepTab = Window:CreateTab("Fast Rep", nil) -- Title, Image
+
+
+
 local fastRepActive = false
 
-local Toggle = MainTab:CreateToggle({
+local Toggle = FastRepTab:CreateToggle({
     Name = "Fast Rep",
     CurrentValue = false,
     Flag = "Fast Rep",
