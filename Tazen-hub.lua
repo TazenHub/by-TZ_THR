@@ -1,3 +1,5 @@
+-- luacheck: globals game
+
 if game.PlaceId == 3623096087 then
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
@@ -46,15 +48,25 @@ local Window = Rayfield:CreateWindow({
 local MainTab = Window:CreateTab("Fast Rebirth", nil) -- Title, Image
     local MainSection = MainTab:CreateSection("Fast Rebirth (Pack)")
 
-    local Toggle = MainTab:CreateToggle({
-    Name = "Toggle Example",
+local autoRebirthActive = false
+
+local Toggle = MainTab:CreateToggle({
+    Name = "Auto rebirth",
     CurrentValue = false,
-    Flag = "Auto Rebirth", -- A flag is the identifier for the configuration file; make sure every element has a different flag if you're using configuration saving to ensure no overlaps
+    Flag = "Auto Rebirth",
     Callback = function(Value)
-            local Event = game:GetService("ReplicatedStorage").rEvents.rebirthRemote
-            Event:InvokeServer(
-                "rebirthRequest"
-        ) -- The function that takes place when the toggle is pressed
-    -- The variable (Value) is a boolean on whether the toggle is true or false
+        autoRebirthActive = Value
+        
+        if autoRebirthActive then
+            task.spawn(function()
+                local ReplicatedStorage = game:GetService("ReplicatedStorage")
+                local Event = ReplicatedStorage.rEvents.rebirthRemote
+                
+                while autoRebirthActive do
+                    Event:InvokeServer("rebirthRequest")
+                    task.wait(0.1) -- Ajuste le délai (en secondes) si nécessaire
+                end
+            end)
+        end
     end,
-    }) end
+})end
