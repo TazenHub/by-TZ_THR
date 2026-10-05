@@ -182,3 +182,26 @@ local Toggle = MainTab:CreateToggle({
         end
     end,
 })end
+
+    local MainSection = MainTab:CreateSection("Auto Rebirth (No Pack)")
+
+    local Toggle = MainTab:CreateToggle({
+    Name = "Auto rebirth no pack",
+    CurrentValue = false,
+    Flag = "Auto Rebirth",
+    Callback = function(Value)
+        autoRebirthActive = Value
+        
+        if autoRebirthActive then
+            task.spawn(function()
+                local ReplicatedStorage = game:GetService("ReplicatedStorage")
+                local Event = ReplicatedStorage.rEvents.rebirthRemote
+                
+                while autoRebirthActive do
+                    Event:InvokeServer("rebirthRequest")
+                    task.wait(0.1) -- Ajuste le délai (en secondes) si nécessaire
+                end
+            end)
+        end
+    end,
+})end
