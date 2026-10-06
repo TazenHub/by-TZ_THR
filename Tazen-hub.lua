@@ -211,29 +211,23 @@ local function fastRebirthLoop(myId)
             end
         end
 
-        -- Hydra unequip can be refused by the game's cooldown -> resend it several times.
-        -- Tune these two values if the hydras still stay equipped.
-        local REEQUIP_DELAY = 0.05        -- seconds after the rebirth before re-equipping the rep pets
-        local HYDRA_UNEQUIP_RETRIES = 1   -- number of passes (raise it if hydras stay equipped)
+        -- ===== TIMINGS (tune these if needed) =====
+        local HYDRA_LEAD = 0.10           -- hydras are equipped this long before the rebirth is fired
+        local REBIRTH_MARGIN = 0.03       -- safety margin added to the 6 s cooldown
+        local REEQUIP_DELAY = 0.05        -- seconds after the rebirth before hydras off / rep pets on
+        local HYDRA_UNEQUIP_RETRIES = 1   -- unequip passes (raise it if hydras stay equipped)
         local HYDRA_RETRY_WAIT = 0.15     -- seconds between two passes
 
+        -- hydras off + rep pets on, everything fired in a burst (no frame wait between pets)
         local function backToRepPets(hydras, reps)
             task.wait(REEQUIP_DELAY)
             for attempt = 1, HYDRA_UNEQUIP_RETRIES do
-                -- (re)send the unequip of every Titanium Hydra
                 for _, pet in ipairs(hydras) do
-                    if pet.Parent then
-                        equipPetEvent:FireServer("unequipPet", pet)
-                        task.wait()
-                    end
+                    if pet.Parent then equipPetEvent:FireServer("unequipPet", pet) end
                 end
-                -- rep pets: equipped on the first pass, and once more on the last pass
                 if attempt == 1 or attempt == HYDRA_UNEQUIP_RETRIES then
                     for _, pet in ipairs(reps) do
-                        if pet.Parent then
-                            equipPetEvent:FireServer("equipPet", pet)
-                            task.wait()
-                        end
+                        if pet.Parent then equipPetEvent:FireServer("equipPet", pet) end
                     end
                 end
                 if attempt < HYDRA_UNEQUIP_RETRIES then
@@ -261,33 +255,35 @@ local function fastRebirthLoop(myId)
         setEquipped(repList)
 
         local cycle = 0
-        local swapTime = 0.3                              -- estimated hydra swap duration (auto-adjusted)
-        local lastRebirth = os.clock() - REBIRTH_COOLDOWN -- first rebirth can happen right away
+        local lastRebirth = os.clock() - REBIRTH_COOLDOWN - 1 -- first rebirth can happen right away
+        local rebirthResult = "-"
 
         while isRunning() do
             cycle = cycle + 1
+            local rebirthAt = lastRebirth + REBIRTH_COOLDOWN + REBIRTH_MARGIN
 
-            -- 1. LAST MOMENT: swap rep pets -> Titanium Hydras
-            waitUntil(lastRebirth + REBIRTH_COOLDOWN - swapTime)
+            -- 1. LAST MOMENT: rep pets -> Titanium Hydras (burst)
+            waitUntil(rebirthAt - HYDRA_LEAD)
             if not isRunning() then break end
+            setEquipped(hydraList, true)
 
-            local t0 = os.clock()
-            setEquipped(hydraList, true) -- burst: as late as possible, no wait between pets
-            local measured = os.clock() - t0
-            swapTime = math.clamp(measured + 0.1, 0.1, 3) -- small safety margin
-
-            -- 2. COOLDOWN OVER -> REBIRTH (hydras still equipped)
-            waitUntil(lastRebirth + REBIRTH_COOLDOWN + 0.05)
+            -- 2. REBIRTH at the exact end of the cooldown
+            --    (fired in its own thread: we don't wait for the server answer)
+            waitUntil(rebirthAt)
             if not isRunning() then break end
-
-            local rebirthResult = rebirthRemote:InvokeServer("rebirthRequest")
             lastRebirth = os.clock()
+            task.spawn(function()
+                local okR, res = pcall(function()
+                    return rebirthRemote:InvokeServer("rebirthRequest")
+                end)
+                rebirthResult = okR and res or ("error: " .. tostring(res))
+            end)
 
-            -- 3. 0.05 s AFTER THE REBIRTH: hydras off, rep pets back on
+            -- 3. RIGHT AFTER: hydras off, rep pets back on
             backToRepPets(hydraList, repList)
 
-            fastStatus = string.format("Cycle %d | Rebirth result: %s | Rep pets: %d | Swap: %.2fs",
-                cycle, tostring(rebirthResult), #repList, measured)
+            fastStatus = string.format("Cycle %d | Rebirth result: %s | Rep pets: %d",
+                cycle, tostring(rebirthResult), #repList)
             if cycle <= 3 then print("[Tazen hub] " .. fastStatus) end
 
             -- refresh the lists during the cooldown (pets may have changed)
