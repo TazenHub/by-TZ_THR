@@ -28,7 +28,8 @@ local E = {
     party = "\u{1F389}", game = "\u{1F3AE}", crown = "\u{1F451}",
 }
 
-local IMAGE_ID = 94250028556032
+-- ID récupéré depuis ton lien Roblox Create Dashboard :
+local IMAGE_ID = 79546688195352
 local IMAGE_FILE = "tazen_logo.png"
 
 local repSpeedPetPriorities = {
@@ -50,9 +51,9 @@ end
 local fastRunId = 0
 local autoRunId = 0
 local repRunId = 0
-local repRate = 660          -- target reps per second (minimum 659)
-local repCounter = 0         -- reps sent during the last second
-local repTotal = 0           -- total reps sent
+local repRate = 660          
+local repCounter = 0         
+local repTotal = 0           
 local fastStatus = "Waiting..."
 local autoStatus = "Waiting..."
 
@@ -90,7 +91,7 @@ local function findMuscleEvent(rEvents)
         or rEvents:FindFirstChild("muscleEvent")
 end
 
--- ===================== FAST REBIRTH (OPTI + COMPLET) =====================
+-- ===================== FAST REBIRTH (STABLE & EXACT 6S) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
 
@@ -247,13 +248,6 @@ local function fastRebirthLoop(myId)
             return
         end
 
-        print(string.format(
-            "[Tazen hub] Pet slots: %s | Rep pets: %d | Titanium Hydras: %d",
-            autoSlots and ("AUTO (tries " .. slotsCount .. ")") or tostring(slotsCount),
-            #repTarget,
-            #hydraList
-        ))
-
         -- Clean de démarrage
         fastStatus = "Starting: cleaning pets..."
         unequipAllPets(petsFolder)
@@ -269,16 +263,19 @@ local function fastRebirthLoop(myId)
             -- 1. Équiper les Titanium Hydras
             setEquipped(hydraList, true)
 
-            task.wait(0.04)
+            -- Délai serveur pour prise en compte des Hydras
+            task.wait(0.08)
 
-            -- 2. Envoi ASYNCHRONE du rebirth (déblocage du cooldown 6s)
+            -- 2. Envoi du rebirth en asynchrone
             task.spawn(function()
                 pcall(function()
                     rebirthRemote:InvokeServer("rebirthRequest")
                 end)
             end)
 
-            -- 3. Rééquiper immédiatement les pets de Fast Rep
+            task.wait(0.02)
+
+            -- 3. Rééquiper les pets Fast Rep
             setEquipped(repTarget, true)
 
             fastStatus = string.format("Cycle %d | Rebirth OK | Slots %d | Rep %d | Hydras %d", cycle, slotsCount, #repTarget, #hydraList)
@@ -288,7 +285,7 @@ local function fastRebirthLoop(myId)
                 rebuild()
             end
 
-            -- 4. Attente exacte pour un cycle à 6,00 secondes
+            -- 4. Attente exacte de 6 secondes
             local elapsed = os.clock() - cycleStart
             local timeToWait = math.max(0, REBIRTH_COOLDOWN - elapsed)
             task.wait(timeToWait)
@@ -322,7 +319,6 @@ local function autoRebirthLoop(myId)
                 end)
                 autoStatus = string.format("Attempts: %d | last result: %s",
                     tries, okR and tostring(res) or ("error: " .. tostring(res)))
-                if tries <= 3 then print("[Tazen hub] " .. autoStatus) end
             else
                 autoStatus = "canRebirth = false"
             end
@@ -434,10 +430,7 @@ local function setAntiAfk(state)
 
     local myId = antiAfkRun
     local okV, VirtualUser = pcall(function() return game:GetService("VirtualUser") end)
-    if not okV or not VirtualUser then
-        warn("[Tazen hub] VirtualUser not available")
-        return
-    end
+    if not okV or not VirtualUser then return end
 
     local function ping()
         pcall(function()
@@ -536,22 +529,17 @@ local function antiLagStop()
     antiLagBackup = nil
 
     task.spawn(function()
-        local n = 0
         for inst, props in pairs(touched) do
             if inst and inst.Parent then
                 for k, v in pairs(props) do
                     pcall(function() inst[k] = v end)
                 end
             end
-            n = n + 1
-            if n % 400 == 0 then task.wait() end
         end
         if backup then
             pcall(function() Lighting.GlobalShadows = backup.GlobalShadows end)
             pcall(function() Lighting.FogEnd = backup.FogEnd end)
-            pcall(function()
-                settings().Rendering.QualityLevel = backup.Quality or Enum.QualityLevel.Automatic
-            end)
+            pcall(function() settings().Rendering.QualityLevel = backup.Quality or Enum.QualityLevel.Automatic end)
             if backup.Water then
                 pcall(function()
                     for k, v in pairs(backup.Water) do workspace.Terrain[k] = v end
@@ -564,7 +552,7 @@ end
 local fpsFrames = 0
 connect(RunService.Heartbeat, function() fpsFrames = fpsFrames + 1 end)
 
--- ===================== THEME / UI HELPERS =====================
+-- ===================== THEME & UI HELPERS =====================
 local T = {
     Background = Color3.fromRGB(16, 8, 30),
     Topbar = Color3.fromRGB(30, 16, 56),
@@ -576,29 +564,11 @@ local T = {
     Off = Color3.fromRGB(75, 58, 108),
 }
 
-local function resolveImage()
-    if IMAGE_ID and IMAGE_ID ~= 0 then
-        return "rbxassetid://" .. tostring(IMAGE_ID)
-    end
-    local okF, asset = pcall(function()
-        if isfile and getcustomasset and isfile(IMAGE_FILE) then
-            return getcustomasset(IMAGE_FILE)
-        end
-    end)
-    if okF and asset then return asset end
-    return ""
-end
-
 local function getGuiParent()
     local okHui, hui = pcall(function() return gethui and gethui() end)
     if okHui and hui then return hui end
     local okCore, core = pcall(function() return game:GetService("CoreGui") end)
-    if okCore and core then
-        local test = Instance.new("ScreenGui")
-        local okP = pcall(function() test.Parent = core end)
-        test:Destroy()
-        if okP then return core end
-    end
+    if okCore and core then return core end
     return LocalPlayer:WaitForChild("PlayerGui")
 end
 
@@ -631,11 +601,7 @@ local parentGui = getGuiParent()
 local old = parentGui:FindFirstChild("TazenHubGui")
 if old then old:Destroy() end
 
-local gui = new("ScreenGui", {
-    Name = "TazenHubGui",
-    ResetOnSpawn = false,
-    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-}, parentGui)
+local gui = new("ScreenGui", { Name = "TazenHubGui", ResetOnSpawn = false }, parentGui)
 
 local cam = workspace.CurrentCamera
 local vp = cam and cam.ViewportSize or Vector2.new(900, 600)
@@ -653,15 +619,14 @@ local main = new("Frame", {
 corner(main, 12)
 stroke(main, T.Stroke, 1.5)
 
--- Arrière-plan Logo TZ/TAZEN
-local imageId = resolveImage()
+-- ARRIÈRE-PLAN AVEC LOGO DASHBOARD CREATE ROBLOX
 local bg = new("ImageLabel", {
     Name = "BackgroundLogo",
     Size = UDim2.new(0.7, 0, 0.7, 0),
     Position = UDim2.new(0.5, 0, 0.55, 0),
     AnchorPoint = Vector2.new(0.5, 0.5),
     BackgroundTransparency = 1,
-    Image = imageId,
+    Image = "rbxassetid://" .. IMAGE_ID,
     ImageTransparency = 0.35,
     ScaleType = Enum.ScaleType.Fit,
     ZIndex = 2,
@@ -676,7 +641,6 @@ new("Frame", {
     ZIndex = 3,
 }, main)
 
--- Topbar
 local topbar = new("Frame", {
     Name = "Topbar",
     Size = UDim2.new(1, 0, 0, 42),
@@ -686,21 +650,8 @@ local topbar = new("Frame", {
     ZIndex = 6,
 }, main)
 
-textLabel({
-    Size = UDim2.new(1, -110, 0, 22),
-    Position = UDim2.new(0, 14, 0, 4),
-    Text = E.sparkles .. " Tazen hub V1",
-    Font = Enum.Font.GothamBlack,
-    TextSize = 17,
-}, topbar)
-
-textLabel({
-    Size = UDim2.new(1, -110, 0, 14),
-    Position = UDim2.new(0, 14, 0, 25),
-    Text = E.heart .. " by TZ_THR  |  press K to hide",
-    TextSize = 11,
-    TextColor3 = T.Accent,
-}, topbar)
+textLabel({ Size = UDim2.new(1, -110, 0, 22), Position = UDim2.new(0, 14, 0, 4), Text = E.sparkles .. " Tazen hub V1", Font = Enum.Font.GothamBlack, TextSize = 17 }, topbar)
+textLabel({ Size = UDim2.new(1, -110, 0, 14), Position = UDim2.new(0, 14, 0, 25), Text = E.heart .. " by TZ_THR  |  press K to hide", TextSize = 11, TextColor3 = T.Accent }, topbar)
 
 local function topButton(text, xOffset)
     local b = new("TextButton", {
@@ -724,27 +675,25 @@ local minBtn = topButton("-", -72)
 do
     local dragging, dragStart, startPos = false, nil, nil
     connect(topbar.InputBegan, function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             dragStart = input.Position
             startPos = main.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then dragging = false end
-            end)
         end
     end)
     connect(UserInputService.InputChanged, function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
-            or input.UserInputType == Enum.UserInputType.Touch) then
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local d = input.Position - dragStart
-            main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X,
-                startPos.Y.Scale, startPos.Y.Offset + d.Y)
+            main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+        end
+    end)
+    connect(UserInputService.InputEnded, function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
         end
     end)
 end
 
--- TabBar
 local tabBar = new("Frame", {
     Name = "TabBar",
     Size = UDim2.new(1, 0, 0, 34),
@@ -752,11 +701,7 @@ local tabBar = new("Frame", {
     BackgroundTransparency = 1,
     ZIndex = 6,
 }, main)
-new("UIListLayout", {
-    FillDirection = Enum.FillDirection.Horizontal,
-    Padding = UDim.new(0, 6),
-    SortOrder = Enum.SortOrder.LayoutOrder,
-}, tabBar)
+new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, tabBar)
 new("UIPadding", { PaddingLeft = UDim.new(0, 10) }, tabBar)
 
 local pagesHolder = new("Frame", {
@@ -809,76 +754,35 @@ local function createTab(name)
         Visible = false,
     }, pagesHolder)
     new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, page)
-    new("UIPadding", {
-        PaddingTop = UDim.new(0, 4), PaddingLeft = UDim.new(0, 10),
-        PaddingRight = UDim.new(0, 14), PaddingBottom = UDim.new(0, 8),
-    }, page)
+    new("UIPadding", { PaddingTop = UDim.new(0, 4), PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 14), PaddingBottom = UDim.new(0, 8) }, page)
 
     tabs[name] = { button = button, page = page }
     button.Activated:Connect(function() selectTab(name) end)
     return page
 end
 
--- ===================== ELEMENTS =====================
 local function addSection(page, text)
-    textLabel({
-        Size = UDim2.new(1, 0, 0, 20),
-        Text = string.upper(text),
-        Font = Enum.Font.GothamBold,
-        TextSize = 12,
-        TextColor3 = T.Accent,
-    }, page)
+    textLabel({ Size = UDim2.new(1, 0, 0, 20), Text = string.upper(text), Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = T.Accent }, page)
 end
 
 local function addLabel(page, text, height)
-    local f = new("Frame", {
-        Size = UDim2.new(1, 0, 0, height or 40),
-        BackgroundColor3 = T.Element,
-        BackgroundTransparency = 0.3,
-        BorderSizePixel = 0,
-    }, page)
+    local f = new("Frame", { Size = UDim2.new(1, 0, 0, height or 40), BackgroundColor3 = T.Element, BackgroundTransparency = 0.3, BorderSizePixel = 0 }, page)
     corner(f, 8)
     stroke(f, T.Stroke, 1)
-    local l = textLabel({
-        Size = UDim2.new(1, -20, 1, 0),
-        Position = UDim2.new(0, 10, 0, 0),
-        Text = text,
-        TextSize = 12,
-        TextColor3 = T.SubText,
-        TextWrapped = true,
-    }, f)
+    local l = textLabel({ Size = UDim2.new(1, -20, 1, 0), Position = UDim2.new(0, 10, 0, 0), Text = text, TextSize = 12, TextColor3 = T.SubText, TextWrapped = true }, f)
     return { SetText = function(_, t) l.Text = t end }
 end
 
 local function addToggle(page, name, callback)
-    local f = new("Frame", {
-        Size = UDim2.new(1, 0, 0, 44),
-        BackgroundColor3 = T.Element,
-        BackgroundTransparency = 0.2,
-        BorderSizePixel = 0,
-    }, page)
+    local f = new("Frame", { Size = UDim2.new(1, 0, 0, 44), BackgroundColor3 = T.Element, BackgroundTransparency = 0.2, BorderSizePixel = 0 }, page)
     corner(f, 8)
     stroke(f, T.Stroke, 1)
 
-    textLabel({
-        Size = UDim2.new(1, -80, 1, 0),
-        Position = UDim2.new(0, 12, 0, 0),
-        Text = name,
-    }, f)
+    textLabel({ Size = UDim2.new(1, -80, 1, 0), Position = UDim2.new(0, 12, 0, 0), Text = name }, f)
 
-    local sw = new("Frame", {
-        Size = UDim2.fromOffset(40, 20),
-        Position = UDim2.new(1, -52, 0.5, -10),
-        BackgroundColor3 = T.Off,
-        BorderSizePixel = 0,
-    }, f)
+    local sw = new("Frame", { Size = UDim2.fromOffset(40, 20), Position = UDim2.new(1, -52, 0.5, -10), BackgroundColor3 = T.Off, BorderSizePixel = 0 }, f)
     corner(sw, 10)
-    local knob = new("Frame", {
-        Size = UDim2.fromOffset(16, 16),
-        Position = UDim2.fromOffset(2, 2),
-        BackgroundColor3 = Color3.new(1, 1, 1),
-        BorderSizePixel = 0,
-    }, sw)
+    local knob = new("Frame", { Size = UDim2.fromOffset(16, 16), Position = UDim2.fromOffset(2, 2), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0 }, sw)
     corner(knob, 8)
 
     local hit = new("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "" }, f)
@@ -914,45 +818,19 @@ local function addButton(page, name, callback)
 end
 
 local function addSlider(page, name, min, max, default, callback)
-    local f = new("Frame", {
-        Size = UDim2.new(1, 0, 0, 62),
-        BackgroundColor3 = T.Element,
-        BackgroundTransparency = 0.2,
-        BorderSizePixel = 0,
-    }, page)
+    local f = new("Frame", { Size = UDim2.new(1, 0, 0, 62), BackgroundColor3 = T.Element, BackgroundTransparency = 0.2, BorderSizePixel = 0 }, page)
     corner(f, 8)
     stroke(f, T.Stroke, 1)
 
     textLabel({ Size = UDim2.new(1, -100, 0, 24), Position = UDim2.new(0, 12, 0, 6), Text = name }, f)
-    local valueLabel = textLabel({
-        Size = UDim2.fromOffset(80, 24),
-        Position = UDim2.new(1, -92, 0, 6),
-        Text = tostring(default),
-        TextXAlignment = Enum.TextXAlignment.Right,
-        TextColor3 = T.Accent,
-        Font = Enum.Font.GothamBold,
-    }, f)
+    local valueLabel = textLabel({ Size = UDim2.fromOffset(80, 24), Position = UDim2.new(1, -92, 0, 6), Text = tostring(default), TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = T.Accent, Font = Enum.Font.GothamBold }, f)
 
-    local track = new("Frame", {
-        Size = UDim2.new(1, -24, 0, 8),
-        Position = UDim2.new(0, 12, 0, 42),
-        BackgroundColor3 = T.Off,
-        BorderSizePixel = 0,
-    }, f)
+    local track = new("Frame", { Size = UDim2.new(1, -24, 0, 8), Position = UDim2.new(0, 12, 0, 42), BackgroundColor3 = T.Off, BorderSizePixel = 0 }, f)
     corner(track, 4)
-    local fill = new("Frame", {
-        Size = UDim2.new((default - min) / (max - min), 0, 1, 0),
-        BackgroundColor3 = T.Accent,
-        BorderSizePixel = 0,
-    }, track)
+    local fill = new("Frame", { Size = UDim2.new((default - min) / (max - min), 0, 1, 0), BackgroundColor3 = T.Accent, BorderSizePixel = 0 }, track)
     corner(fill, 4)
 
-    local hit = new("TextButton", {
-        Size = UDim2.new(1, -12, 0, 30),
-        Position = UDim2.new(0, 6, 0, 31),
-        BackgroundTransparency = 1,
-        Text = "",
-    }, f)
+    local hit = new("TextButton", { Size = UDim2.new(1, -12, 0, 30), Position = UDim2.new(0, 6, 0, 31), BackgroundTransparency = 1, Text = "" }, f)
 
     local dragging = false
     local function update(x)
@@ -964,22 +842,19 @@ local function addSlider(page, name, min, max, default, callback)
     end
 
     hit.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             page.ScrollingEnabled = false
             update(input.Position.X)
         end
     end)
     connect(UserInputService.InputChanged, function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
-            or input.UserInputType == Enum.UserInputType.Touch) then
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             update(input.Position.X)
         end
     end)
     connect(UserInputService.InputEnded, function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch) then
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
             dragging = false
             page.ScrollingEnabled = true
         end
@@ -988,42 +863,17 @@ end
 
 local function addStatBlock(page, title, rowNames)
     local h = 30 + #rowNames * 22 + 6
-    local f = new("Frame", {
-        Size = UDim2.new(1, 0, 0, h),
-        BackgroundColor3 = T.Element,
-        BackgroundTransparency = 0.2,
-        BorderSizePixel = 0,
-    }, page)
+    local f = new("Frame", { Size = UDim2.new(1, 0, 0, h), BackgroundColor3 = T.Element, BackgroundTransparency = 0.2, BorderSizePixel = 0 }, page)
     corner(f, 8)
     stroke(f, T.Stroke, 1)
 
-    textLabel({
-        Size = UDim2.new(1, -20, 0, 24),
-        Position = UDim2.new(0, 12, 0, 4),
-        Text = title,
-        Font = Enum.Font.GothamBold,
-        TextSize = 13,
-        TextColor3 = T.Accent,
-    }, f)
+    textLabel({ Size = UDim2.new(1, -20, 0, 24), Position = UDim2.new(0, 12, 0, 4), Text = title, Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = T.Accent }, f)
 
     local values = {}
     for i, name in ipairs(rowNames) do
         local y = 28 + (i - 1) * 22
-        textLabel({
-            Size = UDim2.new(0.5, -12, 0, 20),
-            Position = UDim2.new(0, 12, 0, y),
-            Text = name,
-            TextSize = 13,
-            TextColor3 = T.SubText,
-        }, f)
-        values[i] = textLabel({
-            Size = UDim2.new(0.5, -12, 0, 20),
-            Position = UDim2.new(0.5, 0, 0, y),
-            Text = "--",
-            TextSize = 13,
-            Font = Enum.Font.GothamBold,
-            TextXAlignment = Enum.TextXAlignment.Right,
-        }, f)
+        textLabel({ Size = UDim2.new(0.5, -12, 0, 20), Position = UDim2.new(0, 12, 0, y), Text = name, TextSize = 13, TextColor3 = T.SubText }, f)
+        values[i] = textLabel({ Size = UDim2.new(0.5, -12, 0, 20), Position = UDim2.new(0.5, 0, 0, y), Text = "--", TextSize = 13, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Right }, f)
     end
 
     return {
@@ -1036,44 +886,19 @@ local function addStatBlock(page, title, rowNames)
 end
 
 local function addCredit(page, text)
-    local f = new("Frame", {
-        Size = UDim2.new(1, 0, 0, 64),
-        BackgroundColor3 = T.Element,
-        BackgroundTransparency = 0.2,
-        BorderSizePixel = 0,
-    }, page)
+    local f = new("Frame", { Size = UDim2.new(1, 0, 0, 64), BackgroundColor3 = T.Element, BackgroundTransparency = 0.2, BorderSizePixel = 0 }, page)
     corner(f, 8)
     stroke(f, T.Accent, 1.5)
-    textLabel({
-        Size = UDim2.new(1, -20, 1, 0),
-        Position = UDim2.new(0, 10, 0, 0),
-        Text = text,
-        Font = Enum.Font.GothamBold,
-        TextSize = 14,
-        TextColor3 = T.Text,
-        TextWrapped = true,
-        TextXAlignment = Enum.TextXAlignment.Center,
-    }, f)
+    textLabel({ Size = UDim2.new(1, -20, 1, 0), Position = UDim2.new(0, 10, 0, 0), Text = text, Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = T.Text, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center }, f)
 end
 
 local function notify(title, text)
     if not alive then return end
-    local n = new("Frame", {
-        Size = UDim2.fromOffset(250, 56),
-        Position = UDim2.new(1, 20, 1, -76),
-        BackgroundColor3 = T.Topbar,
-        BorderSizePixel = 0,
-    }, gui)
+    local n = new("Frame", { Size = UDim2.fromOffset(250, 56), Position = UDim2.new(1, 20, 1, -76), BackgroundColor3 = T.Topbar, BorderSizePixel = 0 }, gui)
     corner(n, 10)
     stroke(n, T.Accent, 1.5)
-    textLabel({
-        Size = UDim2.new(1, -16, 0, 22), Position = UDim2.new(0, 10, 0, 5),
-        Text = title, Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = T.Accent,
-    }, n)
-    textLabel({
-        Size = UDim2.new(1, -16, 0, 22), Position = UDim2.new(0, 10, 0, 27),
-        Text = text, TextSize = 12, TextColor3 = T.SubText,
-    }, n)
+    textLabel({ Size = UDim2.new(1, -16, 0, 22), Position = UDim2.new(0, 10, 0, 5), Text = title, Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = T.Accent }, n)
+    textLabel({ Size = UDim2.new(1, -16, 0, 22), Position = UDim2.new(0, 10, 0, 27), Text = text, TextSize = 12, TextColor3 = T.SubText }, n)
     local info = TweenInfo.new(0.25, Enum.EasingStyle.Quad)
     TweenService:Create(n, info, { Position = UDim2.new(1, -270, 1, -76) }):Play()
     task.delay(2.5, function()
