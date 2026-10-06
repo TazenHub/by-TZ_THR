@@ -74,7 +74,7 @@ local function getPetScore(pet)
     return 1
 end
 
--- 1. FAST REBIRTH (PACK) SÉCURISÉ ANTI-KICK
+-- 1. FAST REBIRTH (PACK) SÉCURISÉ ULTRA-LITE
 
 MainTab:CreateToggle({
     Name = "Fast rebirth",
@@ -91,33 +91,12 @@ MainTab:CreateToggle({
                 
                 local rebirthRemote = rEvents:WaitForChild("rebirthRemote", 5)
                 local equipPetEvent = rEvents:WaitForChild("equipPetEvent", 5)
-                
-                -- Fonction de déséquipement ciblée (uniquement ce qui est équipé)
-                local function unequipEquippedPets(petsFolder)
-                    for _, folderName in ipairs({"Unique", "Rare", "Epic", "Mythic", "Legendary"}) do
-                        local folder = petsFolder:FindFirstChild(folderName)
-                        if folder then
-                            for _, pet in ipairs(folder:GetChildren()) do
-                                local isEquipped = pet:FindFirstChild("Equipped") or pet:GetAttribute("Equipped")
-                                if isEquipped and (isEquipped == true or (isEquipped:IsA("BoolValue") and isEquipped.Value)) then
-                                    pcall(function()
-                                        equipPetEvent:FireServer("unequipPet", pet)
-                                    end)
-                                    task.wait(0.1) -- Pause sécurisée anti-kick
-                                end
-                            end
-                        end
-                    end
-                end
 
                 while fastRebirthActive do
                     local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
                     
                     if petsFolder and canRebirth() then
-                        -- 1. Déséquipement sécurisé
-                        unequipEquippedPets(petsFolder)
-                        
-                        -- 2. Équipement du Titanium Hydra
+                        -- 1. Équipement direct du Titanium Hydra (sans tout déséquiper avant)
                         for _, folderName in ipairs({"Unique", "Rare", "Epic", "Mythic", "Legendary"}) do
                             local folder = petsFolder:FindFirstChild(folderName)
                             if folder then
@@ -129,22 +108,19 @@ MainTab:CreateToggle({
                                         pcall(function()
                                             equipPetEvent:FireServer("equipPet", pet)
                                         end)
-                                        task.wait(0.1)
+                                        task.wait(0.3)
                                     end
                                 end
                             end
                         end
 
-                        -- 3. Demande de rebirth
+                        -- 2. Demande de Renaissance
                         pcall(function()
                             rebirthRemote:InvokeServer("rebirthRequest")
                         end)
-                        task.wait(0.5)
+                        task.wait(1)
 
-                        -- 4. Retrait du Titanium Hydra
-                        unequipEquippedPets(petsFolder)
-
-                        -- 5. Tri et équipement des Rep Pets (Priorité absolue au pet Unique [4])
+                        -- 3. Équipement des Pets de Rep (Priorité Unique [4])
                         local repPets = {}
                         local uniqueFolder = petsFolder:FindFirstChild("Unique")
                         local priority4Pet = uniqueFolder and uniqueFolder:GetChildren()[4]
@@ -179,11 +155,12 @@ MainTab:CreateToggle({
                             return a.Priority < b.Priority
                         end)
 
+                        -- Équipement progressif des familiers de rep
                         for _, entry in ipairs(repPets) do
                             pcall(function()
                                 equipPetEvent:FireServer("equipPet", entry.Instance)
                             end)
-                            task.wait(0.1)
+                            task.wait(0.3) -- Délai de 300ms pour éviter le kick du serveur
                         end
                     end
                     
@@ -218,7 +195,7 @@ RebTab:CreateToggle({
                         end)
                         
                         if success then
-                            task.wait(1.2)
+                            task.wait(1.5)
                         else
                             task.wait(2)
                         end
