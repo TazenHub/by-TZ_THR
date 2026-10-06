@@ -94,9 +94,9 @@ end
 
 -- ===================== FAST REBIRTH =====================
 -- Cycle (6 s cooldown):
---   1. right after a rebirth -> equip rep-speed pets (they work during the whole cooldown)
---   2. at the very last moment (swap time is measured and anticipated) -> equip Titanium Hydras (x2 rebirths)
---   3. cooldown over -> rebirth
+--   - rep-speed pets are equipped ALL the time (right after the rebirth, no full unequip)
+--   - Titanium Hydras are equipped only at the last moment, just for the rebirth
+--   - only the pets that need to change are touched (no more "unequip everything")
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
 
@@ -104,6 +104,11 @@ local function fastRebirthLoop(myId)
         local rebirthRemote = ReplicatedStorage.rEvents.rebirthRemote
         local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
+
+        local function petRealName(pet)
+            if pet:FindFirstChild("PetName") then return pet.PetName.Value end
+            return pet.Name
+        end
 
         local function unequipAllPets(petsFolder)
             for _, folderName in ipairs(FOLDERS) do
@@ -117,28 +122,24 @@ local function fastRebirthLoop(myId)
             end
         end
 
-        -- Titanium Hydras (x2 rebirths)
-        local function equipHydras(petsFolder)
-            unequipAllPets(petsFolder)
+        -- list of Titanium Hydras (x2 rebirths)
+        local function buildHydraList(petsFolder)
+            local list = {}
             for _, folderName in ipairs(FOLDERS) do
                 local folder = petsFolder:FindFirstChild(folderName)
                 if folder then
                     for _, pet in ipairs(folder:GetChildren()) do
-                        local pName = pet.Name
-                        if pet:FindFirstChild("PetName") then pName = pet.PetName.Value end
-                        if pName == "Titanium Hydra" then
-                            equipPetEvent:FireServer("equipPet", pet)
-                            task.wait()
+                        if petRealName(pet) == "Titanium Hydra" then
+                            table.insert(list, pet)
                         end
                     end
                 end
             end
+            return list
         end
 
-        -- Rep-speed pets by priority
-        local function equipRepPets(petsFolder)
-            unequipAllPets(petsFolder)
-
+        -- list of rep-speed pets, sorted by priority
+        local function buildRepList(petsFolder)
             local repPets = {}
             local uniqueFolder = petsFolder:FindFirstChild("Unique")
             local priority4Pet = uniqueFolder and uniqueFolder:GetChildren()[4] -- target pet from the video
@@ -147,14 +148,10 @@ local function fastRebirthLoop(myId)
                 local folder = petsFolder:FindFirstChild(folderName)
                 if folder then
                     for _, pet in ipairs(folder:GetChildren()) do
-                        local pName = pet.Name
-                        if pet:FindFirstChild("PetName") then pName = pet.PetName.Value end
-
-                        local priority = repSpeedPetPriorities[pName] or 5
+                        local priority = repSpeedPetPriorities[petRealName(pet)] or 5
                         if priority4Pet and pet == priority4Pet then
                             priority = 0
                         end
-
                         if priority < 5 or priority4Pet == pet then
                             table.insert(repPets, {
                                 Instance = pet,
@@ -173,11 +170,38 @@ local function fastRebirthLoop(myId)
                 return a.Priority < b.Priority
             end)
 
-            for _, entry in ipairs(repPets) do
-                equipPetEvent:FireServer("equipPet", entry.Instance)
-                task.wait()
+            local list = {}
+            for _, entry in ipairs(repPets) do table.insert(list, entry.Instance) end
+            return list
+        end
+
+        -- pets currently equipped by this script
+        local equipped = {}
+
+        -- switch to the wanted set: unequip only what must go, equip only what is missing
+        local function setEquipped(wanted)
+            local want, have = {}, {}
+            for _, pet in ipairs(wanted) do want[pet] = true end
+            for _, pet in ipairs(equipped) do have[pet] = true end
+
+            for _, pet in ipairs(equipped) do
+                if not want[pet] and pet.Parent then
+                    equipPetEvent:FireServer("unequipPet", pet)
+                    task.wait()
+                end
             end
-            return #repPets
+
+            local newEquipped = {}
+            for _, pet in ipairs(wanted) do
+                if pet.Parent then
+                    if not have[pet] then
+                        equipPetEvent:FireServer("equipPet", pet)
+                        task.wait()
+                    end
+                    table.insert(newEquipped, pet)
+                end
+            end
+            equipped = newEquipped
         end
 
         -- wait until a given os.clock() time (stops early if toggled off)
@@ -187,42 +211,54 @@ local function fastRebirthLoop(myId)
             end
         end
 
+        local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+        while isRunning() and not petsFolder do
+            fastStatus = "petsFolder not found"
+            task.wait(1)
+            petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+        end
+        if not isRunning() then return end
+
+        -- start: one full cleanup, then rep pets
+        unequipAllPets(petsFolder)
+        local repList = buildRepList(petsFolder)
+        local hydraList = buildHydraList(petsFolder)
+        setEquipped(repList)
+
         local cycle = 0
-        local swapTime = 0.6                              -- estimated hydra swap duration (auto-adjusted)
+        local swapTime = 0.3                              -- estimated hydra swap duration (auto-adjusted)
         local lastRebirth = os.clock() - REBIRTH_COOLDOWN -- first rebirth can happen right away
 
         while isRunning() do
-            local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+            cycle = cycle + 1
 
-            if petsFolder then
-                cycle = cycle + 1
+            -- 1. LAST MOMENT: swap rep pets -> Titanium Hydras
+            waitUntil(lastRebirth + REBIRTH_COOLDOWN - swapTime)
+            if not isRunning() then break end
 
-                -- 1. REP-SPEED PETS EQUIPPED DURING THE COOLDOWN
-                local repCount = equipRepPets(petsFolder)
+            local t0 = os.clock()
+            setEquipped(hydraList)
+            local measured = os.clock() - t0
+            swapTime = math.clamp(measured + 0.1, 0.1, 3) -- small safety margin
 
-                -- 2. LAST MOMENT: swap to Titanium Hydras (anticipate the swap duration)
-                waitUntil(lastRebirth + REBIRTH_COOLDOWN - swapTime)
-                if not isRunning() then break end
+            -- 2. COOLDOWN OVER -> REBIRTH (hydras still equipped)
+            waitUntil(lastRebirth + REBIRTH_COOLDOWN + 0.05)
+            if not isRunning() then break end
 
-                local t0 = os.clock()
-                equipHydras(petsFolder)
-                local measured = os.clock() - t0
-                swapTime = math.clamp(measured + 0.1, 0.2, 3) -- small safety margin
+            local rebirthResult = rebirthRemote:InvokeServer("rebirthRequest")
+            lastRebirth = os.clock()
 
-                -- 3. COOLDOWN OVER -> REBIRTH
-                waitUntil(lastRebirth + REBIRTH_COOLDOWN + 0.05)
-                if not isRunning() then break end
+            -- 3. IMMEDIATELY BACK TO REP PETS
+            setEquipped(repList)
 
-                local rebirthResult = rebirthRemote:InvokeServer("rebirthRequest")
-                lastRebirth = os.clock()
+            fastStatus = string.format("Cycle %d | Rebirth result: %s | Rep pets: %d | Swap: %.2fs",
+                cycle, tostring(rebirthResult), #repList, measured)
+            if cycle <= 3 then print("[Tazen hub] " .. fastStatus) end
 
-                fastStatus = string.format("Cycle %d | Rebirth result: %s | Rep pets: %d | Swap: %.2fs",
-                    cycle, tostring(rebirthResult), repCount, measured)
-                if cycle <= 3 then print("[Tazen hub] " .. fastStatus) end
-            else
-                fastStatus = "petsFolder not found"
-                task.wait(1)
-            end
+            -- refresh the lists during the cooldown (pets may have changed)
+            petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
+            repList = buildRepList(petsFolder)
+            hydraList = buildHydraList(petsFolder)
         end
     end)
 
