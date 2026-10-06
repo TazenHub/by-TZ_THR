@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZN_THR (standalone: Rayfield-style UI, no HttpGet needed)
+-- Tazen hub V1 by TZ_THR (standalone: Rayfield-style UI, no HttpGet needed)
 
 local ok, err = pcall(function()
 
@@ -759,7 +759,7 @@ textLabel({
 textLabel({
     Size = UDim2.new(1, -110, 0, 14),
     Position = UDim2.new(0, 14, 0, 25),
-    Text = E.heart .. " by TZN_THR  |  press K to hide",
+    Text = E.heart .. " by TZ_THR  |  press K to hide",
     TextSize = 11,
     TextColor3 = T.Accent,
 }, topbar)
@@ -1291,7 +1291,7 @@ end)
 
 local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 34)
 addSection(miscPage, E.heart .. " Credits")
-addCredit(miscPage, E.sparkles .. " Made by TZN_THR, Thank you for using my script have fun " .. E.party)
+addCredit(miscPage, E.sparkles .. " Made by TZ_THR, Thank you for using my script have fun " .. E.party)
 
 selectTab(TAB_FAST)
 
