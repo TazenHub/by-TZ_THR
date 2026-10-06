@@ -15,10 +15,18 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 -- ===================== SETTINGS =====================
-local PET_FOLDERS = { "Unique", "Rare", "Epic", "Mythic", "Legendary" }
 local REBIRTH_COOLDOWN = 6       -- game cooldown between two rebirths (seconds)
-local COOLDOWN_MARGIN = 0.05     -- safety margin added to the cooldown (network jitter)
-local PETS_PER_FRAME = 3         -- pets equipped / unequipped per frame (1 = original speed)
+
+-- Emojis (written as escapes so they survive any executor / copy-paste)
+local E = {
+    bolt = "\u{26A1}", cycle = "\u{1F504}", muscle = "\u{1F4AA}", toolbox = "\u{1F9F0}",
+    sleep = "\u{1F634}", rocket = "\u{1F680}", sparkles = "\u{2728}", heart = "\u{1F496}",
+    ok = "\u{2705}", no = "\u{274C}", chart = "\u{1F4CA}", up = "\u{1F4C8}", broom = "\u{1F9F9}",
+    clock = "\u{1F550}", hourglass = "\u{23F3}", sun = "\u{1F31E}", calendar = "\u{1F4C5}",
+    trophy = "\u{1F3C6}", target = "\u{1F3AF}", wrench = "\u{1F527}", clip = "\u{1F4CB}",
+    bulb = "\u{1F4A1}", fire = "\u{1F525}", loop = "\u{1F501}", antenna = "\u{1F4E1}",
+    party = "\u{1F389}", game = "\u{1F3AE}", crown = "\u{1F451}",
+}
 
 -- Paste your Roblox image ID here (just the number), e.g. 123456789
 local IMAGE_ID = 0
@@ -68,12 +76,6 @@ local function canRebirth()
     return true
 end
 
-local function getPetName(pet)
-    local nameObj = pet:FindFirstChild("PetName")
-    if nameObj and nameObj:IsA("ValueBase") then return nameObj.Value end
-    return pet.Name
-end
-
 local function getPetScore(pet)
     local o = pet:FindFirstChild("RepSpeed") or pet:FindFirstChild("Rep Speed")
     if o and (o:IsA("NumberValue") or o:IsA("IntValue")) then return o.Value end
@@ -90,134 +92,118 @@ local function findMuscleEvent(rEvents)
         or rEvents:FindFirstChild("muscleEvent")
 end
 
--- ===================== FAST REBIRTH =====================
--- Same sequence as the original script:
---   unequip all -> equip Titanium Hydras -> rebirth -> unequip all -> equip rep-speed pets by priority
--- Optimizations (same behaviour, faster):
---   * pets are scanned once per phase instead of 3 times
---   * pets are (un)equipped in small batches per frame
---   * the Hydra swap starts early enough that the rebirth fires exactly when the 6 s cooldown ends,
---     so the rep-speed pets stay equipped as long as possible
+-- ===================== FAST REBIRTH (your original code) =====================
+-- Logic unchanged: unequip all -> equip Titanium Hydras -> rebirth -> unequip all
+-- -> equip rep-speed pets by priority -> exact 6 s cooldown.
+-- Only the loop condition (toggle on/off) and a status text were adapted.
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
 
-    local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
-    local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
-    local equipPetEvent = rEvents and rEvents:WaitForChild("equipPetEvent", 5)
-    if not rebirthRemote or not equipPetEvent then
-        fastStatus = "rEvents / rebirthRemote / equipPetEvent not found"
-        warn("[Tazen hub] " .. fastStatus)
-        return
-    end
+    local okT, errT = pcall(function()
+        local rebirthRemote = ReplicatedStorage.rEvents.rebirthRemote
+        local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
 
-    -- Scans the pet folders once. Returns: all pets, Titanium Hydras, rep-speed pets (sorted by priority)
-    local function scanPets(petsFolder)
-        local allPets, hydras, repEntries = {}, {}, {}
-        local uniqueFolder = petsFolder:FindFirstChild("Unique")
-        local priority4Pet = uniqueFolder and uniqueFolder:GetChildren()[4] -- target pet from the video
-
-        for _, folderName in ipairs(PET_FOLDERS) do
-            local folder = petsFolder:FindFirstChild(folderName)
-            if folder then
-                for _, pet in ipairs(folder:GetChildren()) do
-                    table.insert(allPets, pet)
-                    local pName = getPetName(pet)
-                    if pName == "Titanium Hydra" then table.insert(hydras, pet) end
-
-                    local priority = repSpeedPetPriorities[pName] or 5
-                    -- exact pet [4] of the Unique folder: absolute priority (0)
-                    if priority4Pet and pet == priority4Pet then priority = 0 end
-
-                    if priority < 5 or priority4Pet == pet then
-                        table.insert(repEntries, { Instance = pet, Priority = priority, Score = getPetScore(pet) })
+        local function unequipAllPets(petsFolder)
+            for _, folderName in ipairs({"Unique", "Rare", "Epic", "Mythic", "Legendary"}) do
+                local folder = petsFolder:FindFirstChild(folderName)
+                if folder then
+                    for _, pet in ipairs(folder:GetChildren()) do
+                        equipPetEvent:FireServer("unequipPet", pet)
+                        task.wait()
                     end
                 end
             end
         end
 
-        -- Sort: priority 0 first, then 1, 2, 3, 4 (higher score first on ties)
-        table.sort(repEntries, function(a, b)
-            if a.Priority == b.Priority then return a.Score > b.Score end
-            return a.Priority < b.Priority
-        end)
+        local cycle = 0
+        while isRunning() do
+            local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
 
-        local repPets = {}
-        for _, entry in ipairs(repEntries) do table.insert(repPets, entry.Instance) end
-        return allPets, hydras, repPets
-    end
-
-    -- Fires equip / unequip in small batches (one task.wait() per batch instead of per pet)
-    local function fireBatched(action, pets)
-        local count = 0
-        for _, pet in ipairs(pets) do
-            if not isRunning() then return false end
-            pcall(equipPetEvent.FireServer, equipPetEvent, action, pet)
-            count = count + 1
-            if count % PETS_PER_FRAME == 0 then task.wait() end
-        end
-        return true
-    end
-
-    local cycle = 0
-    local swapTime = 0              -- measured duration of the Hydra swap (unequip all + equip Hydras)
-    local nextRebirthAt = tick()    -- first rebirth right away
-    local lastRebirthAt = nil
-
-    while isRunning() do
-        local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
-
-        if not petsFolder then
-            fastStatus = "petsFolder not found - retrying..."
-            task.wait(1)
-        else
-            local okC, errC = pcall(function()
-                -- Start the Hydra swap early so the rebirth lands exactly when the cooldown ends
-                local startSwapAt = nextRebirthAt - swapTime
-                while isRunning() and tick() < startSwapAt do
-                    task.wait(math.min(0.25, startSwapAt - tick()))
-                end
-                if not isRunning() then return end
+            if petsFolder then
                 cycle = cycle + 1
 
-                -- 1. FAST EQUIP OF TITANIUM HYDRAS (BEFORE REBIRTH)
-                local swapStart = tick()
-                local allPets, hydras = scanPets(petsFolder)
-                if not fireBatched("unequipPet", allPets) then return end
-                if not fireBatched("equipPet", hydras) then return end
-                task.wait()
-                swapTime = math.max(tick() - swapStart, swapTime * 0.9)
+                -- 1. ULTRA-FAST EQUIP OF TITANIUM HYDRAS (BEFORE REBIRTH)
+                unequipAllPets(petsFolder)
 
-                -- cooldown not over yet: wait for the remaining time
-                local remaining = nextRebirthAt - tick()
-                if remaining > 0 then task.wait(remaining) end
-                if not isRunning() then return end
+                for _, folderName in ipairs({"Unique", "Rare", "Epic", "Mythic", "Legendary"}) do
+                    local folder = petsFolder:FindFirstChild(folderName)
+                    if folder then
+                        for _, pet in ipairs(folder:GetChildren()) do
+                            local pName = pet.Name
+                            if pet:FindFirstChild("PetName") then pName = pet.PetName.Value end
+
+                            if pName == "Titanium Hydra" then
+                                equipPetEvent:FireServer("equipPet", pet)
+                                task.wait()
+                            end
+                        end
+                    end
+                end
 
                 -- 2. REBIRTH
-                local rebirthAt = tick()
-                local okR, res = pcall(function() return rebirthRemote:InvokeServer("rebirthRequest") end)
-                nextRebirthAt = rebirthAt + REBIRTH_COOLDOWN + COOLDOWN_MARGIN
-                local rebirthResult = okR and tostring(res) or ("error: " .. tostring(res))
+                local rebirthResult = rebirthRemote:InvokeServer("rebirthRequest")
 
                 -- 3. EQUIP REP-SPEED PETS BY PRIORITY (AFTER REBIRTH)
-                local allAfter, _, repPets = scanPets(petsFolder)
-                if not fireBatched("unequipPet", allAfter) then return end
-                if not fireBatched("equipPet", repPets) then return end
+                unequipAllPets(petsFolder)
 
-                fastStatus = string.format(
-                    "Cycle %d | Hydras: %d | Rebirth: %s | Rep pets: %d | Swap: %.2fs | Cycle: %s",
-                    cycle, #hydras, rebirthResult, #repPets, swapTime,
-                    lastRebirthAt and string.format("%.2fs", rebirthAt - lastRebirthAt) or "-"
-                )
-                lastRebirthAt = rebirthAt
+                local repPets = {}
+                local uniqueFolder = petsFolder:FindFirstChild("Unique")
+                local priority4Pet = uniqueFolder and uniqueFolder:GetChildren()[4] -- target pet from the video
+
+                for _, folderName in ipairs({"Unique", "Rare", "Epic", "Mythic", "Legendary"}) do
+                    local folder = petsFolder:FindFirstChild(folderName)
+                    if folder then
+                        for _, pet in ipairs(folder:GetChildren()) do
+                            local pName = pet.Name
+                            if pet:FindFirstChild("PetName") then pName = pet.PetName.Value end
+
+                            local priority = repSpeedPetPriorities[pName] or 5
+
+                            -- exact pet [4] of the Unique folder: absolute priority (0)
+                            if priority4Pet and pet == priority4Pet then
+                                priority = 0
+                            end
+
+                            if priority < 5 or priority4Pet == pet then
+                                table.insert(repPets, {
+                                    Instance = pet,
+                                    Priority = priority,
+                                    Score = getPetScore(pet)
+                                })
+                            end
+                        end
+                    end
+                end
+
+                -- Sort: priority 0 first, then 1, 2, 3, 4
+                table.sort(repPets, function(a, b)
+                    if a.Priority == b.Priority then
+                        return a.Score > b.Score
+                    end
+                    return a.Priority < b.Priority
+                end)
+
+                -- Automatic ultra-fast equip
+                for _, entry in ipairs(repPets) do
+                    equipPetEvent:FireServer("equipPet", entry.Instance)
+                    task.wait()
+                end
+
+                fastStatus = string.format("Cycle %d | Rebirth result: %s | Rep pets equipped: %d",
+                    cycle, tostring(rebirthResult), #repPets)
                 if cycle <= 3 then print("[Tazen hub] " .. fastStatus) end
-            end)
-
-            if not okC then
-                fastStatus = "ERROR: " .. tostring(errC)
-                warn("[Tazen hub] " .. fastStatus)
-                task.wait(1)
+            else
+                fastStatus = "petsFolder not found"
             end
+
+            -- 4. EXACT COOLDOWN (6 SECONDS)
+            task.wait(6)
         end
+    end)
+
+    if not okT then
+        fastStatus = "ERROR: " .. tostring(errT)
+        warn("[Tazen hub] " .. fastStatus)
     end
 end
 
@@ -339,6 +325,159 @@ end
 local function projections(rate)
     return { fmt(rate), fmt(rate * 60), fmt(rate * 3600), fmt(rate * 86400), fmt(rate * 604800) }
 end
+
+-- ===================== MISC (ANTI AFK / ANTI LAG / FPS) =====================
+local Lighting = game:GetService("Lighting")
+
+-- Anti AFK
+local antiAfkConn = nil
+local antiAfkRun = 0
+
+local function setAntiAfk(state)
+    antiAfkRun = antiAfkRun + 1
+    if antiAfkConn then
+        antiAfkConn:Disconnect()
+        antiAfkConn = nil
+    end
+    if not state then return end
+
+    local myId = antiAfkRun
+    local okV, VirtualUser = pcall(function() return game:GetService("VirtualUser") end)
+    if not okV or not VirtualUser then
+        warn("[Tazen hub] VirtualUser not available")
+        return
+    end
+
+    local function ping()
+        pcall(function()
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton2(Vector2.new(0, 0))
+        end)
+    end
+
+    -- main method: react when Roblox detects inactivity
+    antiAfkConn = LocalPlayer.Idled:Connect(ping)
+    -- backup method: small input every 55 s
+    task.spawn(function()
+        while alive and antiAfkRun == myId do
+            task.wait(55)
+            if alive and antiAfkRun == myId then ping() end
+        end
+    end)
+end
+
+-- Anti Lag (reversible)
+local antiLagConn = nil
+local antiLagRun = 0
+local antiLagTouched = setmetatable({}, { __mode = "k" })
+local antiLagBackup = nil
+
+local function lagApply(inst)
+    if inst:IsA("ParticleEmitter") or inst:IsA("Trail") or inst:IsA("Beam")
+        or inst:IsA("Smoke") or inst:IsA("Fire") or inst:IsA("Sparkles") or inst:IsA("PostEffect") then
+        if inst.Enabled then
+            antiLagTouched[inst] = { Enabled = true }
+            inst.Enabled = false
+        end
+    elseif inst:IsA("Decal") or inst:IsA("Texture") then
+        if inst.Transparency < 1 then
+            antiLagTouched[inst] = { Transparency = inst.Transparency }
+            inst.Transparency = 1
+        end
+    elseif inst:IsA("BasePart") and not inst:IsA("Terrain") then
+        antiLagTouched[inst] = {
+            Material = inst.Material,
+            Reflectance = inst.Reflectance,
+            CastShadow = inst.CastShadow,
+        }
+        inst.Material = Enum.Material.SmoothPlastic
+        inst.Reflectance = 0
+        inst.CastShadow = false
+    end
+end
+
+local function antiLagStart()
+    antiLagRun = antiLagRun + 1
+    local myId = antiLagRun
+
+    -- global settings (backed up so they can be restored)
+    antiLagBackup = { GlobalShadows = Lighting.GlobalShadows, FogEnd = Lighting.FogEnd }
+    pcall(function() antiLagBackup.Quality = settings().Rendering.QualityLevel end)
+    pcall(function()
+        local terrain = workspace.Terrain
+        antiLagBackup.Water = {
+            WaterWaveSize = terrain.WaterWaveSize,
+            WaterWaveSpeed = terrain.WaterWaveSpeed,
+            WaterReflectance = terrain.WaterReflectance,
+            WaterTransparency = terrain.WaterTransparency,
+        }
+        terrain.WaterWaveSize = 0
+        terrain.WaterWaveSpeed = 0
+        terrain.WaterReflectance = 0
+        terrain.WaterTransparency = 1
+    end)
+    pcall(function() Lighting.GlobalShadows = false end)
+    pcall(function() Lighting.FogEnd = 9e9 end)
+    pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
+
+    -- sweep existing objects in small batches (no freeze), then watch new ones
+    task.spawn(function()
+        local n = 0
+        local function sweep(root)
+            for _, d in ipairs(root:GetDescendants()) do
+                if antiLagRun ~= myId then return end
+                pcall(lagApply, d)
+                n = n + 1
+                if n % 400 == 0 then task.wait() end
+            end
+        end
+        sweep(Lighting)
+        sweep(workspace)
+    end)
+    antiLagConn = workspace.DescendantAdded:Connect(function(d) pcall(lagApply, d) end)
+end
+
+local function antiLagStop()
+    antiLagRun = antiLagRun + 1
+    if antiLagConn then
+        antiLagConn:Disconnect()
+        antiLagConn = nil
+    end
+
+    local touched = antiLagTouched
+    local backup = antiLagBackup
+    antiLagTouched = setmetatable({}, { __mode = "k" })
+    antiLagBackup = nil
+
+    task.spawn(function()
+        local n = 0
+        for inst, props in pairs(touched) do
+            if inst and inst.Parent then
+                for k, v in pairs(props) do
+                    pcall(function() inst[k] = v end)
+                end
+            end
+            n = n + 1
+            if n % 400 == 0 then task.wait() end
+        end
+        if backup then
+            pcall(function() Lighting.GlobalShadows = backup.GlobalShadows end)
+            pcall(function() Lighting.FogEnd = backup.FogEnd end)
+            pcall(function()
+                settings().Rendering.QualityLevel = backup.Quality or Enum.QualityLevel.Automatic
+            end)
+            if backup.Water then
+                pcall(function()
+                    for k, v in pairs(backup.Water) do workspace.Terrain[k] = v end
+                end)
+            end
+        end
+    end)
+end
+
+-- FPS counter
+local fpsFrames = 0
+connect(RunService.Heartbeat, function() fpsFrames = fpsFrames + 1 end)
 
 -- ===================== THEME / UI HELPERS =====================
 local T = {
@@ -490,7 +629,7 @@ local topbar = new("Frame", {
 textLabel({
     Size = UDim2.new(1, -110, 0, 22),
     Position = UDim2.new(0, 14, 0, 4),
-    Text = "Tazen hub V1",
+    Text = E.sparkles .. " Tazen hub V1",
     Font = Enum.Font.GothamBlack,
     TextSize = 17,
 }, topbar)
@@ -498,7 +637,7 @@ textLabel({
 textLabel({
     Size = UDim2.new(1, -110, 0, 14),
     Position = UDim2.new(0, 14, 0, 25),
-    Text = "by TZN_THR  •  K to hide",
+    Text = E.heart .. " by TZN_THR  |  press K to hide",
     TextSize = 11,
     TextColor3 = T.Accent,
 }, topbar)
@@ -520,7 +659,7 @@ local function topButton(text, xOffset)
 end
 
 local closeBtn = topButton("X", -38)
-local minBtn = topButton("–", -72)
+local minBtn = topButton("-", -72)
 
 -- Window dragging (mouse + touch)
 do
@@ -583,19 +722,22 @@ end
 
 local function createTab(name)
     tabCount = tabCount + 1
+    local tabW = math.floor((W - 20 - 6 * 3) / 4)   -- 4 tabs share the bar
     local button = new("TextButton", {
-        Size = UDim2.fromOffset(140, 28),
+        Size = UDim2.fromOffset(tabW, 28),
         BackgroundColor3 = T.Element,
         BackgroundTransparency = 0.25,
         Text = name,
         Font = Enum.Font.GothamBold,
         TextSize = 12,
+        TextScaled = true,
         TextColor3 = T.Text,
         TextStrokeTransparency = 0.5,
         BorderSizePixel = 0,
         LayoutOrder = tabCount,
     }, tabBar)
     corner(button, 8)
+    new("UITextSizeConstraint", { MaxTextSize = 13, MinTextSize = 8 }, button)
 
     local page = new("ScrollingFrame", {
         Size = UDim2.new(1, 0, 1, 0),
@@ -835,6 +977,27 @@ local function addStatBlock(page, title, rowNames)
     }
 end
 
+local function addCredit(page, text)
+    local f = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 64),
+        BackgroundColor3 = T.Element,
+        BackgroundTransparency = 0.2,
+        BorderSizePixel = 0,
+    }, page)
+    corner(f, 8)
+    stroke(f, T.Accent, 1.5)
+    textLabel({
+        Size = UDim2.new(1, -20, 1, 0),
+        Position = UDim2.new(0, 10, 0, 0),
+        Text = text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        TextColor3 = T.Text,
+        TextWrapped = true,
+        TextXAlignment = Enum.TextXAlignment.Center,
+    }, f)
+end
+
 -- Notifications
 local function notify(title, text)
     if not alive then return end
@@ -866,93 +1029,126 @@ local function notify(title, text)
 end
 
 -- ===================== TABS =====================
-local fastPage = createTab("Fast Rebirth")
-local autoPage = createTab("Auto Rebirth")
-local strPage = createTab("Fast Strength")
+local TAB_FAST = E.bolt .. " Fast Rebirth"
+local TAB_AUTO = E.cycle .. " Auto Rebirth"
+local TAB_STR = E.muscle .. " Fast Strength"
+local TAB_MISC = E.toolbox .. " Misc"
 
-local fastToggle, autoToggle, repToggle
+local fastPage = createTab(TAB_FAST)
+local autoPage = createTab(TAB_AUTO)
+local strPage = createTab(TAB_STR)
+local miscPage = createTab(TAB_MISC)
+
+local fastToggle, autoToggle, repToggle, antiAfkToggle, antiLagToggle
+
+local function notifyState(title, v)
+    notify(title, v and (E.ok .. " Enabled") or (E.no .. " Disabled"))
+end
 
 local function resetStats()
     tracker.strGain = 0
     tracker.rebGain = 0
     samples = {}
-    notify("Calculator", "Stats reset")
+    notify(E.broom .. " Calculator", E.ok .. " Stats reset")
 end
 
-local REB_ROWS = { "Per second", "Per minute", "Per hour", "Per day", "Per week", "Total gained" }
+local REB_ROWS = {
+    E.bolt .. " Per second", E.clock .. " Per minute", E.hourglass .. " Per hour",
+    E.sun .. " Per day", E.calendar .. " Per week", E.trophy .. " Total gained",
+}
 local STR_ROWS = {
-    "Per second", "Per minute", "Per hour", "Per day", "Per week",
-    "Total gained", "Strength per rep (≈)",
+    E.bolt .. " Per second", E.clock .. " Per minute", E.hourglass .. " Per hour",
+    E.sun .. " Per day", E.calendar .. " Per week", E.trophy .. " Total gained",
+    E.target .. " Strength per rep (avg)",
 }
 
 -- Fast Rebirth
-addSection(fastPage, "Fast Rebirth (Pack)")
-addLabel(fastPage, "Equips Titanium Hydra, rebirths, then re-equips your rep pets.", 34)
-fastToggle = addToggle(fastPage, "Fast rebirth", function(v)
+addSection(fastPage, E.fire .. " Fast Rebirth (Pack)")
+addLabel(fastPage, E.bulb .. " Equips Titanium Hydra, rebirths, then re-equips your rep pets.", 34)
+fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", function(v)
     fastRunId = fastRunId + 1
     if v then
         autoRunId = autoRunId + 1
         if autoToggle then autoToggle:Set(false) end
         fastStatus = "Starting..."
-        notify("Fast rebirth", "Enabled")
+        notifyState(E.bolt .. " Fast rebirth", true)
         task.spawn(fastRebirthLoop, fastRunId)
     else
-        notify("Fast rebirth", "Disabled")
+        notifyState(E.bolt .. " Fast rebirth", false)
     end
 end)
-local fastStatusLabel = addLabel(fastPage, fastStatus, 60)
-addSection(fastPage, "Rebirth calculator")
-local fastRebBlock = addStatBlock(fastPage, "REBIRTHS (measured over 20 s)", REB_ROWS)
-addButton(fastPage, "Reset stats", resetStats)
+local fastStatusLabel = addLabel(fastPage, E.clip .. " " .. fastStatus, 60)
+addSection(fastPage, E.chart .. " Rebirth calculator")
+local fastRebBlock = addStatBlock(fastPage, E.loop .. " REBIRTHS (measured over 20 s)", REB_ROWS)
+addButton(fastPage, E.broom .. " Reset stats", resetStats)
 
 -- Auto Rebirth
-addSection(autoPage, "Auto Rebirth (No Pack)")
-autoToggle = addToggle(autoPage, "Auto rebirth", function(v)
+addSection(autoPage, E.cycle .. " Auto Rebirth (No Pack)")
+autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", function(v)
     autoRunId = autoRunId + 1
     if v then
         fastRunId = fastRunId + 1
         if fastToggle then fastToggle:Set(false) end
         autoStatus = "Starting..."
-        notify("Auto rebirth", "Enabled")
+        notifyState(E.cycle .. " Auto rebirth", true)
         task.spawn(autoRebirthLoop, autoRunId)
     else
-        notify("Auto rebirth", "Disabled")
+        notifyState(E.cycle .. " Auto rebirth", false)
     end
 end)
-local autoStatusLabel = addLabel(autoPage, autoStatus, 40)
-addSection(autoPage, "Rebirth calculator")
-local autoRebBlock = addStatBlock(autoPage, "REBIRTHS (measured over 20 s)", REB_ROWS)
-addButton(autoPage, "Reset stats", resetStats)
+local autoStatusLabel = addLabel(autoPage, E.clip .. " " .. autoStatus, 40)
+addSection(autoPage, E.chart .. " Rebirth calculator")
+local autoRebBlock = addStatBlock(autoPage, E.loop .. " REBIRTHS (measured over 20 s)", REB_ROWS)
+addButton(autoPage, E.broom .. " Reset stats", resetStats)
 
 -- Fast Strength
-addSection(strPage, "Fast Strength")
-repToggle = addToggle(strPage, "Fast strength", function(v)
+addSection(strPage, E.muscle .. " Fast Strength")
+repToggle = addToggle(strPage, E.muscle .. " Fast strength", function(v)
     repRunId = repRunId + 1
     if v then
-        notify("Fast strength", repRate .. " reps/s targeted")
+        notify(E.muscle .. " Fast strength", E.target .. " " .. repRate .. " reps/s targeted")
         task.spawn(fastRepLoop, repRunId)
     else
-        notify("Fast strength", "Disabled")
+        notifyState(E.muscle .. " Fast strength", false)
     end
 end)
-addSlider(strPage, "Reps per second", 659, 3000, repRate, function(v) repRate = v end)
-local repLabel = addLabel(strPage, "Real reps/s: --", 34)
-addSection(strPage, "Strength calculator")
-local strBlock = addStatBlock(strPage, "STRENGTH (measured over 20 s)", STR_ROWS)
-addButton(strPage, "Reset stats", resetStats)
+addSlider(strPage, E.wrench .. " Reps per second", 659, 3000, repRate, function(v) repRate = v end)
+local repLabel = addLabel(strPage, E.antenna .. " Real reps/s: --", 34)
+addSection(strPage, E.up .. " Strength calculator")
+local strBlock = addStatBlock(strPage, E.muscle .. " STRENGTH (measured over 20 s)", STR_ROWS)
+addButton(strPage, E.broom .. " Reset stats", resetStats)
 
-selectTab("Fast Rebirth")
+-- Misc
+addSection(miscPage, E.toolbox .. " Utilities")
+antiAfkToggle = addToggle(miscPage, E.sleep .. " Anti AFK", function(v)
+    setAntiAfk(v)
+    notifyState(E.sleep .. " Anti AFK", v)
+end)
+addLabel(miscPage, E.bulb .. " Stops Roblox from kicking you after 20 minutes of inactivity.", 34)
+antiLagToggle = addToggle(miscPage, E.rocket .. " Anti Lag (low-end devices)", function(v)
+    if v then antiLagStart() else antiLagStop() end
+    notifyState(E.rocket .. " Anti Lag", v)
+end)
+addLabel(miscPage, E.bulb .. " Lowers graphics (particles, shadows, textures, effects). Fully reverted when turned off.", 46)
+local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 34)
+addSection(miscPage, E.heart .. " Credits")
+addCredit(miscPage, E.sparkles .. " Made by TZN_THR, Thank you for using my script have fun " .. E.party)
+
+selectTab(TAB_FAST)
 
 -- ===================== UPDATE (once per second) =====================
 task.spawn(function()
     while alive do
         task.wait(1)
 
-        repLabel:SetText(repToggle.Value and ("Real reps/s: " .. repCounter) or "Real reps/s: --")
+        repLabel:SetText(E.antenna .. (repToggle.Value and (" Real reps/s: " .. repCounter) or " Real reps/s: --"))
         repCounter = 0
 
-        fastStatusLabel:SetText(fastStatus)
-        autoStatusLabel:SetText(autoStatus)
+        fpsLabel:SetText(E.game .. " FPS: " .. fpsFrames)
+        fpsFrames = 0
+
+        fastStatusLabel:SetText(E.clip .. " " .. fastStatus)
+        autoStatusLabel:SetText(E.clip .. " " .. autoStatus)
 
         pushSample()
         local a, b = samples[1], samples[#samples]
@@ -996,6 +1192,8 @@ closeBtn.Activated:Connect(function()
     fastRunId = fastRunId + 1
     autoRunId = autoRunId + 1
     repRunId = repRunId + 1
+    setAntiAfk(false)
+    if antiLagToggle and antiLagToggle.Value then antiLagStop() end
     for _, c in ipairs(connections) do pcall(function() c:Disconnect() end) end
     gui:Destroy()
 end)
