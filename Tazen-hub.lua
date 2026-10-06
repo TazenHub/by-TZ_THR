@@ -163,13 +163,13 @@ MainTab:CreateToggle({
                                 for i = 1, 10 do
                                     muscleEvent:FireServer("rep")
                                 end
-                                task.wait(0.03)
+                                task.wait(6)
                             end
                         else
-                            task.wait(5.5)
+                            task.wait(6)
                         end
                     else
-                        task.wait(0.5)
+                        task.wait(6)
                     end
                 end
             end)
@@ -201,12 +201,12 @@ RebTab:CreateToggle({
                         end)
                         
                         if success then
-                            task.wait(1.5)
+                            task.wait(6)
                         else
-                            task.wait(2)
+                            task.wait(6)
                         end
                     else
-                        task.wait(1.5)
+                        task.wait(6)
                     end
                 end
             end)
