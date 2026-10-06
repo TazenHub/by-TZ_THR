@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR (Slider 660 - 3000)
+-- Tazen hub V1 by TZ_THR (Slider 659 - 3000)
 
 local ok, err = pcall(function()
 
@@ -47,7 +47,7 @@ end
 local fastRunId = 0
 local autoRunId = 0
 local repRunId = 0
-local repRate = 660          -- Défaut fixé à 660
+local repRate = 659          -- Défaut fixé à 659
 local repCounter = 0         
 local repTotal = 0           
 local fastStatus = "Waiting..."
@@ -91,12 +91,12 @@ local function findMuscleEvent(rEvents)
         or rEvents:FindFirstChild("muscleEvent")
 end
 
--- Force le Fast Strength à 660 reps/s
-local function forceFastRep660()
+-- Force le Fast Strength à 659 reps/s
+local function forceFastRep659()
     if repSliderObj then
-        repSliderObj:Set(660)
+        repSliderObj:Set(659)
     else
-        repRate = 660
+        repRate = 659
     end
     if repToggleObj and not repToggleObj.Value then
         repToggleObj:Set(true)
@@ -620,6 +620,21 @@ local main = new("Frame", {
 corner(main, 12)
 stroke(main, T.Stroke, 1.5)
 
+-- Arrière-plan "Tazen" (Filigrane original)
+local bgText = textLabel({
+    Name = "BackgroundTazen",
+    Size = UDim2.new(1, 0, 1, -42),
+    Position = UDim2.new(0, 0, 0, 42),
+    Text = "Tazen",
+    Font = Enum.Font.GothamBlack,
+    TextSize = 90,
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    TextTransparency = 0.94,
+    TextXAlignment = Enum.TextXAlignment.Center,
+    TextYAlignment = Enum.TextYAlignment.Center,
+    ZIndex = 1,
+}, main)
+
 local topbar = new("Frame", {
     Name = "Topbar",
     Size = UDim2.new(1, 0, 0, 42),
@@ -932,14 +947,14 @@ local STR_ROWS = {
 -- Fast Rebirth
 addSection(fastPage, E.fire .. " Fast Rebirth (Pack)")
 addLabel(fastPage, "⚠️Make sure to have pack for using fast rebirth", 28)
-addLabel(fastPage, "⚠️ Fast reps automatically set to 660", 28)
+addLabel(fastPage, "⚠️ Fast reps automatically set to 659", 28)
 
 fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", function(v)
     fastRunId = fastRunId + 1
     if v then
         autoRunId = autoRunId + 1
         if autoToggle then autoToggle:Set(false) end
-        forceFastRep660()
+        forceFastRep659()
         fastStatus = "Starting..."
         notifyState(E.bolt .. " Fast rebirth", true)
         task.spawn(fastRebirthLoop, fastRunId)
@@ -959,7 +974,7 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", function(v)
     if v then
         fastRunId = fastRunId + 1
         if fastToggle then fastToggle:Set(false) end
-        forceFastRep660()
+        forceFastRep659()
         autoStatus = "Starting..."
         notifyState(E.cycle .. " Auto rebirth", true)
         task.spawn(autoRebirthLoop, autoRunId)
@@ -972,7 +987,7 @@ addSection(autoPage, E.chart .. " Rebirth calculator")
 local autoRebBlock = addStatBlock(autoPage, E.loop .. " REBIRTHS (measured over 20 s)", REB_ROWS)
 addButton(autoPage, E.broom .. " Reset stats", resetStats)
 
--- Fast Strength (Slider réglé de 660 à 3000)
+-- Fast Strength (Slider réglé de 659 à 3000)
 addSection(strPage, E.muscle .. " Fast Strength")
 repToggleObj = addToggle(strPage, E.muscle .. " Fast strength", function(v)
     repRunId = repRunId + 1
@@ -983,7 +998,7 @@ repToggleObj = addToggle(strPage, E.muscle .. " Fast strength", function(v)
         notifyState(E.muscle .. " Fast strength", false)
     end
 end)
-repSliderObj = addSlider(strPage, E.wrench .. " Reps per second", 660, 3000, repRate, function(v) repRate = v end)
+repSliderObj = addSlider(strPage, E.wrench .. " Reps per second", 659, 3000, repRate, function(v) repRate = v end)
 local repLabel = addLabel(strPage, E.antenna .. " Real reps/s: --", 28)
 addSection(strPage, E.up .. " Strength calculator")
 local strBlock = addStatBlock(strPage, E.muscle .. " STRENGTH (measured over 20 s)", STR_ROWS)
@@ -1075,7 +1090,7 @@ connect(UserInputService.InputBegan, function(input, processed)
     end
 end)
 
-print("[Tazen hub] UI loaded with Slider Range 660-3000")
+print("[Tazen hub] UI loaded with Slider Range 659-3000")
 
 end)
 
