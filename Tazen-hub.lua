@@ -197,7 +197,7 @@ local function fastRebirthLoop(myId)
             end
 
             -- 4. EXACT COOLDOWN (6 SECONDS)
-            task.wait(6)
+            task.wait(0,05)
         end
     end)
 
