@@ -45,7 +45,7 @@ end
 
 local fastRunId = 0
 local repRunId = 0
-local repRate = 700          -- Ajusté à 700 reps/s pour soulager le réseau
+local repRate = 660          -- Limité à 660 reps/s maximum
 local repCounter = 0         
 local repTotal = 0           
 
@@ -185,25 +185,24 @@ local function fastRebirthLoop(myId)
         while isRunning() do
             local cycleStart = os.clock()
 
-            -- 1. Équiper les Titanium Hydras
+            -- 1. Équiper Titanium Hydras
             unequipSet(repList)
             equipSet(hydraList)
 
-            -- Temps d'attente réseau indispensable pour la validation des Hydras
             task.wait(0.08)
 
-            -- 2. Lancer la requête de Rebirth (Asynchrone)
+            -- 2. Rebirth (Asynchrone)
             task.spawn(function()
                 pcall(function() rebirthRemote:InvokeServer("rebirthRequest") end)
             end)
 
             task.wait(0.02)
 
-            -- 3. Remettre les Fast Rep pets
+            -- 3. Remettre Fast Rep pets
             unequipSet(hydraList)
             equipSet(repList)
 
-            -- 4. Cooldown exact de 6 secondes
+            -- 4. Cooldown 6s exact
             local elapsed = os.clock() - cycleStart
             task.wait(math.max(0, REBIRTH_COOLDOWN - elapsed))
         end
@@ -549,12 +548,12 @@ addToggle(fastPage, E.bolt .. " Fast Rebirth (6s)", function(v)
 end)
 local fastRebBlock = addStatBlock(fastPage, E.loop .. " CALCULATEUR REBIRTHS", REB_ROWS)
 
--- FAST STRENGTH
+-- FAST STRENGTH (SLIDER LIMITÉ À 660 MAX)
 repToggleObj = addToggle(strPage, E.muscle .. " Fast Strength", function(v)
     repRunId = repRunId + 1
     if v then task.spawn(fastRepLoop, repRunId) end
 end)
-addSlider(strPage, E.wrench .. " Reps / seconde", 100, 3000, repRate, function(v) repRate = v end)
+addSlider(strPage, E.wrench .. " Reps / seconde", 100, 660, repRate, function(v) repRate = v end)
 local repLabel = textLabel({ Size = UDim2.new(1, -20, 0, 30), Text = E.antenna .. " Real reps/s: --", ZIndex = 5 }, strPage)
 local strBlock = addStatBlock(strPage, E.muscle .. " CALCULATEUR STRENGTH", STR_ROWS)
 
