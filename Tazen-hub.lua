@@ -25,7 +25,8 @@ local E = {
     clock = "\u{1F550}", hourglass = "\u{23F3}", sun = "\u{1F31E}", calendar = "\u{1F4C5}",
     trophy = "\u{1F3C6}", target = "\u{1F3AF}", wrench = "\u{1F527}", clip = "\u{1F4CB}",
     bulb = "\u{1F4A1}", fire = "\u{1F525}", loop = "\u{1F501}", antenna = "\u{1F4E1}",
-    party = "\u{1F389}", game = "\u{1F3AE}", crown = "\u{1F451}",
+    party = "\u{1F389}", game = "\u{1F3AE}", crown = "\u{1F451}", egg = "\u{1F95A}",
+    wheel = "\u{1F3A1}"
 }
 
 -- Paste your Roblox image ID here (just the number), e.g. 123456789
@@ -52,6 +53,8 @@ end
 local fastRunId = 0
 local autoRunId = 0
 local repRunId = 0
+local wheelRunId = 0
+local eggRunId = 0
 local repRate = 659          -- target reps per second (default recommended: 659)
 local repCounter = 0         -- reps sent during the last second
 local repTotal = 0           -- total reps sent
@@ -377,6 +380,35 @@ local function fastRepLoop(myId)
         end
         repCounter = repCounter + n
         repTotal = repTotal + n
+    end
+end
+
+-- ===================== MISC LOOPS =====================
+local function autoWheelLoop(myId)
+    local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
+    local wheelRemote = rEvents and (rEvents:FindFirstChild("wheelRemote") or rEvents:FindFirstChild("spinWheelRemote"))
+    
+    while wheelRunId == myId and alive do
+        if wheelRemote then
+            pcall(function()
+                wheelRemote:InvokeServer("spinWheel")
+            end)
+        end
+        task.wait(1)
+    end
+end
+
+local function autoEggLoop(myId)
+    local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
+    local eggRemote = rEvents and (rEvents:FindFirstChild("useItemRemote") or rEvents:FindFirstChild("eatEggRemote") or rEvents:FindFirstChild("itemRemote"))
+    
+    while eggRunId == myId and alive do
+        if eggRemote then
+            pcall(function()
+                eggRemote:InvokeServer("Protein Egg")
+            end)
+        end
+        task.wait(1)
     end
 end
 
@@ -1133,7 +1165,7 @@ local autoPage = createTab(TAB_AUTO)
 local strPage = createTab(TAB_STR)
 local miscPage = createTab(TAB_MISC)
 
-local fastToggle, autoToggle, repToggle, antiAfkToggle, antiLagToggle
+local fastToggle, autoToggle, repToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle
 
 local function notifyState(title, v)
     notify(title, v and (E.ok .. " Enabled") or (E.no .. " Disabled"))
@@ -1166,6 +1198,7 @@ local STR_ROWS = {
 -- Fast Rebirth
 addSection(fastPage, E.fire .. " Fast Rebirth (Pack)")
 addLabel(fastPage, "\u{26A0}\u{FE0F} You need pack for fast rebirth", 34)
+addLabel(fastPage, "\u{26A0}\u{FE0F} Use a 659 rep speed for no delay", 34)
 fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", function(v)
     fastRunId = fastRunId + 1
     if v then
@@ -1208,7 +1241,6 @@ addButton(autoPage, E.broom .. " Reset stats", resetStats)
 
 -- Fast Strength
 addSection(strPage, E.muscle .. " Fast Strength")
-addLabel(strPage, "\u{26A0}\u{FE0F} Use a 659 rep speed for no delay", 34)
 repToggle = addToggle(strPage, E.muscle .. " Fast strength", function(v)
     repRunId = repRunId + 1
     if v then
@@ -1231,11 +1263,33 @@ antiAfkToggle = addToggle(miscPage, E.sleep .. " Anti AFK", function(v)
     notifyState(E.sleep .. " Anti AFK", v)
 end)
 addLabel(miscPage, E.bulb .. " Stops Roblox from kicking you after 20 minutes of inactivity.", 34)
+
 antiLagToggle = addToggle(miscPage, E.rocket .. " Anti Lag (low-end devices)", function(v)
     if v then antiLagStart() else antiLagStop() end
     notifyState(E.rocket .. " Anti Lag", v)
 end)
 addLabel(miscPage, E.bulb .. " Lowers graphics (particles, shadows, textures, effects). Fully reverted when turned off.", 46)
+
+autoWheelToggle = addToggle(miscPage, E.wheel .. " Auto Wheel", function(v)
+    wheelRunId = wheelRunId + 1
+    if v then
+        notifyState(E.wheel .. " Auto Wheel", true)
+        task.spawn(autoWheelLoop, wheelRunId)
+    else
+        notifyState(E.wheel .. " Auto Wheel", false)
+    end
+end)
+
+autoEggToggle = addToggle(miscPage, E.egg .. " Auto eat protein egg", function(v)
+    eggRunId = eggRunId + 1
+    if v then
+        notifyState(E.egg .. " Auto eat protein egg", true)
+        task.spawn(autoEggLoop, eggRunId)
+    else
+        notifyState(E.egg .. " Auto eat protein egg", false)
+    end
+end)
+
 local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 34)
 addSection(miscPage, E.heart .. " Credits")
 addCredit(miscPage, E.sparkles .. " Made by TZN_THR, Thank you for using my script have fun " .. E.party)
@@ -1298,6 +1352,8 @@ closeBtn.Activated:Connect(function()
     fastRunId = fastRunId + 1
     autoRunId = autoRunId + 1
     repRunId = repRunId + 1
+    wheelRunId = wheelRunId + 1
+    eggRunId = eggRunId + 1
     setAntiAfk(false)
     if antiLagToggle and antiLagToggle.Value then antiLagStop() end
     for _, c in ipairs(connections) do pcall(function() c:Disconnect() end) end
