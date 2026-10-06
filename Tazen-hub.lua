@@ -179,7 +179,7 @@ local function fastRebirthLoop(myId)
         local equipped = {}
 
         -- switch to the wanted set: unequip only what must go, equip only what is missing
-        local function setEquipped(wanted)
+        local function setEquipped(wanted, burst)
             local want, have = {}, {}
             for _, pet in ipairs(wanted) do want[pet] = true end
             for _, pet in ipairs(equipped) do have[pet] = true end
@@ -187,7 +187,7 @@ local function fastRebirthLoop(myId)
             for _, pet in ipairs(equipped) do
                 if not want[pet] and pet.Parent then
                     equipPetEvent:FireServer("unequipPet", pet)
-                    task.wait()
+                    if not burst then task.wait() end
                 end
             end
 
@@ -196,7 +196,7 @@ local function fastRebirthLoop(myId)
                 if pet.Parent then
                     if not have[pet] then
                         equipPetEvent:FireServer("equipPet", pet)
-                        task.wait()
+                        if not burst then task.wait() end
                     end
                     table.insert(newEquipped, pet)
                 end
@@ -213,10 +213,12 @@ local function fastRebirthLoop(myId)
 
         -- Hydra unequip can be refused by the game's cooldown -> resend it several times.
         -- Tune these two values if the hydras still stay equipped.
-        local HYDRA_UNEQUIP_RETRIES = 4   -- number of passes
+        local REEQUIP_DELAY = 0.05        -- seconds after the rebirth before re-equipping the rep pets
+        local HYDRA_UNEQUIP_RETRIES = 1   -- number of passes (raise it if hydras stay equipped)
         local HYDRA_RETRY_WAIT = 0.15     -- seconds between two passes
 
         local function backToRepPets(hydras, reps)
+            task.wait(REEQUIP_DELAY)
             for attempt = 1, HYDRA_UNEQUIP_RETRIES do
                 -- (re)send the unequip of every Titanium Hydra
                 for _, pet in ipairs(hydras) do
@@ -270,7 +272,7 @@ local function fastRebirthLoop(myId)
             if not isRunning() then break end
 
             local t0 = os.clock()
-            setEquipped(hydraList)
+            setEquipped(hydraList, true) -- burst: as late as possible, no wait between pets
             local measured = os.clock() - t0
             swapTime = math.clamp(measured + 0.1, 0.1, 3) -- small safety margin
 
@@ -281,7 +283,7 @@ local function fastRebirthLoop(myId)
             local rebirthResult = rebirthRemote:InvokeServer("rebirthRequest")
             lastRebirth = os.clock()
 
-            -- 3. IMMEDIATELY BACK TO REP PETS (hydra unequip is retried)
+            -- 3. 0.05 s AFTER THE REBIRTH: hydras off, rep pets back on
             backToRepPets(hydraList, repList)
 
             fastStatus = string.format("Cycle %d | Rebirth result: %s | Rep pets: %d | Swap: %.2fs",
