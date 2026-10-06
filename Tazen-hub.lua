@@ -187,23 +187,39 @@ local RebTab = RebWindow:CreateTab("Auto Rebirth", 4483362458) -- Title, Image
     local RebSection = RebTab:CreateSection("Auto Rebirth ( No Pack)")
 local autoRebirthActive = false
 
-local Toggle = RebTab:CreateToggle({
+-- TAB 2: Auto Rebirth (Sans Pack)
+local RebTab = Window:CreateTab("Auto Rebirth", 4483362458)
+RebTab:CreateSection("Auto Rebirth (No Pack)")
+
+local autoRebirthActive = false
+
+RebTab:CreateToggle({
     Name = "Auto rebirth",
     CurrentValue = false,
-    Flag = "Fast Rebirth",
+    Flag = "Auto Rebirth Simple",
     Callback = function(Value)
-                 autoRebirthActive = Value
+        autoRebirthActive = Value
         
         if autoRebirthActive then
             task.spawn(function()
                 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-                local Event = ReplicatedStorage.rEvents.rebirthRemote
+                local rEvents = ReplicatedStorage:FindFirstChild("rEvents")
                 
+                if not rEvents then return end
+                local rebirthRemote = rEvents:FindFirstChild("rebirthRemote")
+
                 while autoRebirthActive do
-                    Event:InvokeServer("rebirthRequest")
-                    task.wait(0.1) -- Ajuste le délai (en secondes) si nécessaire
+                    if rebirthRemote then
+                        -- Utilisation de task.spawn pour ne pas bloquer le script si le serveur prend du temps à répondre
+                        task.spawn(function()
+                            rebirthRemote:InvokeServer("rebirthRequest")
+                        end)
+                    end
+                    task.wait(1) -- Délai stable de 1 seconde entre chaque tentative
                 end
             end)
         end
+    end,
+})end
     end,
 })end
