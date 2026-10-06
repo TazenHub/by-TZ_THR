@@ -99,7 +99,7 @@ fastRebirthActive = Value
                             pcall(function()
                                 equipPetEvent:FireServer("unequipPet", pet)
                             end)
-                            task.wait(0.05)
+                            task.wait(1)
                         end
                     end
                 end
@@ -122,7 +122,7 @@ fastRebirthActive = Value
                                     pcall(function()
                                         equipPetEvent:FireServer("equipPet", pet)
                                     end)
-                                    task.wait(0.05)
+                                    task.wait(1)
                                 end
                             end
                         end
@@ -172,11 +172,11 @@ fastRebirthActive = Value
                         pcall(function()
                             equipPetEvent:FireServer("equipPet", entry.Instance)
                         end)
-                        task.wait(0.05)
+                        task.wait(1)
                     end
                 end
                 
-                task.wait(6)
+                task.wait(1)
             end
         end)
     end
