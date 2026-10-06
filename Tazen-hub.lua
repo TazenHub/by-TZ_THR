@@ -259,4 +259,4 @@ AutoToggle = RebTab:CreateToggle({
             task.spawn(autoRebirthLoop, myId)
         end
     end,
-})
+})end
