@@ -1,4 +1,4 @@
--- Tazen hub (version autonome avec image d'arrière-plan : sans Rayfield, sans HttpGet)
+-- Tazen hub V1 by TZN_THR (autonome : UI style Rayfield, sans HttpGet)
 
 local ok, err = pcall(function()
 
@@ -111,7 +111,7 @@ local function fastRebirthLoop(myId)
 
             local repPets = {}
             local uniqueFolder = petsFolder:FindFirstChild("Unique")
-            local priority4Pet = uniqueFolder and getSortedChildren(uniqueFolder)[4]
+            local priority4Pet = uniqueFolder and uniqueFolder:GetChildren()[4]
 
             for _, folderName in ipairs(PET_FOLDERS) do
                 local folder = petsFolder:FindFirstChild(folderName)
@@ -169,15 +169,72 @@ local function autoRebirthLoop(myId)
     end
 end
 
--- ===================== INTERFACE =====================
+-- ===================== SERVICES UI =====================
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
--- IMAGE D'ARRIÈRE-PLAN
--- Option 1 : colle ici l'ID de ton image uploadée sur Roblox (juste le nombre)
+local alive = true
+local connections = {}
+local function connect(signal, fn)
+    local c = signal:Connect(fn)
+    table.insert(connections, c)
+    return c
+end
+
+-- ===================== FAST REP =====================
+local repRunId = 0
+local repRate = 660      -- rep par seconde (minimum 659)
+local repCounter = 0
+
+local function fastRepLoop(myId)
+    local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
+    if not rEvents then warn("[Tazen hub] rEvents introuvable") return end
+    local muscleEvent = findMuscleEvent(rEvents)
+    if not muscleEvent then warn("[Tazen hub] muscleEvent introuvable") return end
+
+    local carry = 0
+    local lastCheck = tick()
+    while repRunId == myId and alive do
+        local dt = RunService.Heartbeat:Wait()
+
+        -- le remote peut changer de parent (respawn) : on le retrouve
+        if tick() - lastCheck > 1 then
+            lastCheck = tick()
+            if not muscleEvent.Parent then
+                muscleEvent = findMuscleEvent(rEvents) or muscleEvent
+            end
+        end
+
+        -- accumulateur basé sur le temps : garde le débit moyen même si les FPS varient
+        carry = carry + repRate * dt
+        local n = math.floor(carry)
+        carry = carry - n
+        if n > 200 then n = 200 end
+
+        for _ = 1, n do
+            pcall(muscleEvent.FireServer, muscleEvent, "rep")
+        end
+        repCounter = repCounter + n
+    end
+end
+
+-- ===================== THÈME / IMAGE =====================
+-- Colle ici l'ID de ton image Roblox (juste le nombre), ex : 123456789
 local IMAGE_ID = 0
--- Option 2 : si tu n'as pas d'ID, mets le fichier dans le dossier "workspace" de ton executor
+-- Ou mets le fichier dans le dossier "workspace" de ton executor
 local IMAGE_FILE = "tazen_logo.png"
 
-local PINK = Color3.fromRGB(240, 110, 160)
+local T = {
+    Background = Color3.fromRGB(16, 8, 30),
+    Topbar = Color3.fromRGB(30, 16, 56),
+    Element = Color3.fromRGB(40, 24, 72),
+    Stroke = Color3.fromRGB(95, 60, 160),
+    Accent = Color3.fromRGB(240, 110, 160),
+    Text = Color3.new(1, 1, 1),
+    SubText = Color3.fromRGB(205, 190, 235),
+    Off = Color3.fromRGB(75, 58, 108),
+}
 
 local function resolveImage()
     if IMAGE_ID and IMAGE_ID ~= 0 then
@@ -205,183 +262,505 @@ local function getGuiParent()
     return LocalPlayer:WaitForChild("PlayerGui")
 end
 
-local old = getGuiParent():FindFirstChild("TazenHubGui")
-if old then old:Destroy() end
-
-local gui = Instance.new("ScreenGui")
-gui.Name = "TazenHubGui"
-gui.ResetOnSpawn = false
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-gui.Parent = getGuiParent()
-
--- Fenêtre
-local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 270, 0, 330)
-frame.Position = UDim2.new(0, 20, 0.5, -165)
-frame.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
-frame.BorderSizePixel = 0
-frame.Active = true
-frame.Draggable = true
-frame.ZIndex = 1
-frame.Parent = gui
-Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 14)
-
-local frameStroke = Instance.new("UIStroke")
-frameStroke.Color = PINK
-frameStroke.Thickness = 2
-frameStroke.Parent = frame
-
--- Image de fond
-local bg = Instance.new("ImageLabel")
-bg.Name = "Background"
-bg.Size = UDim2.new(1, 0, 1, 0)
-bg.BackgroundTransparency = 1
-bg.Image = resolveImage()
-bg.ScaleType = Enum.ScaleType.Crop
-bg.ZIndex = 2
-bg.Parent = frame
-Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 14)
-
--- Voile sombre en dégradé : foncé en haut et en bas (texte lisible),
--- léger au centre (le logo reste visible)
-local shade = Instance.new("Frame")
-shade.Name = "Shade"
-shade.Size = UDim2.new(1, 0, 1, 0)
-shade.BackgroundColor3 = Color3.new(0, 0, 0)
-shade.BorderSizePixel = 0
-shade.ZIndex = 3
-shade.Parent = frame
-Instance.new("UICorner", shade).CornerRadius = UDim.new(0, 14)
-
-local shadeGradient = Instance.new("UIGradient")
-shadeGradient.Rotation = 90
-shadeGradient.Transparency = NumberSequence.new({
-    NumberSequenceKeypoint.new(0, 0.15),
-    NumberSequenceKeypoint.new(0.22, 0.45),
-    NumberSequenceKeypoint.new(0.5, 0.8),
-    NumberSequenceKeypoint.new(0.68, 0.45),
-    NumberSequenceKeypoint.new(1, 0.1),
-})
-shadeGradient.Parent = shade
-
--- Textes (blanc + contour noir pour rester lisibles sur n'importe quel fond)
-local function styleText(obj)
-    obj.TextColor3 = Color3.new(1, 1, 1)
-    obj.TextStrokeColor3 = Color3.new(0, 0, 0)
-    obj.TextStrokeTransparency = 0.2
+local function new(class, props, parent)
+    local o = Instance.new(class)
+    for k, v in pairs(props) do o[k] = v end
+    if parent then o.Parent = parent end
+    return o
 end
 
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -50, 0, 26)
-title.Position = UDim2.new(0, 14, 0, 8)
-title.BackgroundTransparency = 1
-title.Text = "TAZEN HUB"
-title.Font = Enum.Font.GothamBlack
-title.TextSize = 20
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.ZIndex = 5
-styleText(title)
-title.Parent = frame
+local function corner(o, r) return new("UICorner", { CornerRadius = UDim.new(0, r) }, o) end
+local function stroke(o, color, th) return new("UIStroke", { Color = color, Thickness = th }, o) end
 
-local subtitle = Instance.new("TextLabel")
-subtitle.Size = UDim2.new(1, -50, 0, 16)
-subtitle.Position = UDim2.new(0, 14, 0, 33)
-subtitle.BackgroundTransparency = 1
-subtitle.Text = "V1  •  by TZN_THR"
-subtitle.Font = Enum.Font.GothamMedium
-subtitle.TextSize = 12
-subtitle.TextXAlignment = Enum.TextXAlignment.Left
-subtitle.ZIndex = 5
-styleText(subtitle)
-subtitle.TextColor3 = PINK
-subtitle.Parent = frame
+local function textLabel(props, parent)
+    local p = {
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamMedium,
+        TextSize = 14,
+        TextColor3 = T.Text,
+        TextStrokeColor3 = Color3.new(0, 0, 0),
+        TextStrokeTransparency = 0.5,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }
+    for k, v in pairs(props) do p[k] = v end
+    return new("TextLabel", p, parent)
+end
 
-local closeBtn = Instance.new("TextButton")
-closeBtn.Size = UDim2.new(0, 30, 0, 30)
-closeBtn.Position = UDim2.new(1, -38, 0, 8)
-closeBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-closeBtn.BackgroundTransparency = 0.35
-closeBtn.Text = "X"
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.TextSize = 14
-closeBtn.ZIndex = 5
-styleText(closeBtn)
-closeBtn.Parent = frame
-Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
+-- ===================== FENÊTRE =====================
+local parentGui = getGuiParent()
+local old = parentGui:FindFirstChild("TazenHubGui")
+if old then old:Destroy() end
 
--- Boutons
-local function makeButton(y)
-    local b = Instance.new("TextButton")
-    b.Size = UDim2.new(1, -28, 0, 42)
-    b.Position = UDim2.new(0, 14, 0, y)
-    b.Font = Enum.Font.GothamBold
-    b.TextSize = 15
-    b.AutoButtonColor = true
-    b.ZIndex = 5
-    styleText(b)
-    b.Parent = frame
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 10)
-    local s = Instance.new("UIStroke")
-    s.Color = PINK
-    s.Thickness = 1.5
-    s.Parent = b
+local gui = new("ScreenGui", {
+    Name = "TazenHubGui",
+    ResetOnSpawn = false,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+}, parentGui)
+
+local cam = workspace.CurrentCamera
+local vp = cam and cam.ViewportSize or Vector2.new(900, 600)
+local W = math.min(520, vp.X - 30)
+local H = math.min(340, vp.Y - 30)
+
+local main = new("Frame", {
+    Name = "Main",
+    Size = UDim2.fromOffset(W, H),
+    Position = UDim2.new(0.5, -W / 2, 0.5, -H / 2),
+    BackgroundColor3 = T.Background,
+    BorderSizePixel = 0,
+    ClipsDescendants = true,
+}, gui)
+corner(main, 12)
+stroke(main, T.Stroke, 1.5)
+
+-- Image de fond (ou "TZ" de secours si aucune image)
+local imageId = resolveImage()
+local bg = new("ImageLabel", {
+    Name = "Background",
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundTransparency = 1,
+    Image = imageId,
+    ImageTransparency = 0.45,
+    ScaleType = Enum.ScaleType.Crop,
+    ZIndex = 2,
+}, main)
+
+if imageId == "" then
+    bg.Visible = false
+    textLabel({
+        Size = UDim2.new(1, 0, 1, 0),
+        Text = "TZ",
+        Font = Enum.Font.GothamBlack,
+        TextSize = 170,
+        TextColor3 = T.Accent,
+        TextTransparency = 0.88,
+        TextStrokeTransparency = 1,
+        TextXAlignment = Enum.TextXAlignment.Center,
+        ZIndex = 2,
+    }, main)
+    warn("[Tazen hub] Aucune image : renseigne IMAGE_ID ou ajoute " .. IMAGE_FILE .. " dans le workspace")
+end
+
+-- Voile sombre pour garder le texte lisible
+new("Frame", {
+    Name = "Shade",
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundColor3 = Color3.new(0, 0, 0),
+    BackgroundTransparency = 0.45,
+    BorderSizePixel = 0,
+    ZIndex = 3,
+}, main)
+
+-- Barre du haut
+local topbar = new("Frame", {
+    Name = "Topbar",
+    Size = UDim2.new(1, 0, 0, 42),
+    BackgroundColor3 = T.Topbar,
+    BackgroundTransparency = 0.1,
+    BorderSizePixel = 0,
+    ZIndex = 6,
+}, main)
+
+textLabel({
+    Size = UDim2.new(1, -110, 0, 22),
+    Position = UDim2.new(0, 14, 0, 4),
+    Text = "Tazen hub V1",
+    Font = Enum.Font.GothamBlack,
+    TextSize = 17,
+}, topbar)
+
+textLabel({
+    Size = UDim2.new(1, -110, 0, 14),
+    Position = UDim2.new(0, 14, 0, 25),
+    Text = "by TZN_THR  •  K pour masquer",
+    TextSize = 11,
+    TextColor3 = T.Accent,
+}, topbar)
+
+local function topButton(text, xOffset)
+    local b = new("TextButton", {
+        Size = UDim2.fromOffset(28, 28),
+        Position = UDim2.new(1, xOffset, 0, 7),
+        BackgroundColor3 = T.Element,
+        BackgroundTransparency = 0.2,
+        Text = text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 15,
+        TextColor3 = T.Text,
+        BorderSizePixel = 0,
+    }, topbar)
+    corner(b, 8)
     return b
 end
 
-local fastBtn = makeButton(226)
-local autoBtn = makeButton(276)
+local closeBtn = topButton("X", -38)
+local minBtn = topButton("–", -72)
 
-local function paint(btn, label, state)
-    btn.Text = label .. (state and "  •  ON" or "  •  OFF")
-    if state then
-        btn.BackgroundColor3 = PINK
-        btn.BackgroundTransparency = 0.15
-    else
-        btn.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
-        btn.BackgroundTransparency = 0.25
+-- Déplacement de la fenêtre (souris + tactile)
+do
+    local dragging, dragStart, startPos = false, nil, nil
+    connect(topbar.InputBegan, function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = main.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    connect(UserInputService.InputChanged, function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch) then
+            local d = input.Position - dragStart
+            main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X,
+                startPos.Y.Scale, startPos.Y.Offset + d.Y)
+        end
+    end)
+end
+
+-- Barre d'onglets + conteneur de pages
+local tabBar = new("Frame", {
+    Name = "TabBar",
+    Size = UDim2.new(1, 0, 0, 34),
+    Position = UDim2.new(0, 0, 0, 46),
+    BackgroundTransparency = 1,
+    ZIndex = 6,
+}, main)
+new("UIListLayout", {
+    FillDirection = Enum.FillDirection.Horizontal,
+    Padding = UDim.new(0, 6),
+    SortOrder = Enum.SortOrder.LayoutOrder,
+}, tabBar)
+new("UIPadding", { PaddingLeft = UDim.new(0, 10) }, tabBar)
+
+local pagesHolder = new("Frame", {
+    Name = "Pages",
+    Size = UDim2.new(1, 0, 1, -86),
+    Position = UDim2.new(0, 0, 0, 84),
+    BackgroundTransparency = 1,
+    ZIndex = 5,
+}, main)
+
+local tabs = {}
+
+local function selectTab(name)
+    for tabName, t in pairs(tabs) do
+        local on = (tabName == name)
+        t.page.Visible = on
+        t.button.BackgroundColor3 = on and T.Accent or T.Element
+        t.button.BackgroundTransparency = on and 0.1 or 0.25
     end
 end
 
-paint(fastBtn, "Fast rebirth", false)
-paint(autoBtn, "Auto rebirth", false)
+local function createTab(name)
+    local button = new("TextButton", {
+        Size = UDim2.fromOffset(124, 28),
+        BackgroundColor3 = T.Element,
+        BackgroundTransparency = 0.25,
+        Text = name,
+        Font = Enum.Font.GothamBold,
+        TextSize = 13,
+        TextColor3 = T.Text,
+        TextStrokeTransparency = 0.5,
+        BorderSizePixel = 0,
+        LayoutOrder = #tabBar:GetChildren(),
+    }, tabBar)
+    corner(button, 8)
 
-local fastOn, autoOn = false, false
+    local page = new("ScrollingFrame", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ScrollBarThickness = 3,
+        ScrollBarImageColor3 = T.Accent,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        Visible = false,
+    }, pagesHolder)
+    new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, page)
+    new("UIPadding", {
+        PaddingTop = UDim.new(0, 4), PaddingLeft = UDim.new(0, 10),
+        PaddingRight = UDim.new(0, 14), PaddingBottom = UDim.new(0, 8),
+    }, page)
 
-local function setFast(state)
-    fastOn = state
+    tabs[name] = { button = button, page = page }
+    button.Activated:Connect(function() selectTab(name) end)
+    return page
+end
+
+-- ===================== ÉLÉMENTS (style Rayfield) =====================
+local function addSection(page, text)
+    textLabel({
+        Size = UDim2.new(1, 0, 0, 20),
+        Text = string.upper(text),
+        Font = Enum.Font.GothamBold,
+        TextSize = 12,
+        TextColor3 = T.Accent,
+    }, page)
+end
+
+local function addLabel(page, text, height)
+    local f = new("Frame", {
+        Size = UDim2.new(1, 0, 0, height or 40),
+        BackgroundColor3 = T.Element,
+        BackgroundTransparency = 0.3,
+        BorderSizePixel = 0,
+    }, page)
+    corner(f, 8)
+    stroke(f, T.Stroke, 1)
+    local l = textLabel({
+        Size = UDim2.new(1, -20, 1, 0),
+        Position = UDim2.new(0, 10, 0, 0),
+        Text = text,
+        TextSize = 12,
+        TextColor3 = T.SubText,
+        TextWrapped = true,
+    }, f)
+    return { SetText = function(_, t) l.Text = t end }
+end
+
+local function addToggle(page, name, callback)
+    local f = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 44),
+        BackgroundColor3 = T.Element,
+        BackgroundTransparency = 0.2,
+        BorderSizePixel = 0,
+    }, page)
+    corner(f, 8)
+    stroke(f, T.Stroke, 1)
+
+    textLabel({
+        Size = UDim2.new(1, -80, 1, 0),
+        Position = UDim2.new(0, 12, 0, 0),
+        Text = name,
+    }, f)
+
+    local sw = new("Frame", {
+        Size = UDim2.fromOffset(40, 20),
+        Position = UDim2.new(1, -52, 0.5, -10),
+        BackgroundColor3 = T.Off,
+        BorderSizePixel = 0,
+    }, f)
+    corner(sw, 10)
+    local knob = new("Frame", {
+        Size = UDim2.fromOffset(16, 16),
+        Position = UDim2.fromOffset(2, 2),
+        BackgroundColor3 = Color3.new(1, 1, 1),
+        BorderSizePixel = 0,
+    }, sw)
+    corner(knob, 8)
+
+    local hit = new("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "" }, f)
+
+    local obj = { Value = false }
+    function obj:Set(v)
+        if v == self.Value then return end
+        self.Value = v
+        local info = TweenInfo.new(0.15, Enum.EasingStyle.Quad)
+        TweenService:Create(knob, info, { Position = v and UDim2.fromOffset(22, 2) or UDim2.fromOffset(2, 2) }):Play()
+        TweenService:Create(sw, info, { BackgroundColor3 = v and T.Accent or T.Off }):Play()
+        if callback then callback(v) end
+    end
+    hit.Activated:Connect(function() obj:Set(not obj.Value) end)
+    return obj
+end
+
+local function addSlider(page, name, min, max, default, callback)
+    local f = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 62),
+        BackgroundColor3 = T.Element,
+        BackgroundTransparency = 0.2,
+        BorderSizePixel = 0,
+    }, page)
+    corner(f, 8)
+    stroke(f, T.Stroke, 1)
+
+    textLabel({ Size = UDim2.new(1, -100, 0, 24), Position = UDim2.new(0, 12, 0, 6), Text = name }, f)
+    local valueLabel = textLabel({
+        Size = UDim2.fromOffset(80, 24),
+        Position = UDim2.new(1, -92, 0, 6),
+        Text = tostring(default),
+        TextXAlignment = Enum.TextXAlignment.Right,
+        TextColor3 = T.Accent,
+        Font = Enum.Font.GothamBold,
+    }, f)
+
+    local track = new("Frame", {
+        Size = UDim2.new(1, -24, 0, 8),
+        Position = UDim2.new(0, 12, 0, 42),
+        BackgroundColor3 = T.Off,
+        BorderSizePixel = 0,
+    }, f)
+    corner(track, 4)
+    local fill = new("Frame", {
+        Size = UDim2.new((default - min) / (max - min), 0, 1, 0),
+        BackgroundColor3 = T.Accent,
+        BorderSizePixel = 0,
+    }, track)
+    corner(fill, 4)
+
+    local hit = new("TextButton", {
+        Size = UDim2.new(1, -12, 0, 30),
+        Position = UDim2.new(0, 6, 0, 31),
+        BackgroundTransparency = 1,
+        Text = "",
+    }, f)
+
+    local dragging = false
+    local function update(x)
+        local rel = math.clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
+        local value = math.floor(min + rel * (max - min) + 0.5)
+        fill.Size = UDim2.new((value - min) / (max - min), 0, 1, 0)
+        valueLabel.Text = tostring(value)
+        callback(value)
+    end
+
+    hit.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            page.ScrollingEnabled = false
+            update(input.Position.X)
+        end
+    end)
+    connect(UserInputService.InputChanged, function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch) then
+            update(input.Position.X)
+        end
+    end)
+    connect(UserInputService.InputEnded, function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch) then
+            dragging = false
+            page.ScrollingEnabled = true
+        end
+    end)
+end
+
+-- Notifications
+local function notify(title, text)
+    if not alive then return end
+    local n = new("Frame", {
+        Size = UDim2.fromOffset(250, 56),
+        Position = UDim2.new(1, 20, 1, -76),
+        BackgroundColor3 = T.Topbar,
+        BorderSizePixel = 0,
+    }, gui)
+    corner(n, 10)
+    stroke(n, T.Accent, 1.5)
+    textLabel({
+        Size = UDim2.new(1, -16, 0, 22), Position = UDim2.new(0, 10, 0, 5),
+        Text = title, Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = T.Accent,
+    }, n)
+    textLabel({
+        Size = UDim2.new(1, -16, 0, 22), Position = UDim2.new(0, 10, 0, 27),
+        Text = text, TextSize = 12, TextColor3 = T.SubText,
+    }, n)
+    local info = TweenInfo.new(0.25, Enum.EasingStyle.Quad)
+    TweenService:Create(n, info, { Position = UDim2.new(1, -270, 1, -76) }):Play()
+    task.delay(2.5, function()
+        if n and n.Parent then
+            TweenService:Create(n, info, { Position = UDim2.new(1, 20, 1, -76) }):Play()
+            task.wait(0.3)
+            n:Destroy()
+        end
+    end)
+end
+
+-- ===================== ONGLETS =====================
+local fastPage = createTab("Fast Rebirth")
+local autoPage = createTab("Auto Rebirth")
+local repPage = createTab("Fast Rep")
+
+local fastToggle, autoToggle, repToggle
+
+-- Fast Rebirth
+addSection(fastPage, "Fast Rebirth (Pack)")
+addLabel(fastPage, "Équipe Titanium Hydra, rebirth, puis rééquipe tes pets de rep (cycle ~6,2 s).", 44)
+fastToggle = addToggle(fastPage, "Fast rebirth", function(v)
     fastRunId = fastRunId + 1
-    paint(fastBtn, "Fast rebirth", state)
-    if state then
-        autoOn = false
+    if v then
         autoRunId = autoRunId + 1
-        paint(autoBtn, "Auto rebirth", false)
+        if autoToggle then autoToggle:Set(false) end
+        notify("Fast rebirth", "Activé")
         task.spawn(fastRebirthLoop, fastRunId)
+    else
+        notify("Fast rebirth", "Désactivé")
     end
-end
+end)
 
-local function setAuto(state)
-    autoOn = state
+-- Auto Rebirth
+addSection(autoPage, "Auto Rebirth (No Pack)")
+autoToggle = addToggle(autoPage, "Auto rebirth", function(v)
     autoRunId = autoRunId + 1
-    paint(autoBtn, "Auto rebirth", state)
-    if state then
-        fastOn = false
+    if v then
         fastRunId = fastRunId + 1
-        paint(fastBtn, "Fast rebirth", false)
+        if fastToggle then fastToggle:Set(false) end
+        notify("Auto rebirth", "Activé")
         task.spawn(autoRebirthLoop, autoRunId)
+    else
+        notify("Auto rebirth", "Désactivé")
     end
-end
+end)
 
-fastBtn.Activated:Connect(function() setFast(not fastOn) end)
-autoBtn.Activated:Connect(function() setAuto(not autoOn) end)
+-- Fast Rep
+addSection(repPage, "Fast Rep")
+repToggle = addToggle(repPage, "Fast rep", function(v)
+    repRunId = repRunId + 1
+    if v then
+        notify("Fast rep", repRate .. " rep/s visés")
+        task.spawn(fastRepLoop, repRunId)
+    else
+        notify("Fast rep", "Désactivé")
+    end
+end)
+addSlider(repPage, "Rep par seconde", 659, 3000, repRate, function(v) repRate = v end)
+local repLabel = addLabel(repPage, "Rep/s réel : --", 34)
+
+task.spawn(function()
+    while alive do
+        task.wait(1)
+        if repToggle.Value then
+            repLabel:SetText("Rep/s réel : " .. repCounter)
+        else
+            repLabel:SetText("Rep/s réel : --")
+        end
+        repCounter = 0
+    end
+end)
+
+selectTab("Fast Rebirth")
+
+-- ===================== BOUTONS FENÊTRE =====================
+local minimized = false
+minBtn.Activated:Connect(function()
+    minimized = not minimized
+    tabBar.Visible = not minimized
+    pagesHolder.Visible = not minimized
+    TweenService:Create(main, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+        Size = UDim2.fromOffset(W, minimized and 42 or H),
+    }):Play()
+end)
+
 closeBtn.Activated:Connect(function()
+    alive = false
     fastRunId = fastRunId + 1
     autoRunId = autoRunId + 1
+    repRunId = repRunId + 1
+    for _, c in ipairs(connections) do pcall(function() c:Disconnect() end) end
     gui:Destroy()
 end)
 
-if bg.Image == "" then
-    warn("[Tazen hub] Aucune image trouvée : renseigne IMAGE_ID ou ajoute " .. IMAGE_FILE .. " dans le workspace")
-end
+-- Touche K : masquer / afficher
+connect(UserInputService.InputBegan, function(input, processed)
+    if not processed and input.KeyCode == Enum.KeyCode.K then
+        gui.Enabled = not gui.Enabled
+    end
+end)
+
 print("[Tazen hub] Interface chargée")
 
 end)
