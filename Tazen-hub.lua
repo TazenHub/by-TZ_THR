@@ -28,8 +28,6 @@ local E = {
     party = "\u{1F389}", game = "\u{1F3AE}", crown = "\u{1F451}",
 }
 
-local IMAGE_ID = 79546688195352
-
 local repSpeedPetPriorities = {
     ["Omega Overlord"] = 1,
     ["Mythic Boss Pet"] = 2,
@@ -617,19 +615,6 @@ local main = new("Frame", {
 corner(main, 12)
 stroke(main, T.Stroke, 1.5)
 
--- ARRIÈRE-PLAN AVEC LOGO
-local bg = new("ImageLabel", {
-    Name = "BackgroundLogo",
-    Size = UDim2.new(0.7, 0, 0.7, 0),
-    Position = UDim2.new(0.5, 0, 0.55, 0),
-    AnchorPoint = Vector2.new(0.5, 0.5),
-    BackgroundTransparency = 1,
-    Image = "rbxassetid://" .. IMAGE_ID,
-    ImageTransparency = 0.35,
-    ScaleType = Enum.ScaleType.Fit,
-    ZIndex = 2,
-}, main)
-
 new("Frame", {
     Name = "Shade",
     Size = UDim2.new(1, 0, 1, 0),
@@ -944,9 +929,9 @@ local STR_ROWS = {
 
 -- Fast Rebirth
 addSection(fastPage, E.fire .. " Fast Rebirth (Pack)")
-addLabel(fastPage, E.bulb .. " Equips Titanium Hydra, rebirths, then re-equips your rep pets.", 34)
 
--- Commentaire d'avertissement ajouté
+-- Nouveau message demandé
+addLabel(fastPage, "⚠️Make sure to have pack for using fast rebirth", 34)
 addLabel(fastPage, "⚠️ use 660 rep speed for faster rebirth", 34)
 
 fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", function(v)
