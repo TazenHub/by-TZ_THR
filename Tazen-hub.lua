@@ -182,3 +182,21 @@ local Toggle = MainTab:CreateToggle({
         end
     end,
 })end
+
+
+local Toggle = MainTab:CreateToggle({
+    Name = "Fast rep",
+    CurrentValue = false,
+    Flag = "Fast Rebirth",
+    Callback = function(Value)
+         if farming then
+                 task.spawn(function()
+                     while farming do
+                         pcall(function()
+                             player.muscleEvent:FireServer("rep")
+                         end)
+                         task.wait(delay)
+                     end
+                 end)
+             end
+         end)end
