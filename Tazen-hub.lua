@@ -53,14 +53,19 @@ local autoStatus = "En attente..."
 
 -- ===================== OUTILS JEU =====================
 local function canRebirth()
-    local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
-    if not leaderstats then return true end
-    local strength = leaderstats:FindFirstChild("Strength")
-        or leaderstats:FindFirstChild("Muscle")
-        or leaderstats:FindFirstChild("Multiplier")
-    if strength and strength.Value then
-        return strength.Value > 0
-    end
+    local okC, result = pcall(function()
+        local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+        if not leaderstats then return true end
+        local strength = leaderstats:FindFirstChild("Strength")
+            or leaderstats:FindFirstChild("Muscle")
+            or leaderstats:FindFirstChild("Multiplier")
+        if strength and strength.Value then
+            local v = tonumber(strength.Value)
+            if v then return v > 0 end
+        end
+        return true
+    end)
+    if okC then return result end
     return true
 end
 
@@ -96,63 +101,77 @@ local function findMuscleEvent(rEvents)
         or rEvents:FindFirstChild("muscleEvent")
 end
 
--- ===================== FAST REBIRTH =====================
+-- ===================== FAST REBIRTH (logique de ton script d'origine) =====================
 local function fastRebirthLoop(myId)
-    local r = getRemotes()
-    if not r or not r.rebirth or not r.equip then
-        fastStatus = "Remotes introuvables (rEvents / rebirthRemote / equipPetEvent)"
+    local function isRunning() return fastRunId == myId end
+
+    local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
+    if not rEvents then
+        fastStatus = "rEvents introuvable"
         warn("[Tazen hub] " .. fastStatus)
         return
     end
-    local function isRunning() return fastRunId == myId end
+
+    local rebirthRemote = rEvents:WaitForChild("rebirthRemote", 5)
+    local equipPetEvent = rEvents:WaitForChild("equipPetEvent", 5)
+    if not rebirthRemote or not equipPetEvent then
+        fastStatus = "rebirthRemote ou equipPetEvent introuvable"
+        warn("[Tazen hub] " .. fastStatus)
+        return
+    end
 
     local cycle = 0
     while isRunning() do
         cycle = cycle + 1
-        local cycleStart = tick()
         local hydraCount, repEquipped, rebirthResult = 0, 0, "-"
-        local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
 
-        if canRebirth() then
-            -- 1. Équiper le Titanium Hydra
-            if petsFolder then
-                for _, folderName in ipairs(PET_FOLDERS) do
+        local okC, errC = pcall(function()
+            local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+
+            if petsFolder and canRebirth() then
+                -- 1. Équipement du Titanium Hydra
+                for _, folderName in ipairs({"Unique", "Rare", "Epic", "Mythic", "Legendary"}) do
                     local folder = petsFolder:FindFirstChild(folderName)
                     if folder then
                         for _, pet in ipairs(folder:GetChildren()) do
-                            if getPetName(pet) == "Titanium Hydra" then
-                                pcall(function() r.equip:FireServer("equipPet", pet) end)
+                            local pName = pet.Name
+                            if pet:FindFirstChild("PetName") then pName = pet.PetName.Value end
+
+                            if pName == "Titanium Hydra" then
+                                pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
                                 hydraCount = hydraCount + 1
                                 task.wait(0.05)
                             end
                         end
                     end
-                    if not isRunning() then return end
                 end
-            end
 
-            -- 2. Rebirth (tenté même si petsFolder est introuvable)
-            local okR, res = pcall(function()
-                return r.rebirth:InvokeServer("rebirthRequest")
-            end)
-            rebirthResult = okR and tostring(res) or ("erreur: " .. tostring(res))
-            task.wait(0.1)
-            if not isRunning() then return end
+                -- 2. Demande de Renaissance
+                local okR, res = pcall(function() return rebirthRemote:InvokeServer("rebirthRequest") end)
+                rebirthResult = okR and tostring(res) or ("erreur: " .. tostring(res))
+                task.wait(0.1)
 
-            -- 3. Équiper les pets de rep (priorité Unique n°4, comme l'ancien script)
-            if petsFolder then
+                -- 3. Équipement des Pets de Rep (Priorité Unique [4])
                 local repPets = {}
                 local uniqueFolder = petsFolder:FindFirstChild("Unique")
                 local priority4Pet = uniqueFolder and uniqueFolder:GetChildren()[4]
 
-                for _, folderName in ipairs(PET_FOLDERS) do
+                for _, folderName in ipairs({"Unique", "Rare", "Epic", "Mythic", "Legendary"}) do
                     local folder = petsFolder:FindFirstChild(folderName)
                     if folder then
                         for _, pet in ipairs(folder:GetChildren()) do
-                            local priority = repSpeedPetPriorities[getPetName(pet)] or 5
+                            local pName = pet.Name
+                            if pet:FindFirstChild("PetName") then pName = pet.PetName.Value end
+
+                            local priority = repSpeedPetPriorities[pName] or 5
                             if priority4Pet and pet == priority4Pet then priority = 0 end
-                            if priority < 5 then
-                                table.insert(repPets, { Instance = pet, Priority = priority, Score = getPetScore(pet) })
+
+                            if priority < 5 or priority4Pet == pet then
+                                table.insert(repPets, {
+                                    Instance = pet,
+                                    Priority = priority,
+                                    Score = getPetScore(pet)
+                                })
                             end
                         end
                     end
@@ -164,59 +183,75 @@ local function fastRebirthLoop(myId)
                 end)
 
                 for _, entry in ipairs(repPets) do
-                    pcall(function() r.equip:FireServer("equipPet", entry.Instance) end)
+                    pcall(function() equipPetEvent:FireServer("equipPet", entry.Instance) end)
                     repEquipped = repEquipped + 1
                     task.wait(0.05)
-                    if not isRunning() then return end
                 end
-            end
 
-            -- 4. Rep régulé pendant ~5.5 s
-            local muscleEvent = findMuscleEvent(r.rEvents)
-            if muscleEvent then
-                local repStart = tick()
-                while tick() - repStart < REP_DURATION and isRunning() do
-                    for _ = 1, REPS_PER_BURST do
-                        pcall(function() muscleEvent:FireServer("rep") end)
+                -- 4. Fast Rep régulé pendant la montée de statistiques (~5.5s)
+                local muscleEvent = LocalPlayer:FindFirstChild("muscleEvent")
+                    or (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("muscleEvent"))
+                    or rEvents:FindFirstChild("muscleEvent")
+
+                if muscleEvent then
+                    local startTime = tick()
+                    while tick() - startTime < 5.5 and isRunning() do
+                        for i = 1, 10 do
+                            muscleEvent:FireServer("rep")
+                        end
+                        repTotal = repTotal + 10
+                        task.wait(6)
                     end
-                    repTotal = repTotal + REPS_PER_BURST
-                    task.wait(REP_INTERVAL)
+                else
+                    task.wait(6)
                 end
+            else
+                rebirthResult = petsFolder and "canRebirth = false" or "petsFolder INTROUVABLE"
+                task.wait(6)
             end
+        end)
+
+        if okC then
+            fastStatus = string.format("Cycle %d | Hydra équipé(s): %d | Rebirth: %s | Pets de rep: %d",
+                cycle, hydraCount, rebirthResult, repEquipped)
         else
-            rebirthResult = "canRebirth = false"
+            fastStatus = "ERREUR: " .. tostring(errC)
+            warn("[Tazen hub] " .. fastStatus)
+            task.wait(6)
         end
-
-        fastStatus = string.format(
-            "Cycle %d | Hydra équipé(s): %d | Rebirth: %s | Pets de rep: %d%s",
-            cycle, hydraCount, rebirthResult, repEquipped,
-            petsFolder and "" or " | petsFolder INTROUVABLE"
-        )
         if cycle <= 3 then print("[Tazen hub] " .. fastStatus) end
-
-        local remaining = CYCLE_TIME - (tick() - cycleStart)
-        task.wait(math.max(remaining, 0.5))
     end
 end
 
--- ===================== AUTO REBIRTH =====================
+-- ===================== AUTO REBIRTH (logique de ton script d'origine) =====================
 local function autoRebirthLoop(myId)
     local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
     local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
+
     if not rebirthRemote then
-        autoStatus = "rebirthRemote introuvable"
+        autoStatus = "rEvents / rebirthRemote introuvable"
         warn("[Tazen hub] " .. autoStatus)
         return
     end
+
     local tries = 0
     while autoRunId == myId do
-        if canRebirth() then
-            tries = tries + 1
-            local okR, res = pcall(function()
-                return rebirthRemote:InvokeServer("rebirthRequest")
-            end)
-            autoStatus = string.format("Tentatives: %d | dernier retour: %s",
-                tries, okR and tostring(res) or ("erreur: " .. tostring(res)))
+        local okC, errC = pcall(function()
+            if canRebirth() then
+                tries = tries + 1
+                local okR, res = pcall(function()
+                    return rebirthRemote:InvokeServer("rebirthRequest")
+                end)
+                autoStatus = string.format("Tentatives: %d | dernier retour: %s",
+                    tries, okR and tostring(res) or ("erreur: " .. tostring(res)))
+                if tries <= 3 then print("[Tazen hub] " .. autoStatus) end
+            else
+                autoStatus = "canRebirth = false"
+            end
+        end)
+        if not okC then
+            autoStatus = "ERREUR: " .. tostring(errC)
+            warn("[Tazen hub] " .. autoStatus)
         end
         task.wait(6)
     end
@@ -551,7 +586,7 @@ end
 local function createTab(name)
     tabCount = tabCount + 1
     local button = new("TextButton", {
-        Size = UDim2.fromOffset(112, 28),
+        Size = UDim2.fromOffset(140, 28),
         BackgroundColor3 = T.Element,
         BackgroundTransparency = 0.25,
         Text = name,
@@ -836,13 +871,25 @@ end
 local fastPage = createTab("Fast Rebirth")
 local autoPage = createTab("Auto Rebirth")
 local strPage = createTab("Fast Strength")
-local calcPage = createTab("Calculateur")
 
 local fastToggle, autoToggle, repToggle
 
+local function resetStats()
+    tracker.strGain = 0
+    tracker.rebGain = 0
+    samples = {}
+    notify("Calculateur", "Stats remises à zéro")
+end
+
+local REB_ROWS = { "Par seconde", "Par minute", "Par heure", "Par jour", "Par semaine", "Total gagné" }
+local STR_ROWS = {
+    "Par seconde", "Par minute", "Par heure", "Par jour", "Par semaine",
+    "Total gagné", "Force par rep (≈)",
+}
+
 -- Fast Rebirth
 addSection(fastPage, "Fast Rebirth (Pack)")
-addLabel(fastPage, "Équipe Titanium Hydra, rebirth, puis rééquipe tes pets de rep (cycle ~6,2 s).", 44)
+addLabel(fastPage, "Équipe Titanium Hydra, rebirth, puis rééquipe tes pets de rep.", 34)
 fastToggle = addToggle(fastPage, "Fast rebirth", function(v)
     fastRunId = fastRunId + 1
     if v then
@@ -856,6 +903,9 @@ fastToggle = addToggle(fastPage, "Fast rebirth", function(v)
     end
 end)
 local fastStatusLabel = addLabel(fastPage, fastStatus, 60)
+addSection(fastPage, "Calculateur de renaissances")
+local fastRebBlock = addStatBlock(fastPage, "RENAISSANCES (mesure sur 20 s)", REB_ROWS)
+addButton(fastPage, "Réinitialiser les stats", resetStats)
 
 -- Auto Rebirth
 addSection(autoPage, "Auto Rebirth (No Pack)")
@@ -872,6 +922,9 @@ autoToggle = addToggle(autoPage, "Auto rebirth", function(v)
     end
 end)
 local autoStatusLabel = addLabel(autoPage, autoStatus, 40)
+addSection(autoPage, "Calculateur de renaissances")
+local autoRebBlock = addStatBlock(autoPage, "RENAISSANCES (mesure sur 20 s)", REB_ROWS)
+addButton(autoPage, "Réinitialiser les stats", resetStats)
 
 -- Fast Strength
 addSection(strPage, "Fast Strength")
@@ -886,22 +939,9 @@ repToggle = addToggle(strPage, "Fast strength", function(v)
 end)
 addSlider(strPage, "Rep par seconde", 659, 3000, repRate, function(v) repRate = v end)
 local repLabel = addLabel(strPage, "Rep/s réel : --", 34)
-
--- Calculateur
-addSection(calcPage, "Calculateur (mesure réelle sur 20 s)")
-local strBlock = addStatBlock(calcPage, "FORCE", {
-    "Par seconde", "Par minute", "Par heure", "Par jour", "Par semaine",
-    "Total gagné", "Force par rep (≈)",
-})
-local rebBlock = addStatBlock(calcPage, "RENAISSANCES", {
-    "Par seconde", "Par minute", "Par heure", "Par jour", "Par semaine", "Total gagné",
-})
-addButton(calcPage, "Réinitialiser les stats", function()
-    tracker.strGain = 0
-    tracker.rebGain = 0
-    samples = {}
-    notify("Calculateur", "Stats remises à zéro")
-end)
+addSection(strPage, "Calculateur de force")
+local strBlock = addStatBlock(strPage, "FORCE (mesure sur 20 s)", STR_ROWS)
+addButton(strPage, "Réinitialiser les stats", resetStats)
 
 selectTab("Fast Rebirth")
 
@@ -931,10 +971,13 @@ task.spawn(function()
 
             local rList = projections(rebRate)
             table.insert(rList, fmt(tracker.rebGain))
-            rebBlock:Set(rList)
+            fastRebBlock:Set(rList)
+            autoRebBlock:Set(rList)
         else
             strBlock:Set({ "mesure...", "mesure...", "mesure...", "mesure...", "mesure...", fmt(tracker.strGain), "--" })
-            rebBlock:Set({ "mesure...", "mesure...", "mesure...", "mesure...", "mesure...", fmt(tracker.rebGain) })
+            local pending = { "mesure...", "mesure...", "mesure...", "mesure...", "mesure...", fmt(tracker.rebGain) }
+            fastRebBlock:Set(pending)
+            autoRebBlock:Set(pending)
         end
     end
 end)
