@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZN_THR (Cleaned Template for Custom Functions)
+-- Tazen hub V1 by TZN_THR (Template with Calculator & Fast Rep Slider)
 
 local ok, err = pcall(function()
 
@@ -15,7 +15,6 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 -- ===================== SETTINGS =====================
--- Inseres tes parametres / variables de configuration ici
 local E = {
     bolt = "\u{26A1}", cycle = "\u{1F504}", muscle = "\u{1F4AA}", toolbox = "\u{1F9F0}",
     sleep = "\u{1F634}", rocket = "\u{1F680}", sparkles = "\u{2728}", heart = "\u{1F496}",
@@ -40,6 +39,9 @@ end
 
 -- ===================== TES FONCTIONS SUR MESURE =====================
 
+-- Variable pour stocker la valeur du slider Fast Rep
+local fastRepSpeed = 659
+
 -- 1. Ta fonction pour Fast Rebirth
 local function myFastRebirthFunction(state)
     -- [TES FONCTIONS ICI]
@@ -50,7 +52,14 @@ local function myFastRebirthFunction(state)
     end
 end
 
--- 2. Ta fonction pour Auto Rebirth
+-- 2. Ta fonction pour le Slider Fast Rep (Vitesse/Rep)
+local function myFastRepSpeedFunction(value)
+    fastRepSpeed = value
+    -- [TES FONCTIONS ICI]
+    print("[Tazen hub] Fast Rep Speed modifie : " .. tostring(value))
+end
+
+-- 3. Ta fonction pour Auto Rebirth
 local function myAutoRebirthFunction(state)
     -- [TES FONCTIONS ICI]
     if state then
@@ -60,7 +69,7 @@ local function myAutoRebirthFunction(state)
     end
 end
 
--- 3. Ta fonction pour Fast Strength
+-- 4. Ta fonction pour Fast Strength
 local function myFastStrengthFunction(state)
     -- [TES FONCTIONS ICI]
     if state then
@@ -70,7 +79,7 @@ local function myFastStrengthFunction(state)
     end
 end
 
--- 4. Ta fonction pour Anti AFK
+-- 5. Ta fonction pour Anti AFK
 local function myAntiAfkFunction(state)
     -- [TES FONCTIONS ICI]
     if state then
@@ -80,7 +89,7 @@ local function myAntiAfkFunction(state)
     end
 end
 
--- 5. Ta fonction pour Anti Lag
+-- 6. Ta fonction pour Anti Lag
 local function myAntiLagFunction(state)
     -- [TES FONCTIONS ICI]
     if state then
@@ -166,7 +175,7 @@ local gui = new("ScreenGui", {
 local cam = workspace.CurrentCamera
 local vp = cam and cam.ViewportSize or Vector2.new(900, 600)
 local W = math.min(520, vp.X - 30)
-local H = math.min(360, vp.Y - 30)
+local H = math.min(380, vp.Y - 30)
 
 local main = new("Frame", {
     Name = "Main",
@@ -421,7 +430,7 @@ local function addToggle(page, name, callback)
         Position = UDim2.new(1, -52, 0.5, -10),
         BackgroundColor3 = T.Off,
         BorderSizePixel = 0,
-    }, f)
+    }, sw)
     corner(sw, 10)
     local knob = new("Frame", {
         Size = UDim2.fromOffset(16, 16),
@@ -446,21 +455,71 @@ local function addToggle(page, name, callback)
     return obj
 end
 
-local function addButton(page, name, callback)
-    local b = new("TextButton", {
-        Size = UDim2.new(1, 0, 0, 38),
+local function addSlider(page, name, min, max, default, callback)
+    local f = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 54),
         BackgroundColor3 = T.Element,
         BackgroundTransparency = 0.2,
-        Text = name,
-        Font = Enum.Font.GothamBold,
-        TextSize = 14,
-        TextColor3 = T.Text,
-        TextStrokeTransparency = 0.5,
         BorderSizePixel = 0,
     }, page)
-    corner(b, 8)
-    stroke(b, T.Accent, 1)
-    b.Activated:Connect(callback)
+    corner(f, 8)
+    stroke(f, T.Stroke, 1)
+
+    textLabel({
+        Size = UDim2.new(1, -80, 0, 22),
+        Position = UDim2.new(0, 12, 0, 4),
+        Text = name,
+    }, f)
+
+    local valLbl = textLabel({
+        Size = UDim2.new(0, 60, 0, 22),
+        Position = UDim2.new(1, -72, 0, 4),
+        Text = tostring(default),
+        TextColor3 = T.Accent,
+        TextXAlignment = Enum.TextXAlignment.Right,
+        Font = Enum.Font.GothamBold,
+    }, f)
+
+    local track = new("Frame", {
+        Size = UDim2.new(1, -24, 0, 8),
+        Position = UDim2.new(0, 12, 0, 34),
+        BackgroundColor3 = T.Off,
+        BorderSizePixel = 0,
+    }, f)
+    corner(track, 4)
+
+    local fill = new("Frame", {
+        Size = UDim2.new((default - min) / (max - min), 0, 1, 0),
+        BackgroundColor3 = T.Accent,
+        BorderSizePixel = 0,
+    }, track)
+    corner(fill, 4)
+
+    local dragging = false
+    local function update(input)
+        local posX = math.clamp((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+        local val = math.floor(min + posX * (max - min))
+        fill.Size = UDim2.new(posX, 0, 1, 0)
+        valLbl.Text = tostring(val)
+        if callback then callback(val) end
+    end
+
+    track.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            update(input)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            update(input)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
 end
 
 local function addCredit(page, text)
@@ -484,33 +543,66 @@ local function addCredit(page, text)
     }, f)
 end
 
--- Notifications
-local function notify(title, text)
-    if not alive then return end
-    local n = new("Frame", {
-        Size = UDim2.fromOffset(250, 56),
-        Position = UDim2.new(1, 20, 1, -76),
-        BackgroundColor3 = T.Topbar,
+-- ===================== CALCULATOR LOGIC =====================
+local function formatNum(n)
+    local s = tostring(math.floor(n))
+    local k
+    while true do
+        s, k = string.gsub(s, "^(-?%d+)(%d%d%d)", "%1,%2")
+        if k == 0 then break end
+    end
+    return s
+end
+
+local function addCalculator(page)
+    addSection(page, E.chart .. " Rebirth Calculator")
+
+    local calcBox = new("TextBox", {
+        Size = UDim2.new(1, 0, 0, 36),
+        BackgroundColor3 = T.Element,
+        BackgroundTransparency = 0.2,
+        Text = "",
+        PlaceholderText = "Enter target Rebirths...",
+        PlaceholderColor3 = T.SubText,
+        TextColor3 = T.Text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 13,
         BorderSizePixel = 0,
-    }, gui)
-    corner(n, 10)
-    stroke(n, T.Accent, 1.5)
-    textLabel({
-        Size = UDim2.new(1, -16, 0, 22), Position = UDim2.new(0, 10, 0, 5),
-        Text = title, Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = T.Accent,
-    }, n)
-    textLabel({
-        Size = UDim2.new(1, -16, 0, 22), Position = UDim2.new(0, 10, 0, 27),
-        Text = text, TextSize = 12, TextColor3 = T.SubText,
-    }, n)
-    local info = TweenInfo.new(0.25, Enum.EasingStyle.Quad)
-    TweenService:Create(n, info, { Position = UDim2.new(1, -270, 1, -76) }):Play()
-    task.delay(2.5, function()
-        if n and n.Parent then
-            TweenService:Create(n, info, { Position = UDim2.new(1, 20, 1, -76) }):Play()
-            task.wait(0.3)
-            n:Destroy()
+    }, page)
+    corner(calcBox, 8)
+    stroke(calcBox, T.Stroke, 1)
+
+    local resLbl = addLabel(page, E.hourglass .. " Result will appear here...", 50)
+
+    calcBox.FocusLost:Connect(function()
+        local target = tonumber(calcBox.Text)
+        if not target then
+            resLbl:SetText(E.no .. " Invalid number entered.")
+            return
         end
+
+        local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+        local currentRebirths = leaderstats and leaderstats:FindFirstChild("Rebirths") and leaderstats.Rebirths.Value or 0
+        local needed = target - currentRebirths
+
+        if needed <= 0 then
+            resLbl:SetText(E.ok .. " Target already reached or exceeded!")
+            return
+        end
+
+        -- Calcul estime base sur le Fast Rep Speed actuel
+        local seconds = needed * (1 / (fastRepSpeed / 100))
+        local mins = math.floor(seconds / 60)
+        local hrs = math.floor(mins / 60)
+        local days = math.floor(hrs / 24)
+
+        local timeStr = ""
+        if days > 0 then timeStr = timeStr .. days .. "d " end
+        if hrs % 24 > 0 then timeStr = timeStr .. (hrs % 24) .. "h " end
+        if mins % 60 > 0 then timeStr = timeStr .. (mins % 60) .. "m " end
+        timeStr = timeStr .. math.floor(seconds % 60) .. "s"
+
+        resLbl:SetText(E.target .. " Needed: " .. formatNum(needed) .. " Rebirths\n" .. E.clock .. " Est. Time: " .. timeStr)
     end)
 end
 
@@ -529,6 +621,11 @@ local miscPage = createTab(TAB_MISC)
 addSection(fastPage, E.fire .. " Fast Rebirth")
 addToggle(fastPage, E.bolt .. " Fast rebirth", function(state)
     myFastRebirthFunction(state)
+end)
+
+-- Slider Fast Rep (659 -> 3000)
+addSlider(fastPage, E.bolt .. " Fast Rep Speed", 659, 3000, 659, function(value)
+    myFastRepSpeedFunction(value)
 end)
 
 -- Auto Rebirth
@@ -552,6 +649,9 @@ end)
 addToggle(miscPage, E.rocket .. " Anti Lag", function(state)
     myAntiLagFunction(state)
 end)
+
+-- Calculateur dans l'onglet Misc
+addCalculator(miscPage)
 
 addSection(miscPage, E.heart .. " Credits")
 addCredit(miscPage, E.sparkles .. " Made by TZN_THR, Thank you for using my script have fun " .. E.party)
@@ -581,7 +681,7 @@ connect(UserInputService.InputBegan, function(input, processed)
     end
 end)
 
-print("[Tazen hub] UI loaded without default functions")
+print("[Tazen hub] UI re-loaded with Calculator & Slider (659-3000)")
 
 end)
 
