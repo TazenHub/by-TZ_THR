@@ -110,8 +110,11 @@ local function fastRebirthLoop(myId)
         local HYDRA_LEAD = 0.05             -- hydras equipped this long BEFORE the rebirth is sent
         local HYDRA_TAIL = 0.05             -- hydras unequipped this long AFTER the rebirth is sent (lead + tail = 0.10 s)
         local REBIRTH_MARGIN = 0.03         -- safety margin added to the 6 s cooldown
-        local FALLBACK_SLOTS = 12           -- used only if the pet slots can't be detected
-        local STARTUP_UNEQUIP_PER_FRAME = 10
+        local SLOTS = 12                    -- number of rep-speed pets equipped outside the rebirth window
+        local AUTO_DETECT_SLOTS = false     -- true = try to detect the slots on the player (else SLOTS is used)
+        local FULL_SWAP = true              -- true: rebirth window = hydras ONLY (all rep pets off, like the original)
+                                            -- false: only the last rep pets are swapped with the hydras
+        local STARTUP_UNEQUIP_PER_FRAME = 20
         local LIST_REFRESH_EVERY = 5        -- cycles between two refreshes of the pet lists
 
         local function petRealName(pet)
@@ -134,7 +137,7 @@ local function fastRebirthLoop(myId)
             end
         end
 
-        -- number of pet slots: looks for a "pet slots" value on the player, else FALLBACK_SLOTS
+        -- number of pet slots: looks for a "pet slots" value on the player, else SLOTS
         local function detectSlots(petsFolder)
             local best
             local function consider(name, v)
@@ -258,8 +261,8 @@ local function fastRebirthLoop(myId)
         end
         if not isRunning() then return end
 
-        local detected = detectSlots(petsFolder)
-        local slots = detected or FALLBACK_SLOTS
+        local detected = AUTO_DETECT_SLOTS and detectSlots(petsFolder) or nil
+        local slots = detected or SLOTS
 
         local hydraList, repTarget, swapList
         local function rebuild()
@@ -267,7 +270,9 @@ local function fastRebirthLoop(myId)
             local keep = math.max(0, slots - #hydraList)
             repTarget = buildRepList(petsFolder, slots)          -- what is equipped most of the time
             swapList = {}                                        -- what is equipped around the rebirth
-            for i = 1, math.min(keep, #repTarget) do table.insert(swapList, repTarget[i]) end
+            if not FULL_SWAP then
+                for i = 1, math.min(keep, #repTarget) do table.insert(swapList, repTarget[i]) end
+            end
             for _, h in ipairs(hydraList) do table.insert(swapList, h) end
         end
         rebuild()
@@ -279,13 +284,13 @@ local function fastRebirthLoop(myId)
             return
         end
         print(string.format("[Tazen hub] Pet slots: %d (%s) | Rep pets: %d | Titanium Hydras: %d",
-            slots, detected and "detected" or "fallback", #repTarget, #hydraList))
+            slots, detected and "detected" or "fixed", #repTarget, #hydraList))
 
         -- start: one clean unequip, then the rep pets
         fastStatus = "Starting: cleaning pets..."
         unequipAllPets(petsFolder)
         if not isRunning() then return end
-        setEquipped(repTarget, false)
+        setEquipped(repTarget, true)
 
         -- ===== CYCLE =====
         local cycle = 0
