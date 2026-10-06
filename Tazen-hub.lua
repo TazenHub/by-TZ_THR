@@ -211,6 +211,39 @@ local function fastRebirthLoop(myId)
             end
         end
 
+        -- Hydra unequip can be refused by the game's cooldown -> resend it several times.
+        -- Tune these two values if the hydras still stay equipped.
+        local HYDRA_UNEQUIP_RETRIES = 4   -- number of passes
+        local HYDRA_RETRY_WAIT = 0.15     -- seconds between two passes
+
+        local function backToRepPets(hydras, reps)
+            for attempt = 1, HYDRA_UNEQUIP_RETRIES do
+                -- (re)send the unequip of every Titanium Hydra
+                for _, pet in ipairs(hydras) do
+                    if pet.Parent then
+                        equipPetEvent:FireServer("unequipPet", pet)
+                        task.wait()
+                    end
+                end
+                -- rep pets: equipped on the first pass, and once more on the last pass
+                if attempt == 1 or attempt == HYDRA_UNEQUIP_RETRIES then
+                    for _, pet in ipairs(reps) do
+                        if pet.Parent then
+                            equipPetEvent:FireServer("equipPet", pet)
+                            task.wait()
+                        end
+                    end
+                end
+                if attempt < HYDRA_UNEQUIP_RETRIES then
+                    task.wait(HYDRA_RETRY_WAIT)
+                end
+            end
+            equipped = {}
+            for _, pet in ipairs(reps) do
+                if pet.Parent then table.insert(equipped, pet) end
+            end
+        end
+
         local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
         while isRunning() and not petsFolder do
             fastStatus = "petsFolder not found"
@@ -248,8 +281,8 @@ local function fastRebirthLoop(myId)
             local rebirthResult = rebirthRemote:InvokeServer("rebirthRequest")
             lastRebirth = os.clock()
 
-            -- 3. IMMEDIATELY BACK TO REP PETS
-            setEquipped(repList)
+            -- 3. IMMEDIATELY BACK TO REP PETS (hydra unequip is retried)
+            backToRepPets(hydraList, repList)
 
             fastStatus = string.format("Cycle %d | Rebirth result: %s | Rep pets: %d | Swap: %.2fs",
                 cycle, tostring(rebirthResult), #repList, measured)
