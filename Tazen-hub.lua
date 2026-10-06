@@ -22,6 +22,7 @@ local Window = Rayfield:CreateWindow({
    Discord = { Enabled = false },
    KeySystem = false
 })
+
 -- ONGLETS
 
 local MainTab = Window:CreateTab("Fast Rebirth", 4483362458)
@@ -39,185 +40,195 @@ local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
 local function canRebirth()
-local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
-if not leaderstats then return true end
+    local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+    if not leaderstats then return true end
 
-local strength = leaderstats:FindFirstChild("Strength") or leaderstats:FindFirstChild("Muscle") or leaderstats:FindFirstChild("Multiplier")
-if strength and strength.Value then
-    return strength.Value > 0
-end
-return true
+    local strength = leaderstats:FindFirstChild("Strength") or leaderstats:FindFirstChild("Muscle") or leaderstats:FindFirstChild("Multiplier")
+    if strength and strength.Value then
+        return strength.Value > 0
+    end
+    return true
 end
 
 local repSpeedPetPriorities = {
-["Omega Overlord"] = 1,
-["Mythic Boss Pet"] = 2,
-["Legendary Boss Pet"] = 3,
-["Epic Boss Pet"] = 4,
+    ["Omega Overlord"] = 1,
+    ["Mythic Boss Pet"] = 2,
+    ["Legendary Boss Pet"] = 3,
+    ["Epic Boss Pet"] = 4,
 }
 
 local function getPetScore(pet)
-local repSpeedObj = pet:FindFirstChild("RepSpeed") or pet:FindFirstChild("Rep Speed")
-if repSpeedObj and (repSpeedObj:IsA("NumberValue") or repSpeedObj:IsA("IntValue")) then
-return repSpeedObj.Value
+    local repSpeedObj = pet:FindFirstChild("RepSpeed") or pet:FindFirstChild("Rep Speed")
+    if repSpeedObj and (repSpeedObj:IsA("NumberValue") or repSpeedObj:IsA("IntValue")) then
+        return repSpeedObj.Value
+    end
+
+    local attr = pet:GetAttribute("RepSpeed") or pet:GetAttribute("Rep Speed")
+    if attr then return tonumber(attr) or 0 end
+
+    local levelObj = pet:FindFirstChild("Level") or pet:FindFirstChild("Lvl")
+    if levelObj and levelObj.Value then
+        return tonumber(levelObj.Value) or 0
+    end
+
+    return 1
 end
 
-local attr = pet:GetAttribute("RepSpeed") or pet:GetAttribute("Rep Speed")
-if attr then return tonumber(attr) or 0 end
-
-local levelObj = pet:FindFirstChild("Level") or pet:FindFirstChild("Lvl")
-if levelObj and levelObj.Value then
-    return tonumber(levelObj.Value) or 0
-end
-
-return 1
-end
-
--- 1. FAST REBIRTH (PACK) SÉCURISÉ
+-- 1. FAST REBIRTH (PACK) SÉCURISÉ ANTI-KICK
 
 MainTab:CreateToggle({
-Name = "Fast rebirth",
-CurrentValue = false,
-Flag = "Fast Rebirth Flag",
-Callback = function(Value)
-fastRebirthActive = Value
+    Name = "Fast rebirth",
+    CurrentValue = false,
+    Flag = "Fast Rebirth Flag",
+    Callback = function(Value)
+        fastRebirthActive = Value
 
-    if fastRebirthActive then
-        task.spawn(function()
-            local ReplicatedStorage = game:GetService("ReplicatedStorage")
-            local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
-            if not rEvents then return end
-            
-            local rebirthRemote = rEvents:WaitForChild("rebirthRemote", 5)
-            local equipPetEvent = rEvents:WaitForChild("equipPetEvent", 5)
-            
-            local function unequipAllPets(petsFolder)
-                for _, folderName in ipairs({"Unique", "Rare", "Epic", "Mythic", "Legendary"}) do
-                    local folder = petsFolder:FindFirstChild(folderName)
-                    if folder then
-                        for _, pet in ipairs(folder:GetChildren()) do
-                            pcall(function()
-                                equipPetEvent:FireServer("unequipPet", pet)
-                            end)
-                            task.wait(0.05)
-                        end
-                    end
-                end
-            end
-
-            while fastRebirthActive do
-                local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+        if fastRebirthActive then
+            task.spawn(function()
+                local ReplicatedStorage = game:GetService("ReplicatedStorage")
+                local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
+                if not rEvents then return end
                 
-                if petsFolder and canRebirth() then
-                    unequipAllPets(petsFolder)
-                    
+                local rebirthRemote = rEvents:WaitForChild("rebirthRemote", 5)
+                local equipPetEvent = rEvents:WaitForChild("equipPetEvent", 5)
+                
+                -- Fonction de déséquipement ciblée (uniquement ce qui est équipé)
+                local function unequipEquippedPets(petsFolder)
                     for _, folderName in ipairs({"Unique", "Rare", "Epic", "Mythic", "Legendary"}) do
                         local folder = petsFolder:FindFirstChild(folderName)
                         if folder then
                             for _, pet in ipairs(folder:GetChildren()) do
-                                local pName = pet.Name
-                                if pet:FindFirstChild("PetName") then pName = pet.PetName.Value end
-                                
-                                if pName == "Titanium Hydra" then
+                                local isEquipped = pet:FindFirstChild("Equipped") or pet:GetAttribute("Equipped")
+                                if isEquipped and (isEquipped == true or (isEquipped:IsA("BoolValue") and isEquipped.Value)) then
                                     pcall(function()
-                                        equipPetEvent:FireServer("equipPet", pet)
+                                        equipPetEvent:FireServer("unequipPet", pet)
                                     end)
-                                    task.wait(0.05)
+                                    task.wait(0.1) -- Pause sécurisée anti-kick
                                 end
                             end
                         end
-                    end
-
-                    pcall(function()
-                        rebirthRemote:InvokeServer("rebirthRequest")
-                    end)
-
-                    unequipAllPets(petsFolder)
-
-                    local repPets = {}
-                    local uniqueFolder = petsFolder:FindFirstChild("Unique")
-                    local priority4Pet = uniqueFolder and uniqueFolder:GetChildren()[4]
-
-                    for _, folderName in ipairs({"Unique", "Rare", "Epic", "Mythic", "Legendary"}) do
-                        local folder = petsFolder:FindFirstChild(folderName)
-                        if folder then
-                            for _, pet in ipairs(folder:GetChildren()) do
-                                local pName = pet.Name
-                                if pet:FindFirstChild("PetName") then pName = pet.PetName.Value end
-
-                                local priority = repSpeedPetPriorities[pName] or 5
-                                if priority4Pet and pet == priority4Pet then
-                                    priority = 0
-                                end
-
-                                if priority < 5 or priority4Pet == pet then
-                                    table.insert(repPets, {
-                                        Instance = pet, 
-                                        Priority = priority, 
-                                        Score = getPetScore(pet)
-                                    })
-                                end
-                            end
-                        end
-                    end
-
-                    table.sort(repPets, function(a, b)
-                        if a.Priority == b.Priority then
-                            return a.Score > b.Score
-                        end
-                        return a.Priority < b.Priority
-                    end)
-
-                    for _, entry in ipairs(repPets) do
-                        pcall(function()
-                            equipPetEvent:FireServer("equipPet", entry.Instance)
-                        end)
-                        task.wait(0.05)
                     end
                 end
-                
-                task.wait(6)
-            end
-        end)
-    end
-end,
+
+                while fastRebirthActive do
+                    local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+                    
+                    if petsFolder and canRebirth() then
+                        -- 1. Déséquipement sécurisé
+                        unequipEquippedPets(petsFolder)
+                        
+                        -- 2. Équipement du Titanium Hydra
+                        for _, folderName in ipairs({"Unique", "Rare", "Epic", "Mythic", "Legendary"}) do
+                            local folder = petsFolder:FindFirstChild(folderName)
+                            if folder then
+                                for _, pet in ipairs(folder:GetChildren()) do
+                                    local pName = pet.Name
+                                    if pet:FindFirstChild("PetName") then pName = pet.PetName.Value end
+                                    
+                                    if pName == "Titanium Hydra" then
+                                        pcall(function()
+                                            equipPetEvent:FireServer("equipPet", pet)
+                                        end)
+                                        task.wait(0.1)
+                                    end
+                                end
+                            end
+                        end
+
+                        -- 3. Demande de rebirth
+                        pcall(function()
+                            rebirthRemote:InvokeServer("rebirthRequest")
+                        end)
+                        task.wait(0.5)
+
+                        -- 4. Retrait du Titanium Hydra
+                        unequipEquippedPets(petsFolder)
+
+                        -- 5. Tri et équipement des Rep Pets (Priorité absolue au pet Unique [4])
+                        local repPets = {}
+                        local uniqueFolder = petsFolder:FindFirstChild("Unique")
+                        local priority4Pet = uniqueFolder and uniqueFolder:GetChildren()[4]
+
+                        for _, folderName in ipairs({"Unique", "Rare", "Epic", "Mythic", "Legendary"}) do
+                            local folder = petsFolder:FindFirstChild(folderName)
+                            if folder then
+                                for _, pet in ipairs(folder:GetChildren()) do
+                                    local pName = pet.Name
+                                    if pet:FindFirstChild("PetName") then pName = pet.PetName.Value end
+
+                                    local priority = repSpeedPetPriorities[pName] or 5
+                                    if priority4Pet and pet == priority4Pet then
+                                        priority = 0
+                                    end
+
+                                    if priority < 5 or priority4Pet == pet then
+                                        table.insert(repPets, {
+                                            Instance = pet, 
+                                            Priority = priority, 
+                                            Score = getPetScore(pet)
+                                        })
+                                    end
+                                end
+                            end
+                        end
+
+                        table.sort(repPets, function(a, b)
+                            if a.Priority == b.Priority then
+                                return a.Score > b.Score
+                            end
+                            return a.Priority < b.Priority
+                        end)
+
+                        for _, entry in ipairs(repPets) do
+                            pcall(function()
+                                equipPetEvent:FireServer("equipPet", entry.Instance)
+                            end)
+                            task.wait(0.1)
+                        end
+                    end
+                    
+                    task.wait(6)
+                end
+            end)
+        end
+    end,
 })
 
 -- 2. AUTO REBIRTH (NO PACK) SÉCURISÉ ANTI-KICK
 
 RebTab:CreateToggle({
-Name = "Auto rebirth",
-CurrentValue = false,
-Flag = "Auto Rebirth Flag",
-Callback = function(Value)
-simpleRebirthActive = Value
+    Name = "Auto rebirth",
+    CurrentValue = false,
+    Flag = "Auto Rebirth Flag",
+    Callback = function(Value)
+        simpleRebirthActive = Value
 
-    if simpleRebirthActive then
-        task.spawn(function()
-            local ReplicatedStorage = game:GetService("ReplicatedStorage")
-            local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
-            local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
-            
-            if not rebirthRemote then return end
+        if simpleRebirthActive then
+            task.spawn(function()
+                local ReplicatedStorage = game:GetService("ReplicatedStorage")
+                local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
+                local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
+                
+                if not rebirthRemote then return end
 
-            while simpleRebirthActive do
-                if canRebirth() then
-                    local success = pcall(function()
-                        rebirthRemote:InvokeServer("rebirthRequest")
-                    end)
-                    
-                    if success then
-                        task.wait(1.2)
+                while simpleRebirthActive do
+                    if canRebirth() then
+                        local success = pcall(function()
+                            rebirthRemote:InvokeServer("rebirthRequest")
+                        end)
+                        
+                        if success then
+                            task.wait(1.2)
+                        else
+                            task.wait(2)
+                        end
                     else
-                        task.wait(2)
+                        task.wait(1.5)
                     end
-                else
-                    task.wait(1.5)
                 end
-            end
-        end)
-    end
-end,
+            end)
+        end
+    end,
 })
 
 end
