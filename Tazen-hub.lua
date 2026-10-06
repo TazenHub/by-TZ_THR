@@ -33,11 +33,12 @@ local IMAGE_ID = 0
 -- Or put the file in your executor's "workspace" folder
 local IMAGE_FILE = "tazen_logo.png"
 
+-- Pet priorities focusing strictly on Fast Rep speed pets
 local repSpeedPetPriorities = {
     ["Omega Overlord"] = 1,
-    ["Mythic Boss Pet"] = 2,
-    ["Legendary Boss Pet"] = 3,
-    ["Epic Boss Pet"] = 4,
+    ["Mythic Boss Pet"] = 1,
+    ["Legendary Boss Pet"] = 2,
+    ["Epic Boss Pet"] = 3,
 }
 -- ===================== STATE =====================
 local alive = true
@@ -51,7 +52,7 @@ end
 local fastRunId = 0
 local autoRunId = 0
 local repRunId = 0
-local repRate = 660          -- target reps per second (minimum 659)
+local repRate = 659          -- target reps per second (default recommended: 659)
 local repCounter = 0         -- reps sent during the last second
 local repTotal = 0           -- total reps sent
 local fastStatus = "Waiting..."
@@ -92,11 +93,6 @@ local function findMuscleEvent(rEvents)
 end
 
 -- ===================== FAST REBIRTH =====================
--- 6 s cycle:  [ rep-speed pets equipped ~5.90 s ] [ Titanium Hydras ~0.10 s around the rebirth ]
---   * the best rep pets stay equipped ALL the time
---   * only the LAST rep pets (as many as there are hydras) are swapped with the hydras
---   * hydras are equipped HYDRA_LEAD before the rebirth, unequipped HYDRA_TAIL after it
---   * no "unequip everything" in the loop: only a handful of calls per cycle
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     local startClock = os.clock()
@@ -106,27 +102,22 @@ local function fastRebirthLoop(myId)
         local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
 
-        -- ===== TIMINGS (tune these) =====
-        local HYDRA_LEAD = 0.10             -- hydras equipped this long BEFORE the rebirth is sent (raise it if they are not on yet)
-        local HYDRA_TAIL = 0.05             -- hydras unequipped this long AFTER the rebirth is sent
-        local REP_OFF_LEAD = 0.10           -- rep pets unequipped this long BEFORE the rebirth (>= HYDRA_LEAD).
-                                            -- equal to HYDRA_LEAD = one single step, hydras first in the queue
-        local REP_ON_DELAY = 0.05           -- rep pets re-equipped this long AFTER the rebirth is sent (never before the hydras are off)
-        local REBIRTH_MARGIN = 0.03         -- safety margin added to the 6 s cooldown
-        local SLOTS = 12                    -- rep-speed pets to equip. 0 = AUTO: the script tries the AUTO_TRY best
-                                            -- rep pets and the game only keeps as many as the player has slots
-        local AUTO_TRY = 20                 -- how many pets are tried in AUTO mode (SLOTS = 0)
-        local FULL_SWAP = true              -- true: rebirth window = hydras ONLY (all rep pets off, like the original)
-                                            -- false: only the last rep pets are swapped with the hydras
+        local HYDRA_LEAD = 0.10             
+        local HYDRA_TAIL = 0.05             
+        local REP_OFF_LEAD = 0.10           
+        local REP_ON_DELAY = 0.05           
+        local REBIRTH_MARGIN = 0.03         
+        local SLOTS = 12                    
+        local AUTO_TRY = 20                 
+        local FULL_SWAP = true              
         local STARTUP_UNEQUIP_PER_FRAME = 20
-        local LIST_REFRESH_EVERY = 5        -- cycles between two refreshes of the pet lists
+        local LIST_REFRESH_EVERY = 5        
 
         local function petRealName(pet)
             if pet:FindFirstChild("PetName") then return pet.PetName.Value end
             return pet.Name
         end
 
-        -- startup only: unequip every pet (in chunks per frame)
         local function unequipAllPets(petsFolder)
             local count = 0
             for _, folderName in ipairs(FOLDERS) do
@@ -142,7 +133,6 @@ local function fastRebirthLoop(myId)
             return count
         end
 
-        -- Titanium Hydras (x2 rebirths)
         local function buildHydraList(petsFolder, slots)
             local list = {}
             for _, folderName in ipairs(FOLDERS) do
@@ -158,27 +148,18 @@ local function fastRebirthLoop(myId)
             return list
         end
 
-        -- rep-speed pets sorted by priority (best first), capped to the slots
         local function buildRepList(petsFolder, slots)
             local repPets = {}
-            local uniqueFolder = petsFolder:FindFirstChild("Unique")
-            local priority4Pet = uniqueFolder and uniqueFolder:GetChildren()[4] -- target pet from the video
-
             for _, folderName in ipairs(FOLDERS) do
                 local folder = petsFolder:FindFirstChild(folderName)
                 if folder then
                     for _, pet in ipairs(folder:GetChildren()) do
                         local priority = repSpeedPetPriorities[petRealName(pet)] or 5
-                        if priority4Pet and pet == priority4Pet then
-                            priority = 0
-                        end
-                        if priority < 5 or priority4Pet == pet then
-                            table.insert(repPets, {
-                                Instance = pet,
-                                Priority = priority,
-                                Score = getPetScore(pet)
-                            })
-                        end
+                        table.insert(repPets, {
+                            Instance = pet,
+                            Priority = priority,
+                            Score = getPetScore(pet)
+                        })
                     end
                 end
             end
@@ -198,12 +179,8 @@ local function fastRebirthLoop(myId)
             return list
         end
 
-        -- pets currently equipped by this script
         local equipped = {}
 
-        -- switch to the wanted set: unequip only what must go, equip only what is missing.
-        -- equipFirst = true: only as many unequips as needed to free the slots are sent BEFORE the equips,
-        -- the remaining unequips come after (the server handles calls in order, so the equips arrive sooner)
         local function setEquipped(wanted, burst, equipFirst)
             local want, have = {}, {}
             for _, pet in ipairs(wanted) do want[pet] = true end
@@ -234,14 +211,12 @@ local function fastRebirthLoop(myId)
             equipped = newEquipped
         end
 
-        -- wait until a given os.clock() time (stops early if toggled off)
         local function waitUntil(t)
             while isRunning() and os.clock() < t do
                 task.wait()
             end
         end
 
-        -- ===== SETUP =====
         local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
         while isRunning() and not petsFolder do
             fastStatus = "petsFolder not found"
@@ -257,63 +232,52 @@ local function fastRebirthLoop(myId)
         local function rebuild()
             hydraList = buildHydraList(petsFolder, slots)
             local keep = math.max(0, slots - #hydraList)
-            repTarget = buildRepList(petsFolder, slots)          -- what is equipped most of the time
-            offList = {}                                         -- rep pets that STAY equipped while the hydras are on
-            if not FULL_SWAP and not autoSlots then   -- AUTO mode: slots unknown, so always swap everything
+            repTarget = buildRepList(petsFolder, slots)
+            offList = {}
+            if not FULL_SWAP and not autoSlots then
                 for i = 1, math.min(keep, #repTarget) do table.insert(offList, repTarget[i]) end
             end
-            swapList = {}                                        -- what is equipped around the rebirth
+            swapList = {}
             for _, pet in ipairs(offList) do table.insert(swapList, pet) end
             for _, h in ipairs(hydraList) do table.insert(swapList, h) end
         end
         rebuild()
 
-        -- Fast rebirth needs the pack (Titanium Hydra); without it, use Auto Rebirth
         if #hydraList == 0 then
             fastStatus = "Pack required: no Titanium Hydra found. Use Auto Rebirth instead."
             warn("[Tazen hub] " .. fastStatus)
             return
         end
-        print(string.format("[Tazen hub] Pet slots: %s | Rep pets: %d | Titanium Hydras: %d",
-            autoSlots and ("AUTO (tries " .. slots .. ")") or tostring(slots), #repTarget, #hydraList))
 
-        -- start: one clean unequip, then the rep pets
         fastStatus = "Starting: cleaning pets..."
         local tClean = os.clock()
         local nClean = unequipAllPets(petsFolder)
-        print(string.format("[Tazen hub] startup: %d unequip calls took %.2fs (%.0f FPS)",
-            nClean, os.clock() - tClean, 1 / math.max(RunService.Heartbeat:Wait(), 0.001)))
         if not isRunning() then return end
         setEquipped(repTarget, true)
 
-        -- ===== CYCLE =====
         local cycle = 0
         local rebirthResult = "-"
         local prevFire = nil
-        local rebirthAt = os.clock() + HYDRA_LEAD  -- first rebirth right away
+        local rebirthAt = os.clock() + HYDRA_LEAD
 
         while isRunning() do
             cycle = cycle + 1
 
-            -- 1. LAST MOMENT
             local repOffLead = math.max(REP_OFF_LEAD, HYDRA_LEAD)
             local tRepOff = os.clock()
             if repOffLead > HYDRA_LEAD + 0.001 then
-                -- step A: rep pets off a bit earlier than the hydras
                 waitUntil(rebirthAt - repOffLead)
                 if not isRunning() then break end
                 tRepOff = os.clock()
                 setEquipped(offList, true)
             end
 
-            -- step B: Titanium Hydras on (the unequips that free the slots go first, hydras right after)
             waitUntil(rebirthAt - HYDRA_LEAD)
             if not isRunning() then break end
             local tHydra = os.clock()
             if repOffLead <= HYDRA_LEAD + 0.001 then tRepOff = tHydra end
             setEquipped(swapList, true, true)
 
-            -- 2. REBIRTH (own thread: we don't wait for the server answer)
             waitUntil(rebirthAt)
             if not isRunning() then break end
             local tFire = os.clock()
@@ -324,7 +288,6 @@ local function fastRebirthLoop(myId)
                 rebirthResult = okR and res or ("error: " .. tostring(res))
             end)
 
-            -- 3. AFTER THE REBIRTH: hydras off, then rep pets back on (burst)
             waitUntil(tFire + HYDRA_TAIL)
             local tHydraOff = os.clock()
             setEquipped(offList, true)
@@ -336,12 +299,7 @@ local function fastRebirthLoop(myId)
             prevFire = tFire
             fastStatus = string.format("Cycle %d | Rebirth: %s | Slots %d | Rep %d | Hydras %d | %.2fs",
                 cycle, tostring(rebirthResult), slots, #repTarget, #hydraList, interval)
-            if cycle <= 3 then
-                print(string.format("[Tazen hub] cycle %d at t=%.2fs | interval %.2fs | reps off %.2fs before, hydras on %.2fs before | hydras off %.2fs after, reps on %.2fs after",
-                    cycle, tHydra - startClock, interval, tFire - tRepOff, tFire - tHydra, tHydraOff - tFire, tBack - tFire))
-            end
 
-            -- refresh the lists now and then (new pets, deleted pets...)
             if cycle % LIST_REFRESH_EVERY == 0 then
                 petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
                 rebuild()
@@ -378,7 +336,6 @@ local function autoRebirthLoop(myId)
                 end)
                 autoStatus = string.format("Attempts: %d | last result: %s",
                     tries, okR and tostring(res) or ("error: " .. tostring(res)))
-                if tries <= 3 then print("[Tazen hub] " .. autoStatus) end
             else
                 autoStatus = "canRebirth = false"
             end
@@ -410,7 +367,6 @@ local function fastRepLoop(myId)
             end
         end
 
-        -- time-based accumulator: the average rate stays correct even if FPS varies
         carry = carry + repRate * dt
         local n = math.floor(carry)
         carry = carry - n
@@ -424,10 +380,10 @@ local function fastRepLoop(myId)
     end
 end
 
--- ===================== CALCULATOR (strength / rebirths) =====================
+-- ===================== CALCULATOR =====================
 local tracker = { strGain = 0, rebGain = 0 }
 local samples = {}
-local WINDOW = 20 -- seconds of sliding measurement window
+local WINDOW = 20
 
 local function bindStat(statName, altName, key)
     task.spawn(function()
@@ -438,7 +394,6 @@ local function bindStat(statName, altName, key)
         local last = tonumber(stat.Value) or 0
         connect(stat.Changed, function(v)
             v = tonumber(v) or last
-            -- only count increases (a rebirth resets strength to 0)
             if v > last then tracker[key] = tracker[key] + (v - last) end
             last = v
         end)
@@ -476,10 +431,9 @@ local function projections(rate)
     return { fmt(rate), fmt(rate * 60), fmt(rate * 3600), fmt(rate * 86400), fmt(rate * 604800) }
 end
 
--- ===================== MISC (ANTI AFK / ANTI LAG / FPS) =====================
+-- ===================== MISC =====================
 local Lighting = game:GetService("Lighting")
 
--- Anti AFK
 local antiAfkConn = nil
 local antiAfkRun = 0
 
@@ -493,10 +447,7 @@ local function setAntiAfk(state)
 
     local myId = antiAfkRun
     local okV, VirtualUser = pcall(function() return game:GetService("VirtualUser") end)
-    if not okV or not VirtualUser then
-        warn("[Tazen hub] VirtualUser not available")
-        return
-    end
+    if not okV or not VirtualUser then return end
 
     local function ping()
         pcall(function()
@@ -505,9 +456,7 @@ local function setAntiAfk(state)
         end)
     end
 
-    -- main method: react when Roblox detects inactivity
     antiAfkConn = LocalPlayer.Idled:Connect(ping)
-    -- backup method: small input every 55 s
     task.spawn(function()
         while alive and antiAfkRun == myId do
             task.wait(55)
@@ -516,11 +465,11 @@ local function setAntiAfk(state)
     end)
 end
 
--- Anti Lag (reversible)
 local antiLagConn = nil
 local antiLagRun = 0
 local antiLagTouched = setmetatable({}, { __mode = "k" })
 local antiLagBackup = nil
+
 local function lagApply(inst)
     if inst:IsA("ParticleEmitter") or inst:IsA("Trail") or inst:IsA("Beam")
         or inst:IsA("Smoke") or inst:IsA("Fire") or inst:IsA("Sparkles") or inst:IsA("PostEffect") then
@@ -549,7 +498,6 @@ local function antiLagStart()
     antiLagRun = antiLagRun + 1
     local myId = antiLagRun
 
-    -- global settings (backed up so they can be restored)
     antiLagBackup = { GlobalShadows = Lighting.GlobalShadows, FogEnd = Lighting.FogEnd }
     pcall(function() antiLagBackup.Quality = settings().Rendering.QualityLevel end)
     pcall(function()
@@ -569,7 +517,6 @@ local function antiLagStart()
     pcall(function() Lighting.FogEnd = 9e9 end)
     pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
 
-    -- sweep existing objects in small batches (no freeze), then watch new ones
     task.spawn(function()
         local n = 0
         local function sweep(root)
@@ -624,7 +571,6 @@ local function antiLagStop()
     end)
 end
 
--- FPS counter
 local fpsFrames = 0
 connect(RunService.Heartbeat, function() fpsFrames = fpsFrames + 1 end)
 
@@ -717,7 +663,6 @@ local main = new("Frame", {
 corner(main, 12)
 stroke(main, T.Stroke, 1.5)
 
--- Background image
 local imageId = resolveImage()
 local bg = new("ImageLabel", {
     Name = "Background",
@@ -729,7 +674,6 @@ local bg = new("ImageLabel", {
     ZIndex = 2,
 }, main)
 
--- Dark overlay to keep text readable
 new("Frame", {
     Name = "Shade",
     Size = UDim2.new(1, 0, 1, 0),
@@ -739,7 +683,6 @@ new("Frame", {
     ZIndex = 3,
 }, main)
 
--- No image: "TAZEN" half white / half pink
 if imageId == "" then
     bg.Visible = false
     local wm = textLabel({
@@ -765,7 +708,6 @@ if imageId == "" then
     }, wm)
 end
 
--- Top bar
 local topbar = new("Frame", {
     Name = "Topbar",
     Size = UDim2.new(1, 0, 0, 42),
@@ -810,7 +752,6 @@ end
 local closeBtn = topButton("X", -38)
 local minBtn = topButton("-", -72)
 
--- Window dragging (mouse + touch)
 do
     local dragging, dragStart, startPos = false, nil, nil
     connect(topbar.InputBegan, function(input)
@@ -834,7 +775,6 @@ do
     end)
 end
 
--- Tab bar + pages
 local tabBar = new("Frame", {
     Name = "TabBar",
     Size = UDim2.new(1, 0, 0, 34),
@@ -870,7 +810,7 @@ end
 
 local function createTab(name)
     tabCount = tabCount + 1
-    local tabW = math.floor((W - 20 - 6 * 3) / 4)   -- 4 tabs share the bar
+    local tabW = math.floor((W - 20 - 6 * 3) / 4)
     local button = new("TextButton", {
         Size = UDim2.fromOffset(tabW, 28),
         BackgroundColor3 = T.Element,
@@ -908,7 +848,7 @@ local function createTab(name)
     return page
 end
 
--- ===================== ELEMENTS (Rayfield style) =====================
+-- ===================== ELEMENTS =====================
 local function addSection(page, text)
     textLabel({
         Size = UDim2.new(1, 0, 0, 20),
@@ -918,6 +858,7 @@ local function addSection(page, text)
         TextColor3 = T.Accent,
     }, page)
 end
+
 local function addLabel(page, text, height)
     local f = new("Frame", {
         Size = UDim2.new(1, 0, 0, height or 40),
@@ -1001,6 +942,8 @@ local function addButton(page, name, callback)
     b.Activated:Connect(callback)
 end
 
+local repSliderUpdate = nil
+
 local function addSlider(page, name, min, max, default, callback)
     local f = new("Frame", {
         Size = UDim2.new(1, 0, 0, 62),
@@ -1042,13 +985,18 @@ local function addSlider(page, name, min, max, default, callback)
         Text = "",
     }, f)
 
+    local function setValue(val)
+        val = math.clamp(val, min, max)
+        fill.Size = UDim2.new((val - min) / (max - min), 0, 1, 0)
+        valueLabel.Text = tostring(val)
+        callback(val)
+    end
+
     local dragging = false
     local function update(x)
         local rel = math.clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
         local value = math.floor(min + rel * (max - min) + 0.5)
-        fill.Size = UDim2.new((value - min) / (max - min), 0, 1, 0)
-        valueLabel.Text = tostring(value)
-        callback(value)
+        setValue(value)
     end
 
     hit.InputBegan:Connect(function(input)
@@ -1072,9 +1020,10 @@ local function addSlider(page, name, min, max, default, callback)
             page.ScrollingEnabled = true
         end
     end)
+
+    return setValue
 end
 
--- Stat block (list of "name ... value" rows)
 local function addStatBlock(page, title, rowNames)
     local h = 30 + #rowNames * 22 + 6
     local f = new("Frame", {
@@ -1144,7 +1093,6 @@ local function addCredit(page, text)
     }, f)
 end
 
--- Notifications
 local function notify(title, text)
     if not alive then return end
     local n = new("Frame", {
@@ -1198,6 +1146,13 @@ local function resetStats()
     notify(E.broom .. " Calculator", E.ok .. " Stats reset")
 end
 
+local function enableAutoFastRep()
+    if repSliderUpdate then repSliderUpdate(659) end
+    if repToggle and not repToggle.Value then
+        repToggle:Set(true)
+    end
+end
+
 local REB_ROWS = {
     E.bolt .. " Per second", E.clock .. " Per minute", E.hourglass .. " Per hour",
     E.sun .. " Per day", E.calendar .. " Per week", E.trophy .. " Total gained",
@@ -1216,6 +1171,7 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", function(v)
     if v then
         autoRunId = autoRunId + 1
         if autoToggle then autoToggle:Set(false) end
+        enableAutoFastRep()
         fastStatus = "Starting..."
         notifyState(E.bolt .. " Fast rebirth", true)
         task.spawn(fastRebirthLoop, fastRunId)
@@ -1235,6 +1191,7 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", function(v)
     if v then
         fastRunId = fastRunId + 1
         if fastToggle then fastToggle:Set(false) end
+        enableAutoFastRep()
         autoStatus = "Starting..."
         notifyState(E.cycle .. " Auto rebirth", true)
         task.spawn(autoRebirthLoop, autoRunId)
@@ -1249,6 +1206,8 @@ addButton(autoPage, E.broom .. " Reset stats", resetStats)
 
 -- Fast Strength
 addSection(strPage, E.muscle .. " Fast Strength")
+-- 659 rep speed conseiller
+addLabel(strPage, E.bulb .. " 659 rep speed est conseillé pour une stabilité maximale.", 34)
 repToggle = addToggle(strPage, E.muscle .. " Fast strength", function(v)
     repRunId = repRunId + 1
     if v then
@@ -1258,7 +1217,7 @@ repToggle = addToggle(strPage, E.muscle .. " Fast strength", function(v)
         notifyState(E.muscle .. " Fast strength", false)
     end
 end)
-addSlider(strPage, E.wrench .. " Reps per second", 659, 3000, repRate, function(v) repRate = v end)
+repSliderUpdate = addSlider(strPage, E.wrench .. " Reps per second", 659, 3000, repRate, function(v) repRate = v end)
 local repLabel = addLabel(strPage, E.antenna .. " Real reps/s: --", 34)
 addSection(strPage, E.up .. " Strength calculator")
 local strBlock = addStatBlock(strPage, E.muscle .. " STRENGTH (measured over 20 s)", STR_ROWS)
@@ -1282,7 +1241,7 @@ addCredit(miscPage, E.sparkles .. " Made by TZN_THR, Thank you for using my scri
 
 selectTab(TAB_FAST)
 
--- ===================== UPDATE (once per second) =====================
+-- ===================== UPDATE =====================
 task.spawn(function()
     while alive do
         task.wait(1)
@@ -1344,7 +1303,6 @@ closeBtn.Activated:Connect(function()
     gui:Destroy()
 end)
 
--- K key: hide / show
 connect(UserInputService.InputBegan, function(input, processed)
     if not processed and input.KeyCode == Enum.KeyCode.K then
         gui.Enabled = not gui.Enabled
