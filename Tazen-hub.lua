@@ -74,7 +74,7 @@ local function getPetScore(pet)
     return 1
 end
 
--- 1. FAST REBIRTH (PACK) SÉCURISÉ ULTRA-LITE
+-- 1. FAST REBIRTH (PACK) TIMED (6.2s CYCLE)
 
 MainTab:CreateToggle({
     Name = "Fast rebirth",
@@ -96,7 +96,7 @@ MainTab:CreateToggle({
                     local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
                     
                     if petsFolder and canRebirth() then
-                        -- 1. Équipement direct du Titanium Hydra (sans tout déséquiper avant)
+                        -- 1. Équipement du Titanium Hydra
                         for _, folderName in ipairs({"Unique", "Rare", "Epic", "Mythic", "Legendary"}) do
                             local folder = petsFolder:FindFirstChild(folderName)
                             if folder then
@@ -105,20 +105,16 @@ MainTab:CreateToggle({
                                     if pet:FindFirstChild("PetName") then pName = pet.PetName.Value end
                                     
                                     if pName == "Titanium Hydra" then
-                                        pcall(function()
-                                            equipPetEvent:FireServer("equipPet", pet)
-                                        end)
-                                        task.wait(0.3)
+                                        pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
+                                        task.wait(0.05)
                                     end
                                 end
                             end
                         end
 
                         -- 2. Demande de Renaissance
-                        pcall(function()
-                            rebirthRemote:InvokeServer("rebirthRequest")
-                        end)
-                        task.wait(1)
+                        pcall(function() rebirthRemote:InvokeServer("rebirthRequest") end)
+                        task.wait(0.1)
 
                         -- 3. Équipement des Pets de Rep (Priorité Unique [4])
                         local repPets = {}
@@ -133,9 +129,7 @@ MainTab:CreateToggle({
                                     if pet:FindFirstChild("PetName") then pName = pet.PetName.Value end
 
                                     local priority = repSpeedPetPriorities[pName] or 5
-                                    if priority4Pet and pet == priority4Pet then
-                                        priority = 0
-                                    end
+                                    if priority4Pet and pet == priority4Pet then priority = 0 end
 
                                     if priority < 5 or priority4Pet == pet then
                                         table.insert(repPets, {
@@ -149,22 +143,34 @@ MainTab:CreateToggle({
                         end
 
                         table.sort(repPets, function(a, b)
-                            if a.Priority == b.Priority then
-                                return a.Score > b.Score
-                            end
+                            if a.Priority == b.Priority then return a.Score > b.Score end
                             return a.Priority < b.Priority
                         end)
 
-                        -- Équipement progressif des familiers de rep
                         for _, entry in ipairs(repPets) do
-                            pcall(function()
-                                equipPetEvent:FireServer("equipPet", entry.Instance)
-                            end)
-                            task.wait(0.3) -- Délai de 300ms pour éviter le kick du serveur
+                            pcall(function() equipPetEvent:FireServer("equipPet", entry.Instance) end)
+                            task.wait(0.05)
                         end
+
+                        -- 4. Fast Rep régulé pendant la montée de statistiques (~5.5s)
+                        local muscleEvent = LocalPlayer:FindFirstChild("muscleEvent") 
+                            or (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("muscleEvent"))
+                            or rEvents:FindFirstChild("muscleEvent")
+
+                        if muscleEvent then
+                            local startTime = tick()
+                            while tick() - startTime < 5.5 and fastRebirthActive do
+                                for i = 1, 10 do
+                                    muscleEvent:FireServer("rep")
+                                end
+                                task.wait(0.03)
+                            end
+                        else
+                            task.wait(5.5)
+                        end
+                    else
+                        task.wait(0.5)
                     end
-                    
-                    task.wait(6)
                 end
             end)
         end
