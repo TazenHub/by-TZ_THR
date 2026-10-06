@@ -93,11 +93,11 @@ local function findMuscleEvent(rEvents)
 end
 
 -- ===================== FAST REBIRTH =====================
--- 6 s cycle:  [ rep-speed pets equipped ~5.90 s ] [ Titanium Hydras ~0.10 s around the rebirth ]
---   * the best rep pets stay equipped ALL the time
---   * only the LAST rep pets (as many as there are hydras) are swapped with the hydras
---   * hydras are equipped HYDRA_LEAD before the rebirth, unequipped HYDRA_TAIL after it
---   * no "unequip everything" in the loop: only a handful of calls per cycle
+-- 6 s cycle:
+--   * all Titanium Hydras that can fit in the player's pet slots are equipped at the rebirth moment
+--   * rebirth is sent on the 6.00 s cooldown
+--   * Hydras are removed immediately after the rebirth request
+--   * rep pets are restored immediately after the Hydras are removed
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     local startClock = os.clock()
@@ -107,27 +107,28 @@ local function fastRebirthLoop(myId)
         local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
 
-        -- ===== TIMINGS (tune these) =====
-        local HYDRA_LEAD = 0.10             -- hydras equipped this long BEFORE the rebirth is sent (raise it if they are not on yet)
-        local HYDRA_TAIL = 0.05             -- hydras unequipped this long AFTER the rebirth is sent
-        local REP_OFF_LEAD = 0.10           -- rep pets unequipped this long BEFORE the rebirth (>= HYDRA_LEAD).
-                                            -- equal to HYDRA_LEAD = one single step, hydras first in the queue
-        local REP_ON_DELAY = 0.05           -- rep pets re-equipped this long AFTER the rebirth is sent (never before the hydras are off)
-        local REBIRTH_MARGIN = 0.03         -- safety margin added to the 6 s cooldown
-        local SLOTS = 12                    -- rep-speed pets to equip. 0 = AUTO: the script tries the AUTO_TRY best
-                                            -- rep pets and the game only keeps as many as the player has slots
-        local AUTO_TRY = 20                 -- how many pets are tried in AUTO mode (SLOTS = 0)
-        local FULL_SWAP = true              -- true: rebirth window = hydras ONLY (all rep pets off, like the original)
-                                            -- false: only the last rep pets are swapped with the hydras
+        -- ===== TIMINGS =====
+        -- Keep the Hydra window just before the rebirth so the server has time
+        -- to register the pets, without wasting part of the 6 s cooldown.
+        local HYDRA_LEAD = 0.08
+        local HYDRA_TAIL = 0.01
+        local REP_OFF_LEAD = 0.08
+        local REP_ON_DELAY = 0.02
+        local REBIRTH_MARGIN = 0.00
+
+        -- Maximum equipped pet slots used by the game/profile.
+        -- All Titanium Hydras are selected up to this limit.
+        local SLOTS = 12
+        local AUTO_TRY = 20
+        local FULL_SWAP = true
         local STARTUP_UNEQUIP_PER_FRAME = 20
-        local LIST_REFRESH_EVERY = 5        -- cycles between two refreshes of the pet lists
+        local LIST_REFRESH_EVERY = 5
 
         local function petRealName(pet)
             if pet:FindFirstChild("PetName") then return pet.PetName.Value end
             return pet.Name
         end
 
-        -- startup only: unequip every pet (in chunks per frame)
         local function unequipAllPets(petsFolder)
             local count = 0
             for _, folderName in ipairs(FOLDERS) do
@@ -143,27 +144,34 @@ local function fastRebirthLoop(myId)
             return count
         end
 
-        -- Titanium Hydras (x2 rebirths)
+        -- Titanium Hydras (x2 rebirths).
+        -- Collect every owned Hydra first, then cap only at the actual
+        -- number of equip slots. This prevents the old selection logic
+        -- from treating the Hydra count as a separate fixed limit.
         local function buildHydraList(petsFolder, slots)
-            local list = {}
+            local allHydras = {}
             for _, folderName in ipairs(FOLDERS) do
                 local folder = petsFolder:FindFirstChild(folderName)
                 if folder then
                     for _, pet in ipairs(folder:GetChildren()) do
-                        if #list < slots and petRealName(pet) == "Titanium Hydra" then
-                            table.insert(list, pet)
+                        if petRealName(pet) == "Titanium Hydra" then
+                            table.insert(allHydras, pet)
                         end
                     end
                 end
             end
+
+            local list = {}
+            for i = 1, math.min(#allHydras, slots) do
+                list[i] = allHydras[i]
+            end
             return list
         end
 
-        -- rep-speed pets sorted by priority (best first), capped to the slots
         local function buildRepList(petsFolder, slots)
             local repPets = {}
             local uniqueFolder = petsFolder:FindFirstChild("Unique")
-            local priority4Pet = uniqueFolder and uniqueFolder:GetChildren()[4] -- target pet from the video
+            local priority4Pet = uniqueFolder and uniqueFolder:GetChildren()[4]
 
             for _, folderName in ipairs(FOLDERS) do
                 local folder = petsFolder:FindFirstChild(folderName)
@@ -199,12 +207,10 @@ local function fastRebirthLoop(myId)
             return list
         end
 
-        -- pets currently equipped by this script
         local equipped = {}
 
-        -- switch to the wanted set: unequip only what must go, equip only what is missing.
-        -- equipFirst = true: only as many unequips as needed to free the slots are sent BEFORE the equips,
-        -- the remaining unequips come after (the server handles calls in order, so the equips arrive sooner)
+        -- Send the whole swap as a burst. equipFirst frees only the slots
+        -- needed for the incoming Hydras before the equip calls.
         local function setEquipped(wanted, burst, equipFirst)
             local want, have = {}, {}
             for _, pet in ipairs(wanted) do want[pet] = true end
@@ -212,8 +218,11 @@ local function fastRebirthLoop(myId)
 
             local outList, inList = {}, {}
             for _, pet in ipairs(equipped) do
-                if not want[pet] and pet.Parent then table.insert(outList, pet) end
+                if not want[pet] and pet.Parent then
+                    table.insert(outList, pet)
+                end
             end
+
             local newEquipped = {}
             for _, pet in ipairs(wanted) do
                 if pet.Parent then
@@ -235,14 +244,12 @@ local function fastRebirthLoop(myId)
             equipped = newEquipped
         end
 
-        -- wait until a given os.clock() time (stops early if toggled off)
         local function waitUntil(t)
             while isRunning() and os.clock() < t do
                 task.wait()
             end
         end
 
-        -- ===== SETUP =====
         local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
         while isRunning() and not petsFolder do
             fastStatus = "petsFolder not found"
@@ -258,65 +265,69 @@ local function fastRebirthLoop(myId)
         local function rebuild()
             hydraList = buildHydraList(petsFolder, slots)
             local keep = math.max(0, slots - #hydraList)
-            repTarget = buildRepList(petsFolder, slots)          -- what is equipped most of the time
-            offList = {}                                         -- rep pets that STAY equipped while the hydras are on
-            if not FULL_SWAP and not autoSlots then   -- AUTO mode: slots unknown, so always swap everything
-                for i = 1, math.min(keep, #repTarget) do table.insert(offList, repTarget[i]) end
+            repTarget = buildRepList(petsFolder, slots)
+
+            offList = {}
+            if not FULL_SWAP and not autoSlots then
+                for i = 1, math.min(keep, #repTarget) do
+                    table.insert(offList, repTarget[i])
+                end
             end
-            swapList = {}                                        -- what is equipped around the rebirth
+
+            swapList = {}
             for _, pet in ipairs(offList) do table.insert(swapList, pet) end
             for _, h in ipairs(hydraList) do table.insert(swapList, h) end
         end
         rebuild()
 
-        -- Fast rebirth needs the pack (Titanium Hydra); without it, use Auto Rebirth
         if #hydraList == 0 then
             fastStatus = "Pack required: no Titanium Hydra found. Use Auto Rebirth instead."
             warn("[Tazen hub] " .. fastStatus)
             return
         end
-        print(string.format("[Tazen hub] Pet slots: %s | Rep pets: %d | Titanium Hydras: %d",
-            autoSlots and ("AUTO (tries " .. slots .. ")") or tostring(slots), #repTarget, #hydraList))
 
-        -- start: one clean unequip, then the rep pets
+        print(string.format(
+            "[Tazen hub] Pet slots: %s | Rep pets: %d | Titanium Hydras: %d",
+            autoSlots and ("AUTO (tries " .. slots .. ")") or tostring(slots),
+            #repTarget,
+            #hydraList
+        ))
+
+        -- Startup only.
         fastStatus = "Starting: cleaning pets..."
         local tClean = os.clock()
         local nClean = unequipAllPets(petsFolder)
-        print(string.format("[Tazen hub] startup: %d unequip calls took %.2fs (%.0f FPS)",
-            nClean, os.clock() - tClean, 1 / math.max(RunService.Heartbeat:Wait(), 0.001)))
+        print(string.format(
+            "[Tazen hub] startup: %d unequip calls took %.2fs (%.0f FPS)",
+            nClean,
+            os.clock() - tClean,
+            1 / math.max(RunService.Heartbeat:Wait(), 0.001)
+        ))
         if not isRunning() then return end
         setEquipped(repTarget, true)
 
-        -- ===== CYCLE =====
+        -- ===== 6-SECOND CYCLE =====
         local cycle = 0
         local rebirthResult = "-"
         local prevFire = nil
-        local rebirthAt = os.clock() + HYDRA_LEAD  -- first rebirth right away
+
+        -- First rebirth: prepare Hydras immediately.
+        local rebirthAt = os.clock() + HYDRA_LEAD
 
         while isRunning() do
             cycle = cycle + 1
 
-            -- 1. LAST MOMENT
-            local repOffLead = math.max(REP_OFF_LEAD, HYDRA_LEAD)
-            local tRepOff = os.clock()
-            if repOffLead > HYDRA_LEAD + 0.001 then
-                -- step A: rep pets off a bit earlier than the hydras
-                waitUntil(rebirthAt - repOffLead)
-                if not isRunning() then break end
-                tRepOff = os.clock()
-                setEquipped(offList, true)
-            end
-
-            -- step B: Titanium Hydras on (the unequips that free the slots go first, hydras right after)
-            waitUntil(rebirthAt - HYDRA_LEAD)
+            -- 1. Prepare the Hydra set at the last safe moment.
+            waitUntil(rebirthAt - math.max(REP_OFF_LEAD, HYDRA_LEAD))
             if not isRunning() then break end
-            local tHydra = os.clock()
-            if repOffLead <= HYDRA_LEAD + 0.001 then tRepOff = tHydra end
+
+            local tRepOff = os.clock()
             setEquipped(swapList, true, true)
 
-            -- 2. REBIRTH (own thread: we don't wait for the server answer)
+            -- 2. Fire rebirth exactly on the 6 s schedule.
             waitUntil(rebirthAt)
             if not isRunning() then break end
+
             local tFire = os.clock()
             task.spawn(function()
                 local okR, res = pcall(function()
@@ -325,29 +336,43 @@ local function fastRebirthLoop(myId)
                 rebirthResult = okR and res or ("error: " .. tostring(res))
             end)
 
-            -- 3. AFTER THE REBIRTH: hydras off, then rep pets back on (burst)
+            -- 3. Restore rep pets as soon as the rebirth request has been sent.
+            -- No unnecessary 0.05 + 0.05 wait chain.
             waitUntil(tFire + HYDRA_TAIL)
             local tHydraOff = os.clock()
             setEquipped(offList, true)
+
             waitUntil(tFire + REP_ON_DELAY)
             local tBack = os.clock()
             setEquipped(repTarget, true)
 
             local interval = prevFire and (tFire - prevFire) or 0
             prevFire = tFire
-            fastStatus = string.format("Cycle %d | Rebirth: %s | Slots %d | Rep %d | Hydras %d | %.2fs",
-                cycle, tostring(rebirthResult), slots, #repTarget, #hydraList, interval)
+
+            fastStatus = string.format(
+                "Cycle %d | Rebirth: %s | Slots %d | Rep %d | Hydras %d | %.2fs",
+                cycle, tostring(rebirthResult), slots, #repTarget, #hydraList, interval
+            )
+
             if cycle <= 3 then
-                print(string.format("[Tazen hub] cycle %d at t=%.2fs | interval %.2fs | reps off %.2fs before, hydras on %.2fs before | hydras off %.2fs after, reps on %.2fs after",
-                    cycle, tHydra - startClock, interval, tFire - tRepOff, tFire - tHydra, tHydraOff - tFire, tBack - tFire))
+                print(string.format(
+                    "[Tazen hub] cycle %d | interval %.3fs | hydras on %.3fs before | hydras off %.3fs after | reps on %.3fs after",
+                    cycle,
+                    interval,
+                    tFire - tRepOff,
+                    tHydraOff - tFire,
+                    tBack - tFire
+                ))
             end
 
-            -- refresh the lists now and then (new pets, deleted pets...)
+            -- Refresh ownership/list state periodically.
             if cycle % LIST_REFRESH_EVERY == 0 then
                 petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
                 rebuild()
             end
 
+            -- IMPORTANT: schedule the next attempt from the rebirth request itself,
+            -- not from the end of the pet swapping work.
             rebirthAt = tFire + REBIRTH_COOLDOWN + REBIRTH_MARGIN
         end
     end)
@@ -357,6 +382,7 @@ local function fastRebirthLoop(myId)
         warn("[Tazen hub] " .. fastStatus)
     end
 end
+
 
 -- ===================== AUTO REBIRTH =====================
 local function autoRebirthLoop(myId)
