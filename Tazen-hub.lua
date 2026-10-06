@@ -45,7 +45,7 @@ end
 
 local fastRunId = 0
 local repRunId = 0
-local repRate = 3000         -- Boosté à 3000 reps/s max
+local repRate = 700          -- Ajusté à 700 reps/s pour soulager le réseau
 local repCounter = 0         
 local repTotal = 0           
 
@@ -66,7 +66,6 @@ local function findMuscleEvent(rEvents)
         or rEvents:FindFirstChild("muscleEvent")
 end
 
--- Forward declaration pour l'interrupteur UI
 local repToggleObj = nil 
 
 -- ===================== FAST STRENGTH (REP) =====================
@@ -97,7 +96,7 @@ local function fastRepLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH (AUTO-BOOST REP) =====================
+-- ===================== FAST REBIRTH =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
 
@@ -190,18 +189,21 @@ local function fastRebirthLoop(myId)
             unequipSet(repList)
             equipSet(hydraList)
 
-            task.wait(0.04)
+            -- Temps d'attente réseau indispensable pour la validation des Hydras
+            task.wait(0.08)
 
-            -- 2. Lancer le Rebirth sans bloquer le thread
+            -- 2. Lancer la requête de Rebirth (Asynchrone)
             task.spawn(function()
                 pcall(function() rebirthRemote:InvokeServer("rebirthRequest") end)
             end)
 
-            -- 3. Rééquiper les Fast Rep pets
+            task.wait(0.02)
+
+            -- 3. Remettre les Fast Rep pets
             unequipSet(hydraList)
             equipSet(repList)
 
-            -- 4. Attente exacte de 6,00 secondes
+            -- 4. Cooldown exact de 6 secondes
             local elapsed = os.clock() - cycleStart
             task.wait(math.max(0, REBIRTH_COOLDOWN - elapsed))
         end
@@ -535,12 +537,11 @@ local miscPage = createTab(E.toolbox .. " Misc")
 local REB_ROWS = { E.bolt .. " Per second", E.clock .. " Per minute", E.hourglass .. " Per hour", E.sun .. " Per day", E.calendar .. " Per week", E.trophy .. " Total gained" }
 local STR_ROWS = { E.bolt .. " Per second", E.clock .. " Per minute", E.hourglass .. " Per hour", E.sun .. " Per day", E.calendar .. " Per week", E.trophy .. " Total gained", E.target .. " Strength / rep" }
 
--- FAST REBIRTH (LANCE LE FAST REP AUTOMATIQUEMENT)
+-- FAST REBIRTH
 addToggle(fastPage, E.bolt .. " Fast Rebirth (6s)", function(v)
     fastRunId = fastRunId + 1
     if v then
         task.spawn(fastRebirthLoop, fastRunId)
-        -- Auto-activation de la vitesse de répétition à l'activation du Rebirth
         if repToggleObj and not repToggleObj.Value then
             repToggleObj:Set(true)
         end
@@ -553,7 +554,7 @@ repToggleObj = addToggle(strPage, E.muscle .. " Fast Strength", function(v)
     repRunId = repRunId + 1
     if v then task.spawn(fastRepLoop, repRunId) end
 end)
-addSlider(strPage, E.wrench .. " Reps / seconde", 659, 3000, repRate, function(v) repRate = v end)
+addSlider(strPage, E.wrench .. " Reps / seconde", 100, 3000, repRate, function(v) repRate = v end)
 local repLabel = textLabel({ Size = UDim2.new(1, -20, 0, 30), Text = E.antenna .. " Real reps/s: --", ZIndex = 5 }, strPage)
 local strBlock = addStatBlock(strPage, E.muscle .. " CALCULATEUR STRENGTH", STR_ROWS)
 
