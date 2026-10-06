@@ -207,12 +207,12 @@ simpleRebirthActive = Value
                     end)
                     
                     if success then
-                        task.wait(1.2)
+                        task.wait(6)
                     else
-                        task.wait(2)
+                        task.wait(6)
                     end
                 else
-                    task.wait(1.5)
+                    task.wait(6)
                 end
             end
         end)
