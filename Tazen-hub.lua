@@ -108,9 +108,10 @@ local function fastRebirthLoop(myId)
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
 
         -- ===== TIMINGS (tune these) =====
-        local HYDRA_LEAD = 0.05             -- hydras equipped this long BEFORE the rebirth is sent
-        local HYDRA_TAIL = 0.05             -- hydras unequipped this long AFTER the rebirth is sent (lead + tail = 0.10 s)
-        local REP_OFF_LEAD = 0.10           -- rep pets unequipped this long BEFORE the rebirth (>= HYDRA_LEAD)
+        local HYDRA_LEAD = 0.10             -- hydras equipped this long BEFORE the rebirth is sent (raise it if they are not on yet)
+        local HYDRA_TAIL = 0.05             -- hydras unequipped this long AFTER the rebirth is sent
+        local REP_OFF_LEAD = 0.10           -- rep pets unequipped this long BEFORE the rebirth (>= HYDRA_LEAD).
+                                            -- equal to HYDRA_LEAD = one single step, hydras first in the queue
         local REP_ON_DELAY = 0.05           -- rep pets re-equipped this long AFTER the rebirth is sent (never before the hydras are off)
         local REBIRTH_MARGIN = 0.03         -- safety margin added to the 6 s cooldown
         local SLOTS = 12                    -- rep-speed pets to equip. 0 = AUTO: the script tries the AUTO_TRY best
@@ -201,29 +202,36 @@ local function fastRebirthLoop(myId)
         -- pets currently equipped by this script
         local equipped = {}
 
-        -- switch to the wanted set: unequip only what must go, equip only what is missing
-        local function setEquipped(wanted, burst)
+        -- switch to the wanted set: unequip only what must go, equip only what is missing.
+        -- equipFirst = true: only as many unequips as needed to free the slots are sent BEFORE the equips,
+        -- the remaining unequips come after (the server handles calls in order, so the equips arrive sooner)
+        local function setEquipped(wanted, burst, equipFirst)
             local want, have = {}, {}
             for _, pet in ipairs(wanted) do want[pet] = true end
             for _, pet in ipairs(equipped) do have[pet] = true end
 
+            local outList, inList = {}, {}
             for _, pet in ipairs(equipped) do
-                if not want[pet] and pet.Parent then
-                    equipPetEvent:FireServer("unequipPet", pet)
-                    if not burst then task.wait() end
-                end
+                if not want[pet] and pet.Parent then table.insert(outList, pet) end
             end
-
             local newEquipped = {}
             for _, pet in ipairs(wanted) do
                 if pet.Parent then
-                    if not have[pet] then
-                        equipPetEvent:FireServer("equipPet", pet)
-                        if not burst then task.wait() end
-                    end
+                    if not have[pet] then table.insert(inList, pet) end
                     table.insert(newEquipped, pet)
                 end
             end
+
+            local function fire(kind, pet)
+                equipPetEvent:FireServer(kind, pet)
+                if not burst then task.wait() end
+            end
+
+            local firstN = equipFirst and math.min(#inList, #outList) or #outList
+            for i = 1, firstN do fire("unequipPet", outList[i]) end
+            for _, pet in ipairs(inList) do fire("equipPet", pet) end
+            for i = firstN + 1, #outList do fire("unequipPet", outList[i]) end
+
             equipped = newEquipped
         end
 
@@ -288,18 +296,23 @@ local function fastRebirthLoop(myId)
         while isRunning() do
             cycle = cycle + 1
 
-            -- 1. LAST MOMENT, step A: rep pets off (burst)
+            -- 1. LAST MOMENT
             local repOffLead = math.max(REP_OFF_LEAD, HYDRA_LEAD)
-            waitUntil(rebirthAt - repOffLead)
-            if not isRunning() then break end
             local tRepOff = os.clock()
-            setEquipped(offList, true)
+            if repOffLead > HYDRA_LEAD + 0.001 then
+                -- step A: rep pets off a bit earlier than the hydras
+                waitUntil(rebirthAt - repOffLead)
+                if not isRunning() then break end
+                tRepOff = os.clock()
+                setEquipped(offList, true)
+            end
 
-            --    step B: Titanium Hydras on (burst)
+            -- step B: Titanium Hydras on (the unequips that free the slots go first, hydras right after)
             waitUntil(rebirthAt - HYDRA_LEAD)
             if not isRunning() then break end
             local tHydra = os.clock()
-            setEquipped(swapList, true)
+            if repOffLead <= HYDRA_LEAD + 0.001 then tRepOff = tHydra end
+            setEquipped(swapList, true, true)
 
             -- 2. REBIRTH (own thread: we don't wait for the server answer)
             waitUntil(rebirthAt)
