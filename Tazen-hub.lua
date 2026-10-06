@@ -183,8 +183,8 @@ local Toggle = MainTab:CreateToggle({
     end,
 })end
 
-local RebTab = Window:CreateTab("Auto Rebirth", 4483362458) -- Title, Image
-    local MainSection = MainTab:CreateSection("Auto Rebirth ( No Pack)")
+local RebTab = RebWindow:CreateTab("Auto Rebirth", 4483362458) -- Title, Image
+    local RebSection = RebTab:CreateSection("Auto Rebirth ( No Pack)")
 
 local Toggle = RebTab:CreateToggle({
     Name = "Auto rebirth",
