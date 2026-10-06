@@ -110,13 +110,16 @@ local function fastRebirthLoop(myId)
             return pet.Name
         end
 
+        -- fast: fires in bursts of 25 pets per frame (was 1 pet per frame = several seconds)
         local function unequipAllPets(petsFolder)
+            local count = 0
             for _, folderName in ipairs(FOLDERS) do
                 local folder = petsFolder:FindFirstChild(folderName)
                 if folder then
                     for _, pet in ipairs(folder:GetChildren()) do
                         equipPetEvent:FireServer("unequipPet", pet)
-                        task.wait()
+                        count = count + 1
+                        if count % 25 == 0 then task.wait() end
                     end
                 end
             end
@@ -257,6 +260,8 @@ local function fastRebirthLoop(myId)
         local cycle = 0
         local lastRebirth = os.clock() - REBIRTH_COOLDOWN - 1 -- first rebirth can happen right away
         local rebirthResult = "-"
+        local lastHydraEquip = nil
+        local interval = 0
 
         while isRunning() do
             cycle = cycle + 1
@@ -266,6 +271,9 @@ local function fastRebirthLoop(myId)
             waitUntil(rebirthAt - HYDRA_LEAD)
             if not isRunning() then break end
             setEquipped(hydraList, true)
+            local nowT = os.clock()
+            interval = lastHydraEquip and (nowT - lastHydraEquip) or 0
+            lastHydraEquip = nowT
 
             -- 2. REBIRTH at the exact end of the cooldown
             --    (fired in its own thread: we don't wait for the server answer)
@@ -282,8 +290,8 @@ local function fastRebirthLoop(myId)
             -- 3. RIGHT AFTER: hydras off, rep pets back on
             backToRepPets(hydraList, repList)
 
-            fastStatus = string.format("Cycle %d | Rebirth result: %s | Rep pets: %d",
-                cycle, tostring(rebirthResult), #repList)
+            fastStatus = string.format("Cycle %d | Rebirth result: %s | Rep pets: %d | Interval: %.2fs",
+                cycle, tostring(rebirthResult), #repList, interval)
             if cycle <= 3 then print("[Tazen hub] " .. fastStatus) end
 
             -- refresh the lists during the cooldown (pets may have changed)
