@@ -1165,7 +1165,7 @@ local STR_ROWS = {
 
 -- Fast Rebirth
 addSection(fastPage, E.fire .. " Fast Rebirth (Pack)")
-addLabel(fastPage, E.bulb .. " Equips Titanium Hydra, rebirths, then re-equips your rep pets.", 34)
+addLabel(fastPage, "\u{26A0}\u{FE0F} You need pack for fast rebirth", 34)
 fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", function(v)
     fastRunId = fastRunId + 1
     if v then
@@ -1186,6 +1186,8 @@ addButton(fastPage, E.broom .. " Reset stats", resetStats)
 
 -- Auto Rebirth
 addSection(autoPage, E.cycle .. " Auto Rebirth (No Pack)")
+addLabel(autoPage, "\u{26A0}\u{FE0F} This tab can be used by everyone", 34)
+addLabel(autoPage, "\u{26A0}\u{FE0F} Use a 659 rep speed for no delay", 34)
 autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", function(v)
     autoRunId = autoRunId + 1
     if v then
@@ -1206,8 +1208,7 @@ addButton(autoPage, E.broom .. " Reset stats", resetStats)
 
 -- Fast Strength
 addSection(strPage, E.muscle .. " Fast Strength")
--- 659 rep speed conseiller
-addLabel(strPage, E.bulb .. " 659 rep speed est conseillé pour une stabilité maximale.", 34)
+addLabel(strPage, "\u{26A0}\u{FE0F} Use a 659 rep speed for no delay", 34)
 repToggle = addToggle(strPage, E.muscle .. " Fast strength", function(v)
     repRunId = repRunId + 1
     if v then
