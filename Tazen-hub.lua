@@ -100,6 +100,7 @@ end
 --   * no "unequip everything" in the loop: only a handful of calls per cycle
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
+    local startClock = os.clock()
 
     local okT, errT = pcall(function()
         local rebirthRemote = ReplicatedStorage.rEvents.rebirthRemote
@@ -109,6 +110,8 @@ local function fastRebirthLoop(myId)
         -- ===== TIMINGS (tune these) =====
         local HYDRA_LEAD = 0.05             -- hydras equipped this long BEFORE the rebirth is sent
         local HYDRA_TAIL = 0.05             -- hydras unequipped this long AFTER the rebirth is sent (lead + tail = 0.10 s)
+        local REP_OFF_LEAD = 0.10           -- rep pets unequipped this long BEFORE the rebirth (>= HYDRA_LEAD)
+        local REP_ON_DELAY = 0.05           -- rep pets re-equipped this long AFTER the rebirth is sent (never before the hydras are off)
         local REBIRTH_MARGIN = 0.03         -- safety margin added to the 6 s cooldown
         local SLOTS = 12                    -- number of rep-speed pets equipped outside the rebirth window
         local AUTO_DETECT_SLOTS = false     -- true = try to detect the slots on the player (else SLOTS is used)
@@ -135,6 +138,7 @@ local function fastRebirthLoop(myId)
                     end
                 end
             end
+            return count
         end
 
         -- number of pet slots: looks for a "pet slots" value on the player, else SLOTS
@@ -264,15 +268,17 @@ local function fastRebirthLoop(myId)
         local detected = AUTO_DETECT_SLOTS and detectSlots(petsFolder) or nil
         local slots = detected or SLOTS
 
-        local hydraList, repTarget, swapList
+        local hydraList, repTarget, swapList, offList
         local function rebuild()
             hydraList = buildHydraList(petsFolder, slots)
             local keep = math.max(0, slots - #hydraList)
             repTarget = buildRepList(petsFolder, slots)          -- what is equipped most of the time
-            swapList = {}                                        -- what is equipped around the rebirth
+            offList = {}                                         -- rep pets that STAY equipped while the hydras are on
             if not FULL_SWAP then
-                for i = 1, math.min(keep, #repTarget) do table.insert(swapList, repTarget[i]) end
+                for i = 1, math.min(keep, #repTarget) do table.insert(offList, repTarget[i]) end
             end
+            swapList = {}                                        -- what is equipped around the rebirth
+            for _, pet in ipairs(offList) do table.insert(swapList, pet) end
             for _, h in ipairs(hydraList) do table.insert(swapList, h) end
         end
         rebuild()
@@ -288,7 +294,10 @@ local function fastRebirthLoop(myId)
 
         -- start: one clean unequip, then the rep pets
         fastStatus = "Starting: cleaning pets..."
-        unequipAllPets(petsFolder)
+        local tClean = os.clock()
+        local nClean = unequipAllPets(petsFolder)
+        print(string.format("[Tazen hub] startup: %d unequip calls took %.2fs (%.0f FPS)",
+            nClean, os.clock() - tClean, 1 / math.max(RunService.Heartbeat:Wait(), 0.001)))
         if not isRunning() then return end
         setEquipped(repTarget, true)
 
@@ -301,7 +310,14 @@ local function fastRebirthLoop(myId)
         while isRunning() do
             cycle = cycle + 1
 
-            -- 1. LAST MOMENT: swap the last rep pets -> Titanium Hydras (burst)
+            -- 1. LAST MOMENT, step A: rep pets off (burst)
+            local repOffLead = math.max(REP_OFF_LEAD, HYDRA_LEAD)
+            waitUntil(rebirthAt - repOffLead)
+            if not isRunning() then break end
+            local tRepOff = os.clock()
+            setEquipped(offList, true)
+
+            --    step B: Titanium Hydras on (burst)
             waitUntil(rebirthAt - HYDRA_LEAD)
             if not isRunning() then break end
             local tHydra = os.clock()
@@ -318,8 +334,11 @@ local function fastRebirthLoop(myId)
                 rebirthResult = okR and res or ("error: " .. tostring(res))
             end)
 
-            -- 3. HYDRA_TAIL after the rebirth: hydras off, rep pets back on (burst)
+            -- 3. AFTER THE REBIRTH: hydras off, then rep pets back on (burst)
             waitUntil(tFire + HYDRA_TAIL)
+            local tHydraOff = os.clock()
+            setEquipped(offList, true)
+            waitUntil(tFire + REP_ON_DELAY)
             local tBack = os.clock()
             setEquipped(repTarget, true)
 
@@ -328,8 +347,8 @@ local function fastRebirthLoop(myId)
             fastStatus = string.format("Cycle %d | Rebirth: %s | Slots %d | Rep %d | Hydras %d | %.2fs",
                 cycle, tostring(rebirthResult), slots, #repTarget, #hydraList, interval)
             if cycle <= 3 then
-                print(string.format("[Tazen hub] cycle %d: interval %.2fs | hydras on %.2fs before rebirth, off %.2fs after",
-                    cycle, interval, tFire - tHydra, tBack - tFire))
+                print(string.format("[Tazen hub] cycle %d at t=%.2fs | interval %.2fs | reps off %.2fs before, hydras on %.2fs before | hydras off %.2fs after, reps on %.2fs after",
+                    cycle, tHydra - startClock, interval, tFire - tRepOff, tFire - tHydra, tHydraOff - tFire, tBack - tFire))
             end
 
             -- refresh the lists now and then (new pets, deleted pets...)
