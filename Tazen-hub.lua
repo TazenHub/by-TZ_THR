@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR (standalone: Rayfield-style UI, no HttpGet needed)
+-- Tazen hub V1 by TZ_THR (Slider 660 - 3000)
 
 local ok, err = pcall(function()
 
@@ -15,7 +15,7 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 -- ===================== SETTINGS =====================
-local REBIRTH_COOLDOWN = 6       -- game cooldown between two rebirths (seconds)
+local REBIRTH_COOLDOWN = 6       -- Cooldown du rebirth (secondes)
 
 -- Emojis
 local E = {
@@ -47,11 +47,15 @@ end
 local fastRunId = 0
 local autoRunId = 0
 local repRunId = 0
-local repRate = 660          
+local repRate = 660          -- Défaut fixé à 660
 local repCounter = 0         
 local repTotal = 0           
 local fastStatus = "Waiting..."
 local autoStatus = "Waiting..."
+
+-- References UI pour l'automatisation
+local repToggleObj = nil
+local repSliderObj = nil
 
 -- ===================== GAME HELPERS =====================
 local function canRebirth()
@@ -87,7 +91,19 @@ local function findMuscleEvent(rEvents)
         or rEvents:FindFirstChild("muscleEvent")
 end
 
--- ===================== FAST REBIRTH (STABLE & EXACT 6S) =====================
+-- Force le Fast Strength à 660 reps/s
+local function forceFastRep660()
+    if repSliderObj then
+        repSliderObj:Set(660)
+    else
+        repRate = 660
+    end
+    if repToggleObj and not repToggleObj.Value then
+        repToggleObj:Set(true)
+    end
+end
+
+-- ===================== FAST REBIRTH =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
 
@@ -244,7 +260,6 @@ local function fastRebirthLoop(myId)
             return
         end
 
-        -- Clean de démarrage
         fastStatus = "Starting: cleaning pets..."
         unequipAllPets(petsFolder)
         if not isRunning() then return end
@@ -256,13 +271,9 @@ local function fastRebirthLoop(myId)
             cycle = cycle + 1
             local cycleStart = os.clock()
 
-            -- 1. Équiper les Titanium Hydras
             setEquipped(hydraList, true)
-
-            -- Délai serveur pour prise en compte des Hydras
             task.wait(0.08)
 
-            -- 2. Requête Rebirth en Asynchrone
             task.spawn(function()
                 pcall(function()
                     rebirthRemote:InvokeServer("rebirthRequest")
@@ -270,8 +281,6 @@ local function fastRebirthLoop(myId)
             end)
 
             task.wait(0.02)
-
-            -- 3. Remettre immédiatement les pets Fast Rep
             setEquipped(repTarget, true)
 
             fastStatus = string.format("Cycle %d | Rebirth OK | Slots %d | Rep %d | Hydras %d", cycle, slotsCount, #repTarget, #hydraList)
@@ -281,7 +290,6 @@ local function fastRebirthLoop(myId)
                 rebuild()
             end
 
-            -- 4. Cooldown 6s exact
             local elapsed = os.clock() - cycleStart
             local timeToWait = math.max(0, REBIRTH_COOLDOWN - elapsed)
             task.wait(timeToWait)
@@ -582,7 +590,7 @@ local function textLabel(props, parent)
     local p = {
         BackgroundTransparency = 1,
         Font = Enum.Font.GothamMedium,
-        TextSize = 14,
+        TextSize = 13,
         TextColor3 = T.Text,
         TextStrokeColor3 = Color3.new(0, 0, 0),
         TextStrokeTransparency = 0.5,
@@ -599,10 +607,7 @@ if old then old:Destroy() end
 
 local gui = new("ScreenGui", { Name = "TazenHubGui", ResetOnSpawn = false }, parentGui)
 
-local cam = workspace.CurrentCamera
-local vp = cam and cam.ViewportSize or Vector2.new(900, 600)
-local W = math.min(520, vp.X - 30)
-local H = math.min(360, vp.Y - 30)
+local W, H = 500, 360
 
 local main = new("Frame", {
     Name = "Main",
@@ -610,30 +615,21 @@ local main = new("Frame", {
     Position = UDim2.new(0.5, -W / 2, 0.5, -H / 2),
     BackgroundColor3 = T.Background,
     BorderSizePixel = 0,
-    ClipsDescendants = true,
+    ClipsDescendants = false,
 }, gui)
 corner(main, 12)
 stroke(main, T.Stroke, 1.5)
-
-new("Frame", {
-    Name = "Shade",
-    Size = UDim2.new(1, 0, 1, 0),
-    BackgroundColor3 = Color3.new(0, 0, 0),
-    BackgroundTransparency = 0.55,
-    BorderSizePixel = 0,
-    ZIndex = 3,
-}, main)
 
 local topbar = new("Frame", {
     Name = "Topbar",
     Size = UDim2.new(1, 0, 0, 42),
     BackgroundColor3 = T.Topbar,
-    BackgroundTransparency = 0.1,
     BorderSizePixel = 0,
     ZIndex = 6,
 }, main)
+corner(topbar, 12)
 
-textLabel({ Size = UDim2.new(1, -110, 0, 22), Position = UDim2.new(0, 14, 0, 4), Text = E.sparkles .. " Tazen hub V1", Font = Enum.Font.GothamBlack, TextSize = 17 }, topbar)
+textLabel({ Size = UDim2.new(1, -110, 0, 22), Position = UDim2.new(0, 14, 0, 4), Text = E.sparkles .. " Tazen hub V1", Font = Enum.Font.GothamBlack, TextSize = 16 }, topbar)
 textLabel({ Size = UDim2.new(1, -110, 0, 14), Position = UDim2.new(0, 14, 0, 25), Text = E.heart .. " by TZ_THR  |  press K to hide", TextSize = 11, TextColor3 = T.Accent }, topbar)
 
 local function topButton(text, xOffset)
@@ -644,7 +640,7 @@ local function topButton(text, xOffset)
         BackgroundTransparency = 0.2,
         Text = text,
         Font = Enum.Font.GothamBold,
-        TextSize = 15,
+        TextSize = 14,
         TextColor3 = T.Text,
         BorderSizePixel = 0,
     }, topbar)
@@ -679,20 +675,20 @@ end
 
 local tabBar = new("Frame", {
     Name = "TabBar",
-    Size = UDim2.new(1, 0, 0, 34),
-    Position = UDim2.new(0, 0, 0, 46),
+    Size = UDim2.new(1, -20, 0, 32),
+    Position = UDim2.new(0, 10, 0, 48),
     BackgroundTransparency = 1,
     ZIndex = 6,
 }, main)
 new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, tabBar)
-new("UIPadding", { PaddingLeft = UDim.new(0, 10) }, tabBar)
 
 local pagesHolder = new("Frame", {
     Name = "Pages",
-    Size = UDim2.new(1, 0, 1, -86),
+    Size = UDim2.new(1, 0, 1, -88),
     Position = UDim2.new(0, 0, 0, 84),
     BackgroundTransparency = 1,
     ZIndex = 5,
+    ClipsDescendants = true,
 }, main)
 
 local tabs = {}
@@ -703,7 +699,7 @@ local function selectTab(name)
         local on = (tabName == name)
         t.page.Visible = on
         t.button.BackgroundColor3 = on and T.Accent or T.Element
-        t.button.BackgroundTransparency = on and 0.1 or 0.25
+        t.button.BackgroundTransparency = on and 0.1 or 0.3
     end
 end
 
@@ -711,33 +707,31 @@ local function createTab(name)
     tabCount = tabCount + 1
     local tabW = math.floor((W - 20 - 6 * 3) / 4)
     local button = new("TextButton", {
-        Size = UDim2.fromOffset(tabW, 28),
+        Size = UDim2.fromOffset(tabW, 30),
         BackgroundColor3 = T.Element,
-        BackgroundTransparency = 0.25,
+        BackgroundTransparency = 0.3,
         Text = name,
         Font = Enum.Font.GothamBold,
-        TextSize = 12,
-        TextScaled = true,
+        TextSize = 11,
         TextColor3 = T.Text,
         TextStrokeTransparency = 0.5,
         BorderSizePixel = 0,
         LayoutOrder = tabCount,
     }, tabBar)
     corner(button, 8)
-    new("UITextSizeConstraint", { MaxTextSize = 13, MinTextSize = 8 }, button)
 
     local page = new("ScrollingFrame", {
         Size = UDim2.new(1, 0, 1, 0),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
-        ScrollBarThickness = 3,
+        ScrollBarThickness = 4,
         ScrollBarImageColor3 = T.Accent,
         CanvasSize = UDim2.new(0, 0, 0, 0),
         AutomaticCanvasSize = Enum.AutomaticSize.Y,
         Visible = false,
     }, pagesHolder)
     new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, page)
-    new("UIPadding", { PaddingTop = UDim.new(0, 4), PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 14), PaddingBottom = UDim.new(0, 8) }, page)
+    new("UIPadding", { PaddingTop = UDim.new(0, 4), PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 12), PaddingBottom = UDim.new(0, 10) }, page)
 
     tabs[name] = { button = button, page = page }
     button.Activated:Connect(function() selectTab(name) end)
@@ -745,28 +739,28 @@ local function createTab(name)
 end
 
 local function addSection(page, text)
-    textLabel({ Size = UDim2.new(1, 0, 0, 20), Text = string.upper(text), Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = T.Accent }, page)
+    textLabel({ Size = UDim2.new(1, 0, 0, 18), Text = string.upper(text), Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = T.Accent }, page)
 end
 
 local function addLabel(page, text, height)
-    local f = new("Frame", { Size = UDim2.new(1, 0, 0, height or 40), BackgroundColor3 = T.Element, BackgroundTransparency = 0.3, BorderSizePixel = 0 }, page)
+    local f = new("Frame", { Size = UDim2.new(1, 0, 0, height or 36), BackgroundColor3 = T.Element, BackgroundTransparency = 0.3, BorderSizePixel = 0 }, page)
     corner(f, 8)
     stroke(f, T.Stroke, 1)
-    local l = textLabel({ Size = UDim2.new(1, -20, 1, 0), Position = UDim2.new(0, 10, 0, 0), Text = text, TextSize = 12, TextColor3 = T.SubText, TextWrapped = true }, f)
+    local l = textLabel({ Size = UDim2.new(1, -16, 1, 0), Position = UDim2.new(0, 8, 0, 0), Text = text, TextSize = 11, TextColor3 = T.SubText, TextWrapped = true }, f)
     return { SetText = function(_, t) l.Text = t end }
 end
 
 local function addToggle(page, name, callback)
-    local f = new("Frame", { Size = UDim2.new(1, 0, 0, 44), BackgroundColor3 = T.Element, BackgroundTransparency = 0.2, BorderSizePixel = 0 }, page)
+    local f = new("Frame", { Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = T.Element, BackgroundTransparency = 0.2, BorderSizePixel = 0 }, page)
     corner(f, 8)
     stroke(f, T.Stroke, 1)
 
-    textLabel({ Size = UDim2.new(1, -80, 1, 0), Position = UDim2.new(0, 12, 0, 0), Text = name }, f)
+    textLabel({ Size = UDim2.new(1, -80, 1, 0), Position = UDim2.new(0, 12, 0, 0), Text = name, TextSize = 12 }, f)
 
-    local sw = new("Frame", { Size = UDim2.fromOffset(40, 20), Position = UDim2.new(1, -52, 0.5, -10), BackgroundColor3 = T.Off, BorderSizePixel = 0 }, f)
-    corner(sw, 10)
-    local knob = new("Frame", { Size = UDim2.fromOffset(16, 16), Position = UDim2.fromOffset(2, 2), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0 }, sw)
-    corner(knob, 8)
+    local sw = new("Frame", { Size = UDim2.fromOffset(36, 18), Position = UDim2.new(1, -48, 0.5, -9), BackgroundColor3 = T.Off, BorderSizePixel = 0 }, f)
+    corner(sw, 9)
+    local knob = new("Frame", { Size = UDim2.fromOffset(14, 14), Position = UDim2.fromOffset(2, 2), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0 }, sw)
+    corner(knob, 7)
 
     local hit = new("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "" }, f)
 
@@ -775,7 +769,7 @@ local function addToggle(page, name, callback)
         if v == self.Value then return end
         self.Value = v
         local info = TweenInfo.new(0.15, Enum.EasingStyle.Quad)
-        TweenService:Create(knob, info, { Position = v and UDim2.fromOffset(22, 2) or UDim2.fromOffset(2, 2) }):Play()
+        TweenService:Create(knob, info, { Position = v and UDim2.fromOffset(20, 2) or UDim2.fromOffset(2, 2) }):Play()
         TweenService:Create(sw, info, { BackgroundColor3 = v and T.Accent or T.Off }):Play()
         if callback then callback(v) end
     end
@@ -785,14 +779,13 @@ end
 
 local function addButton(page, name, callback)
     local b = new("TextButton", {
-        Size = UDim2.new(1, 0, 0, 38),
+        Size = UDim2.new(1, 0, 0, 34),
         BackgroundColor3 = T.Element,
         BackgroundTransparency = 0.2,
         Text = name,
         Font = Enum.Font.GothamBold,
-        TextSize = 14,
+        TextSize = 12,
         TextColor3 = T.Text,
-        TextStrokeTransparency = 0.5,
         BorderSizePixel = 0,
     }, page)
     corner(b, 8)
@@ -801,27 +794,34 @@ local function addButton(page, name, callback)
 end
 
 local function addSlider(page, name, min, max, default, callback)
-    local f = new("Frame", { Size = UDim2.new(1, 0, 0, 62), BackgroundColor3 = T.Element, BackgroundTransparency = 0.2, BorderSizePixel = 0 }, page)
+    local f = new("Frame", { Size = UDim2.new(1, 0, 0, 54), BackgroundColor3 = T.Element, BackgroundTransparency = 0.2, BorderSizePixel = 0 }, page)
     corner(f, 8)
     stroke(f, T.Stroke, 1)
 
-    textLabel({ Size = UDim2.new(1, -100, 0, 24), Position = UDim2.new(0, 12, 0, 6), Text = name }, f)
-    local valueLabel = textLabel({ Size = UDim2.fromOffset(80, 24), Position = UDim2.new(1, -92, 0, 6), Text = tostring(default), TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = T.Accent, Font = Enum.Font.GothamBold }, f)
+    textLabel({ Size = UDim2.new(1, -100, 0, 20), Position = UDim2.new(0, 12, 0, 4), Text = name, TextSize = 12 }, f)
+    local valueLabel = textLabel({ Size = UDim2.fromOffset(80, 20), Position = UDim2.new(1, -92, 0, 4), Text = tostring(default), TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = T.Accent, Font = Enum.Font.GothamBold, TextSize = 12 }, f)
 
-    local track = new("Frame", { Size = UDim2.new(1, -24, 0, 8), Position = UDim2.new(0, 12, 0, 42), BackgroundColor3 = T.Off, BorderSizePixel = 0 }, f)
-    corner(track, 4)
+    local track = new("Frame", { Size = UDim2.new(1, -24, 0, 6), Position = UDim2.new(0, 12, 0, 34), BackgroundColor3 = T.Off, BorderSizePixel = 0 }, f)
+    corner(track, 3)
     local fill = new("Frame", { Size = UDim2.new((default - min) / (max - min), 0, 1, 0), BackgroundColor3 = T.Accent, BorderSizePixel = 0 }, track)
-    corner(fill, 4)
+    corner(fill, 3)
 
-    local hit = new("TextButton", { Size = UDim2.new(1, -12, 0, 30), Position = UDim2.new(0, 6, 0, 31), BackgroundTransparency = 1, Text = "" }, f)
+    local hit = new("TextButton", { Size = UDim2.new(1, -12, 0, 24), Position = UDim2.new(0, 6, 0, 25), BackgroundTransparency = 1, Text = "" }, f)
 
+    local obj = {}
     local dragging = false
-    local function update(x)
-        local rel = math.clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
-        local value = math.floor(min + rel * (max - min) + 0.5)
+
+    function obj:Set(value)
+        value = math.clamp(value, min, max)
         fill.Size = UDim2.new((value - min) / (max - min), 0, 1, 0)
         valueLabel.Text = tostring(value)
         callback(value)
+    end
+
+    local function update(x)
+        local rel = math.clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
+        local value = math.floor(min + rel * (max - min) + 0.5)
+        obj:Set(value)
     end
 
     hit.InputBegan:Connect(function(input)
@@ -842,21 +842,23 @@ local function addSlider(page, name, min, max, default, callback)
             page.ScrollingEnabled = true
         end
     end)
+
+    return obj
 end
 
 local function addStatBlock(page, title, rowNames)
-    local h = 30 + #rowNames * 22 + 6
+    local h = 24 + #rowNames * 18 + 6
     local f = new("Frame", { Size = UDim2.new(1, 0, 0, h), BackgroundColor3 = T.Element, BackgroundTransparency = 0.2, BorderSizePixel = 0 }, page)
     corner(f, 8)
     stroke(f, T.Stroke, 1)
 
-    textLabel({ Size = UDim2.new(1, -20, 0, 24), Position = UDim2.new(0, 12, 0, 4), Text = title, Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = T.Accent }, f)
+    textLabel({ Size = UDim2.new(1, -20, 0, 20), Position = UDim2.new(0, 12, 0, 2), Text = title, Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = T.Accent }, f)
 
     local values = {}
     for i, name in ipairs(rowNames) do
-        local y = 28 + (i - 1) * 22
-        textLabel({ Size = UDim2.new(0.5, -12, 0, 20), Position = UDim2.new(0, 12, 0, y), Text = name, TextSize = 13, TextColor3 = T.SubText }, f)
-        values[i] = textLabel({ Size = UDim2.new(0.5, -12, 0, 20), Position = UDim2.new(0.5, 0, 0, y), Text = "--", TextSize = 13, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Right }, f)
+        local y = 22 + (i - 1) * 18
+        textLabel({ Size = UDim2.new(0.5, -12, 0, 16), Position = UDim2.new(0, 12, 0, y), Text = name, TextSize = 11, TextColor3 = T.SubText }, f)
+        values[i] = textLabel({ Size = UDim2.new(0.5, -12, 0, 16), Position = UDim2.new(0.5, 0, 0, y), Text = "--", TextSize = 11, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Right }, f)
     end
 
     return {
@@ -869,24 +871,24 @@ local function addStatBlock(page, title, rowNames)
 end
 
 local function addCredit(page, text)
-    local f = new("Frame", { Size = UDim2.new(1, 0, 0, 64), BackgroundColor3 = T.Element, BackgroundTransparency = 0.2, BorderSizePixel = 0 }, page)
+    local f = new("Frame", { Size = UDim2.new(1, 0, 0, 50), BackgroundColor3 = T.Element, BackgroundTransparency = 0.2, BorderSizePixel = 0 }, page)
     corner(f, 8)
     stroke(f, T.Accent, 1.5)
-    textLabel({ Size = UDim2.new(1, -20, 1, 0), Position = UDim2.new(0, 10, 0, 0), Text = text, Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = T.Text, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center }, f)
+    textLabel({ Size = UDim2.new(1, -20, 1, 0), Position = UDim2.new(0, 10, 0, 0), Text = text, Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = T.Text, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center }, f)
 end
 
 local function notify(title, text)
     if not alive then return end
-    local n = new("Frame", { Size = UDim2.fromOffset(250, 56), Position = UDim2.new(1, 20, 1, -76), BackgroundColor3 = T.Topbar, BorderSizePixel = 0 }, gui)
-    corner(n, 10)
+    local n = new("Frame", { Size = UDim2.fromOffset(230, 48), Position = UDim2.new(1, 20, 1, -66), BackgroundColor3 = T.Topbar, BorderSizePixel = 0 }, gui)
+    corner(n, 8)
     stroke(n, T.Accent, 1.5)
-    textLabel({ Size = UDim2.new(1, -16, 0, 22), Position = UDim2.new(0, 10, 0, 5), Text = title, Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = T.Accent }, n)
-    textLabel({ Size = UDim2.new(1, -16, 0, 22), Position = UDim2.new(0, 10, 0, 27), Text = text, TextSize = 12, TextColor3 = T.SubText }, n)
+    textLabel({ Size = UDim2.new(1, -16, 0, 18), Position = UDim2.new(0, 8, 0, 4), Text = title, Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = T.Accent }, n)
+    textLabel({ Size = UDim2.new(1, -16, 0, 18), Position = UDim2.new(0, 8, 0, 22), Text = text, TextSize = 11, TextColor3 = T.SubText }, n)
     local info = TweenInfo.new(0.25, Enum.EasingStyle.Quad)
-    TweenService:Create(n, info, { Position = UDim2.new(1, -270, 1, -76) }):Play()
+    TweenService:Create(n, info, { Position = UDim2.new(1, -240, 1, -66) }):Play()
     task.delay(2.5, function()
         if n and n.Parent then
-            TweenService:Create(n, info, { Position = UDim2.new(1, 20, 1, -76) }):Play()
+            TweenService:Create(n, info, { Position = UDim2.new(1, 20, 1, -66) }):Play()
             task.wait(0.3)
             n:Destroy()
         end
@@ -904,7 +906,7 @@ local autoPage = createTab(TAB_AUTO)
 local strPage = createTab(TAB_STR)
 local miscPage = createTab(TAB_MISC)
 
-local fastToggle, autoToggle, repToggle, antiAfkToggle, antiLagToggle
+local fastToggle, autoToggle, antiAfkToggle, antiLagToggle
 
 local function notifyState(title, v)
     notify(title, v and (E.ok .. " Enabled") or (E.no .. " Disabled"))
@@ -929,16 +931,15 @@ local STR_ROWS = {
 
 -- Fast Rebirth
 addSection(fastPage, E.fire .. " Fast Rebirth (Pack)")
-
--- Nouveau message demandé
-addLabel(fastPage, "⚠️Make sure to have pack for using fast rebirth", 34)
-addLabel(fastPage, "⚠️ use 660 rep speed for faster rebirth", 34)
+addLabel(fastPage, "⚠️Make sure to have pack for using fast rebirth", 28)
+addLabel(fastPage, "⚠️ Fast reps automatically set to 660", 28)
 
 fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", function(v)
     fastRunId = fastRunId + 1
     if v then
         autoRunId = autoRunId + 1
         if autoToggle then autoToggle:Set(false) end
+        forceFastRep660()
         fastStatus = "Starting..."
         notifyState(E.bolt .. " Fast rebirth", true)
         task.spawn(fastRebirthLoop, fastRunId)
@@ -946,7 +947,7 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", function(v)
         notifyState(E.bolt .. " Fast rebirth", false)
     end
 end)
-local fastStatusLabel = addLabel(fastPage, E.clip .. " " .. fastStatus, 60)
+local fastStatusLabel = addLabel(fastPage, E.clip .. " " .. fastStatus, 48)
 addSection(fastPage, E.chart .. " Rebirth calculator")
 local fastRebBlock = addStatBlock(fastPage, E.loop .. " REBIRTHS (measured over 20 s)", REB_ROWS)
 addButton(fastPage, E.broom .. " Reset stats", resetStats)
@@ -958,6 +959,7 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", function(v)
     if v then
         fastRunId = fastRunId + 1
         if fastToggle then fastToggle:Set(false) end
+        forceFastRep660()
         autoStatus = "Starting..."
         notifyState(E.cycle .. " Auto rebirth", true)
         task.spawn(autoRebirthLoop, autoRunId)
@@ -965,14 +967,14 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", function(v)
         notifyState(E.cycle .. " Auto rebirth", false)
     end
 end)
-local autoStatusLabel = addLabel(autoPage, E.clip .. " " .. autoStatus, 40)
+local autoStatusLabel = addLabel(autoPage, E.clip .. " " .. autoStatus, 36)
 addSection(autoPage, E.chart .. " Rebirth calculator")
 local autoRebBlock = addStatBlock(autoPage, E.loop .. " REBIRTHS (measured over 20 s)", REB_ROWS)
 addButton(autoPage, E.broom .. " Reset stats", resetStats)
 
--- Fast Strength
+-- Fast Strength (Slider réglé de 660 à 3000)
 addSection(strPage, E.muscle .. " Fast Strength")
-repToggle = addToggle(strPage, E.muscle .. " Fast strength", function(v)
+repToggleObj = addToggle(strPage, E.muscle .. " Fast strength", function(v)
     repRunId = repRunId + 1
     if v then
         notify(E.muscle .. " Fast strength", E.target .. " " .. repRate .. " reps/s targeted")
@@ -981,8 +983,8 @@ repToggle = addToggle(strPage, E.muscle .. " Fast strength", function(v)
         notifyState(E.muscle .. " Fast strength", false)
     end
 end)
-addSlider(strPage, E.wrench .. " Reps per second", 100, 660, repRate, function(v) repRate = v end)
-local repLabel = addLabel(strPage, E.antenna .. " Real reps/s: --", 34)
+repSliderObj = addSlider(strPage, E.wrench .. " Reps per second", 660, 3000, repRate, function(v) repRate = v end)
+local repLabel = addLabel(strPage, E.antenna .. " Real reps/s: --", 28)
 addSection(strPage, E.up .. " Strength calculator")
 local strBlock = addStatBlock(strPage, E.muscle .. " STRENGTH (measured over 20 s)", STR_ROWS)
 addButton(strPage, E.broom .. " Reset stats", resetStats)
@@ -993,24 +995,24 @@ antiAfkToggle = addToggle(miscPage, E.sleep .. " Anti AFK", function(v)
     setAntiAfk(v)
     notifyState(E.sleep .. " Anti AFK", v)
 end)
-addLabel(miscPage, E.bulb .. " Stops Roblox from kicking you after 20 minutes of inactivity.", 34)
+addLabel(miscPage, E.bulb .. " Stops Roblox from kicking you after 20 minutes.", 28)
 antiLagToggle = addToggle(miscPage, E.rocket .. " Anti Lag (low-end devices)", function(v)
     if v then antiLagStart() else antiLagStop() end
     notifyState(E.rocket .. " Anti Lag", v)
 end)
-addLabel(miscPage, E.bulb .. " Lowers graphics (particles, shadows, textures, effects). Fully reverted when turned off.", 46)
-local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 34)
+addLabel(miscPage, E.bulb .. " Lowers graphics (particles, shadows, textures).", 28)
+local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 28)
 addSection(miscPage, E.heart .. " Credits")
-addCredit(miscPage, E.sparkles .. " Made by TZ_THR, Thank you for using my script have fun " .. E.party)
+addCredit(miscPage, E.sparkles .. " Made by TZ_THR, Thank you for using my script " .. E.party)
 
 selectTab(TAB_FAST)
 
--- ===================== UPDATE (once per second) =====================
+-- ===================== UPDATE =====================
 task.spawn(function()
     while alive do
         task.wait(1)
 
-        repLabel:SetText(E.antenna .. (repToggle.Value and (" Real reps/s: " .. repCounter) or " Real reps/s: --"))
+        repLabel:SetText(E.antenna .. (repToggleObj and repToggleObj.Value and (" Real reps/s: " .. repCounter) or " Real reps/s: --"))
         repCounter = 0
 
         fpsLabel:SetText(E.game .. " FPS: " .. fpsFrames)
@@ -1073,7 +1075,7 @@ connect(UserInputService.InputBegan, function(input, processed)
     end
 end)
 
-print("[Tazen hub] UI loaded")
+print("[Tazen hub] UI loaded with Slider Range 660-3000")
 
 end)
 
