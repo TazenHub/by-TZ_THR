@@ -9,13 +9,22 @@ end
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
+-- ===================== RÉGLAGES =====================
 local PET_FOLDERS = { "Unique", "Rare", "Epic", "Mythic", "Legendary" }
 local CYCLE_TIME = 6.2
 local REP_DURATION = 5.5
 local REP_INTERVAL = 0.5
 local REPS_PER_BURST = 10
+
+-- Colle ici l'ID de ton image Roblox (juste le nombre), ex : 123456789
+local IMAGE_ID = 0
+-- Ou mets le fichier dans le dossier "workspace" de ton executor
+local IMAGE_FILE = "tazen_logo.png"
 
 local repSpeedPetPriorities = {
     ["Omega Overlord"] = 1,
@@ -24,11 +33,25 @@ local repSpeedPetPriorities = {
     ["Epic Boss Pet"] = 4,
 }
 
+-- ===================== ÉTAT =====================
+local alive = true
+local connections = {}
+local function connect(signal, fn)
+    local c = signal:Connect(fn)
+    table.insert(connections, c)
+    return c
+end
+
 local fastRunId = 0
 local autoRunId = 0
+local repRunId = 0
+local repRate = 660          -- rep/s visées (minimum 659)
+local repCounter = 0         -- rep envoyées depuis la dernière seconde
+local repTotal = 0           -- rep envoyées au total
+local fastStatus = "En attente..."
+local autoStatus = "En attente..."
 
--- ===================== LOGIQUE =====================
-
+-- ===================== OUTILS JEU =====================
 local function canRebirth()
     local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
     if not leaderstats then return true end
@@ -73,70 +96,82 @@ local function findMuscleEvent(rEvents)
         or rEvents:FindFirstChild("muscleEvent")
 end
 
-local function getSortedChildren(folder)
-    local list = folder:GetChildren()
-    table.sort(list, function(a, b) return a.Name < b.Name end)
-    return list
-end
-
+-- ===================== FAST REBIRTH =====================
 local function fastRebirthLoop(myId)
     local r = getRemotes()
     if not r or not r.rebirth or not r.equip then
-        warn("[Tazen hub] Remotes introuvables")
+        fastStatus = "Remotes introuvables (rEvents / rebirthRemote / equipPetEvent)"
+        warn("[Tazen hub] " .. fastStatus)
         return
     end
     local function isRunning() return fastRunId == myId end
 
+    local cycle = 0
     while isRunning() do
+        cycle = cycle + 1
         local cycleStart = tick()
+        local hydraCount, repEquipped, rebirthResult = 0, 0, "-"
         local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
 
-        if petsFolder and canRebirth() then
-            for _, folderName in ipairs(PET_FOLDERS) do
-                local folder = petsFolder:FindFirstChild(folderName)
-                if folder then
-                    for _, pet in ipairs(folder:GetChildren()) do
-                        if getPetName(pet) == "Titanium Hydra" then
-                            pcall(function() r.equip:FireServer("equipPet", pet) end)
-                            task.wait(0.05)
+        if canRebirth() then
+            -- 1. Équiper le Titanium Hydra
+            if petsFolder then
+                for _, folderName in ipairs(PET_FOLDERS) do
+                    local folder = petsFolder:FindFirstChild(folderName)
+                    if folder then
+                        for _, pet in ipairs(folder:GetChildren()) do
+                            if getPetName(pet) == "Titanium Hydra" then
+                                pcall(function() r.equip:FireServer("equipPet", pet) end)
+                                hydraCount = hydraCount + 1
+                                task.wait(0.05)
+                            end
                         end
                     end
+                    if not isRunning() then return end
                 end
-                if not isRunning() then return end
             end
 
-            pcall(function() r.rebirth:InvokeServer("rebirthRequest") end)
+            -- 2. Rebirth (tenté même si petsFolder est introuvable)
+            local okR, res = pcall(function()
+                return r.rebirth:InvokeServer("rebirthRequest")
+            end)
+            rebirthResult = okR and tostring(res) or ("erreur: " .. tostring(res))
             task.wait(0.1)
             if not isRunning() then return end
 
-            local repPets = {}
-            local uniqueFolder = petsFolder:FindFirstChild("Unique")
-            local priority4Pet = uniqueFolder and uniqueFolder:GetChildren()[4]
+            -- 3. Équiper les pets de rep (priorité Unique n°4, comme l'ancien script)
+            if petsFolder then
+                local repPets = {}
+                local uniqueFolder = petsFolder:FindFirstChild("Unique")
+                local priority4Pet = uniqueFolder and uniqueFolder:GetChildren()[4]
 
-            for _, folderName in ipairs(PET_FOLDERS) do
-                local folder = petsFolder:FindFirstChild(folderName)
-                if folder then
-                    for _, pet in ipairs(folder:GetChildren()) do
-                        local priority = repSpeedPetPriorities[getPetName(pet)] or 5
-                        if priority4Pet and pet == priority4Pet then priority = 0 end
-                        if priority < 5 then
-                            table.insert(repPets, { Instance = pet, Priority = priority, Score = getPetScore(pet) })
+                for _, folderName in ipairs(PET_FOLDERS) do
+                    local folder = petsFolder:FindFirstChild(folderName)
+                    if folder then
+                        for _, pet in ipairs(folder:GetChildren()) do
+                            local priority = repSpeedPetPriorities[getPetName(pet)] or 5
+                            if priority4Pet and pet == priority4Pet then priority = 0 end
+                            if priority < 5 then
+                                table.insert(repPets, { Instance = pet, Priority = priority, Score = getPetScore(pet) })
+                            end
                         end
                     end
                 end
+
+                table.sort(repPets, function(a, b)
+                    if a.Priority == b.Priority then return a.Score > b.Score end
+                    return a.Priority < b.Priority
+                end)
+
+                for _, entry in ipairs(repPets) do
+                    pcall(function() r.equip:FireServer("equipPet", entry.Instance) end)
+                    repEquipped = repEquipped + 1
+                    task.wait(0.05)
+                    if not isRunning() then return end
+                end
             end
 
-            table.sort(repPets, function(a, b)
-                if a.Priority == b.Priority then return a.Score > b.Score end
-                return a.Priority < b.Priority
-            end)
-
-            for _, entry in ipairs(repPets) do
-                pcall(function() r.equip:FireServer("equipPet", entry.Instance) end)
-                task.wait(0.05)
-                if not isRunning() then return end
-            end
-
+            -- 4. Rep régulé pendant ~5.5 s
             local muscleEvent = findMuscleEvent(r.rEvents)
             if muscleEvent then
                 local repStart = tick()
@@ -144,49 +179,50 @@ local function fastRebirthLoop(myId)
                     for _ = 1, REPS_PER_BURST do
                         pcall(function() muscleEvent:FireServer("rep") end)
                     end
+                    repTotal = repTotal + REPS_PER_BURST
                     task.wait(REP_INTERVAL)
                 end
             end
+        else
+            rebirthResult = "canRebirth = false"
         end
+
+        fastStatus = string.format(
+            "Cycle %d | Hydra équipé(s): %d | Rebirth: %s | Pets de rep: %d%s",
+            cycle, hydraCount, rebirthResult, repEquipped,
+            petsFolder and "" or " | petsFolder INTROUVABLE"
+        )
+        if cycle <= 3 then print("[Tazen hub] " .. fastStatus) end
 
         local remaining = CYCLE_TIME - (tick() - cycleStart)
         task.wait(math.max(remaining, 0.5))
     end
 end
 
+-- ===================== AUTO REBIRTH =====================
 local function autoRebirthLoop(myId)
     local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
     local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
     if not rebirthRemote then
-        warn("[Tazen hub] rebirthRemote introuvable")
+        autoStatus = "rebirthRemote introuvable"
+        warn("[Tazen hub] " .. autoStatus)
         return
     end
+    local tries = 0
     while autoRunId == myId do
         if canRebirth() then
-            pcall(function() rebirthRemote:InvokeServer("rebirthRequest") end)
+            tries = tries + 1
+            local okR, res = pcall(function()
+                return rebirthRemote:InvokeServer("rebirthRequest")
+            end)
+            autoStatus = string.format("Tentatives: %d | dernier retour: %s",
+                tries, okR and tostring(res) or ("erreur: " .. tostring(res)))
         end
         task.wait(6)
     end
 end
 
--- ===================== SERVICES UI =====================
-local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-
-local alive = true
-local connections = {}
-local function connect(signal, fn)
-    local c = signal:Connect(fn)
-    table.insert(connections, c)
-    return c
-end
-
--- ===================== FAST REP =====================
-local repRunId = 0
-local repRate = 660      -- rep par seconde (minimum 659)
-local repCounter = 0
-
+-- ===================== FAST STRENGTH (REP) =====================
 local function fastRepLoop(myId)
     local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
     if not rEvents then warn("[Tazen hub] rEvents introuvable") return end
@@ -198,7 +234,6 @@ local function fastRepLoop(myId)
     while repRunId == myId and alive do
         local dt = RunService.Heartbeat:Wait()
 
-        -- le remote peut changer de parent (respawn) : on le retrouve
         if tick() - lastCheck > 1 then
             lastCheck = tick()
             if not muscleEvent.Parent then
@@ -206,7 +241,7 @@ local function fastRepLoop(myId)
             end
         end
 
-        -- accumulateur basé sur le temps : garde le débit moyen même si les FPS varient
+        -- accumulateur basé sur le temps : le débit moyen reste correct même si les FPS varient
         carry = carry + repRate * dt
         local n = math.floor(carry)
         carry = carry - n
@@ -216,15 +251,63 @@ local function fastRepLoop(myId)
             pcall(muscleEvent.FireServer, muscleEvent, "rep")
         end
         repCounter = repCounter + n
+        repTotal = repTotal + n
     end
 end
 
--- ===================== THÈME / IMAGE =====================
--- Colle ici l'ID de ton image Roblox (juste le nombre), ex : 123456789
-local IMAGE_ID = 0
--- Ou mets le fichier dans le dossier "workspace" de ton executor
-local IMAGE_FILE = "tazen_logo.png"
+-- ===================== CALCULATEUR (force / renaissances) =====================
+local tracker = { strGain = 0, rebGain = 0 }
+local samples = {}
+local WINDOW = 20 -- secondes de mesure glissante
 
+local function bindStat(statName, altName, key)
+    task.spawn(function()
+        local ls = LocalPlayer:WaitForChild("leaderstats", 10)
+        if not ls then warn("[Tazen hub] leaderstats introuvable") return end
+        local stat = ls:WaitForChild(statName, 10) or (altName and ls:FindFirstChild(altName))
+        if not stat then warn("[Tazen hub] stat introuvable : " .. statName) return end
+        local last = tonumber(stat.Value) or 0
+        connect(stat.Changed, function(v)
+            v = tonumber(v) or last
+            -- on ne compte que les hausses (le rebirth remet la force à 0)
+            if v > last then tracker[key] = tracker[key] + (v - last) end
+            last = v
+        end)
+    end)
+end
+bindStat("Strength", "Muscle", "strGain")
+bindStat("Rebirths", "Rebirth", "rebGain")
+
+local SUFFIX = { "", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc" }
+local function fmt(n)
+    if n ~= n or n == math.huge then return "--" end
+    if n < 1000 then
+        if n == 0 then return "0" end
+        if n >= 100 then return string.format("%.0f", n) end
+        if n >= 10 then return string.format("%.1f", n) end
+        return string.format("%.2f", n)
+    end
+    local i = 1
+    while n >= 1000 and i < #SUFFIX do
+        n = n / 1000
+        i = i + 1
+    end
+    return string.format("%.2f%s", n, SUFFIX[i])
+end
+
+local function pushSample()
+    local now = tick()
+    table.insert(samples, { t = now, str = tracker.strGain, reb = tracker.rebGain, rep = repTotal })
+    while #samples > 2 and now - samples[1].t > WINDOW do
+        table.remove(samples, 1)
+    end
+end
+
+local function projections(rate)
+    return { fmt(rate), fmt(rate * 60), fmt(rate * 3600), fmt(rate * 86400), fmt(rate * 604800) }
+end
+
+-- ===================== THÈME / OUTILS UI =====================
 local T = {
     Background = Color3.fromRGB(16, 8, 30),
     Topbar = Color3.fromRGB(30, 16, 56),
@@ -300,7 +383,7 @@ local gui = new("ScreenGui", {
 local cam = workspace.CurrentCamera
 local vp = cam and cam.ViewportSize or Vector2.new(900, 600)
 local W = math.min(520, vp.X - 30)
-local H = math.min(340, vp.Y - 30)
+local H = math.min(360, vp.Y - 30)
 
 local main = new("Frame", {
     Name = "Main",
@@ -313,7 +396,7 @@ local main = new("Frame", {
 corner(main, 12)
 stroke(main, T.Stroke, 1.5)
 
--- Image de fond (ou "TZ" de secours si aucune image)
+-- Image de fond
 local imageId = resolveImage()
 local bg = new("ImageLabel", {
     Name = "Background",
@@ -325,22 +408,6 @@ local bg = new("ImageLabel", {
     ZIndex = 2,
 }, main)
 
-if imageId == "" then
-    bg.Visible = false
-    textLabel({
-        Size = UDim2.new(1, 0, 1, 0),
-        Text = "TZ",
-        Font = Enum.Font.GothamBlack,
-        TextSize = 170,
-        TextColor3 = T.Accent,
-        TextTransparency = 0.88,
-        TextStrokeTransparency = 1,
-        TextXAlignment = Enum.TextXAlignment.Center,
-        ZIndex = 2,
-    }, main)
-    warn("[Tazen hub] Aucune image : renseigne IMAGE_ID ou ajoute " .. IMAGE_FILE .. " dans le workspace")
-end
-
 -- Voile sombre pour garder le texte lisible
 new("Frame", {
     Name = "Shade",
@@ -350,6 +417,32 @@ new("Frame", {
     BorderSizePixel = 0,
     ZIndex = 3,
 }, main)
+
+-- Sans image : "TAZEN" moitié blanc / moitié rose
+if imageId == "" then
+    bg.Visible = false
+    local wm = textLabel({
+        Name = "Watermark",
+        Size = UDim2.new(1, 0, 0, 110),
+        Position = UDim2.new(0, 0, 0.5, -40),
+        Text = "TAZEN",
+        Font = Enum.Font.GothamBlack,
+        TextSize = 84,
+        TextColor3 = Color3.new(1, 1, 1),
+        TextTransparency = 0.5,
+        TextStrokeTransparency = 1,
+        TextXAlignment = Enum.TextXAlignment.Center,
+        ZIndex = 4,
+    }, main)
+    new("UIGradient", {
+        Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+            ColorSequenceKeypoint.new(0.5, Color3.new(1, 1, 1)),
+            ColorSequenceKeypoint.new(0.501, T.Accent),
+            ColorSequenceKeypoint.new(1, T.Accent),
+        }),
+    }, wm)
+end
 
 -- Barre du haut
 local topbar = new("Frame", {
@@ -420,7 +513,7 @@ do
     end)
 end
 
--- Barre d'onglets + conteneur de pages
+-- Barre d'onglets + pages
 local tabBar = new("Frame", {
     Name = "TabBar",
     Size = UDim2.new(1, 0, 0, 34),
@@ -444,6 +537,7 @@ local pagesHolder = new("Frame", {
 }, main)
 
 local tabs = {}
+local tabCount = 0
 
 local function selectTab(name)
     for tabName, t in pairs(tabs) do
@@ -455,17 +549,18 @@ local function selectTab(name)
 end
 
 local function createTab(name)
+    tabCount = tabCount + 1
     local button = new("TextButton", {
-        Size = UDim2.fromOffset(124, 28),
+        Size = UDim2.fromOffset(112, 28),
         BackgroundColor3 = T.Element,
         BackgroundTransparency = 0.25,
         Text = name,
         Font = Enum.Font.GothamBold,
-        TextSize = 13,
+        TextSize = 12,
         TextColor3 = T.Text,
         TextStrokeTransparency = 0.5,
         BorderSizePixel = 0,
-        LayoutOrder = #tabBar:GetChildren(),
+        LayoutOrder = tabCount,
     }, tabBar)
     corner(button, 8)
 
@@ -567,6 +662,23 @@ local function addToggle(page, name, callback)
     return obj
 end
 
+local function addButton(page, name, callback)
+    local b = new("TextButton", {
+        Size = UDim2.new(1, 0, 0, 38),
+        BackgroundColor3 = T.Element,
+        BackgroundTransparency = 0.2,
+        Text = name,
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        TextColor3 = T.Text,
+        TextStrokeTransparency = 0.5,
+        BorderSizePixel = 0,
+    }, page)
+    corner(b, 8)
+    stroke(b, T.Accent, 1)
+    b.Activated:Connect(callback)
+end
+
 local function addSlider(page, name, min, max, default, callback)
     local f = new("Frame", {
         Size = UDim2.new(1, 0, 0, 62),
@@ -640,6 +752,56 @@ local function addSlider(page, name, min, max, default, callback)
     end)
 end
 
+-- Bloc de statistiques (liste "nom ... valeur")
+local function addStatBlock(page, title, rowNames)
+    local h = 30 + #rowNames * 22 + 6
+    local f = new("Frame", {
+        Size = UDim2.new(1, 0, 0, h),
+        BackgroundColor3 = T.Element,
+        BackgroundTransparency = 0.2,
+        BorderSizePixel = 0,
+    }, page)
+    corner(f, 8)
+    stroke(f, T.Stroke, 1)
+
+    textLabel({
+        Size = UDim2.new(1, -20, 0, 24),
+        Position = UDim2.new(0, 12, 0, 4),
+        Text = title,
+        Font = Enum.Font.GothamBold,
+        TextSize = 13,
+        TextColor3 = T.Accent,
+    }, f)
+
+    local values = {}
+    for i, name in ipairs(rowNames) do
+        local y = 28 + (i - 1) * 22
+        textLabel({
+            Size = UDim2.new(0.5, -12, 0, 20),
+            Position = UDim2.new(0, 12, 0, y),
+            Text = name,
+            TextSize = 13,
+            TextColor3 = T.SubText,
+        }, f)
+        values[i] = textLabel({
+            Size = UDim2.new(0.5, -12, 0, 20),
+            Position = UDim2.new(0.5, 0, 0, y),
+            Text = "--",
+            TextSize = 13,
+            Font = Enum.Font.GothamBold,
+            TextXAlignment = Enum.TextXAlignment.Right,
+        }, f)
+    end
+
+    return {
+        Set = function(_, list)
+            for i, v in ipairs(list) do
+                if values[i] then values[i].Text = v end
+            end
+        end,
+    }
+end
+
 -- Notifications
 local function notify(title, text)
     if not alive then return end
@@ -673,7 +835,8 @@ end
 -- ===================== ONGLETS =====================
 local fastPage = createTab("Fast Rebirth")
 local autoPage = createTab("Auto Rebirth")
-local repPage = createTab("Fast Rep")
+local strPage = createTab("Fast Strength")
+local calcPage = createTab("Calculateur")
 
 local fastToggle, autoToggle, repToggle
 
@@ -685,12 +848,14 @@ fastToggle = addToggle(fastPage, "Fast rebirth", function(v)
     if v then
         autoRunId = autoRunId + 1
         if autoToggle then autoToggle:Set(false) end
+        fastStatus = "Démarrage..."
         notify("Fast rebirth", "Activé")
         task.spawn(fastRebirthLoop, fastRunId)
     else
         notify("Fast rebirth", "Désactivé")
     end
 end)
+local fastStatusLabel = addLabel(fastPage, fastStatus, 60)
 
 -- Auto Rebirth
 addSection(autoPage, "Auto Rebirth (No Pack)")
@@ -699,40 +864,80 @@ autoToggle = addToggle(autoPage, "Auto rebirth", function(v)
     if v then
         fastRunId = fastRunId + 1
         if fastToggle then fastToggle:Set(false) end
+        autoStatus = "Démarrage..."
         notify("Auto rebirth", "Activé")
         task.spawn(autoRebirthLoop, autoRunId)
     else
         notify("Auto rebirth", "Désactivé")
     end
 end)
+local autoStatusLabel = addLabel(autoPage, autoStatus, 40)
 
--- Fast Rep
-addSection(repPage, "Fast Rep")
-repToggle = addToggle(repPage, "Fast rep", function(v)
+-- Fast Strength
+addSection(strPage, "Fast Strength")
+repToggle = addToggle(strPage, "Fast strength", function(v)
     repRunId = repRunId + 1
     if v then
-        notify("Fast rep", repRate .. " rep/s visés")
+        notify("Fast strength", repRate .. " rep/s visés")
         task.spawn(fastRepLoop, repRunId)
     else
-        notify("Fast rep", "Désactivé")
+        notify("Fast strength", "Désactivé")
     end
 end)
-addSlider(repPage, "Rep par seconde", 659, 3000, repRate, function(v) repRate = v end)
-local repLabel = addLabel(repPage, "Rep/s réel : --", 34)
+addSlider(strPage, "Rep par seconde", 659, 3000, repRate, function(v) repRate = v end)
+local repLabel = addLabel(strPage, "Rep/s réel : --", 34)
 
-task.spawn(function()
-    while alive do
-        task.wait(1)
-        if repToggle.Value then
-            repLabel:SetText("Rep/s réel : " .. repCounter)
-        else
-            repLabel:SetText("Rep/s réel : --")
-        end
-        repCounter = 0
-    end
+-- Calculateur
+addSection(calcPage, "Calculateur (mesure réelle sur 20 s)")
+local strBlock = addStatBlock(calcPage, "FORCE", {
+    "Par seconde", "Par minute", "Par heure", "Par jour", "Par semaine",
+    "Total gagné", "Force par rep (≈)",
+})
+local rebBlock = addStatBlock(calcPage, "RENAISSANCES", {
+    "Par seconde", "Par minute", "Par heure", "Par jour", "Par semaine", "Total gagné",
+})
+addButton(calcPage, "Réinitialiser les stats", function()
+    tracker.strGain = 0
+    tracker.rebGain = 0
+    samples = {}
+    notify("Calculateur", "Stats remises à zéro")
 end)
 
 selectTab("Fast Rebirth")
+
+-- ===================== MISE À JOUR (1 fois par seconde) =====================
+task.spawn(function()
+    while alive do
+        task.wait(1)
+
+        repLabel:SetText(repToggle.Value and ("Rep/s réel : " .. repCounter) or "Rep/s réel : --")
+        repCounter = 0
+
+        fastStatusLabel:SetText(fastStatus)
+        autoStatusLabel:SetText(autoStatus)
+
+        pushSample()
+        local a, b = samples[1], samples[#samples]
+        if a and b and b.t - a.t >= 3 then
+            local dt = b.t - a.t
+            local strRate = (b.str - a.str) / dt
+            local rebRate = (b.reb - a.reb) / dt
+            local dRep = b.rep - a.rep
+
+            local sList = projections(strRate)
+            table.insert(sList, fmt(tracker.strGain))
+            table.insert(sList, dRep > 0 and fmt((b.str - a.str) / dRep) or "--")
+            strBlock:Set(sList)
+
+            local rList = projections(rebRate)
+            table.insert(rList, fmt(tracker.rebGain))
+            rebBlock:Set(rList)
+        else
+            strBlock:Set({ "mesure...", "mesure...", "mesure...", "mesure...", "mesure...", fmt(tracker.strGain), "--" })
+            rebBlock:Set({ "mesure...", "mesure...", "mesure...", "mesure...", "mesure...", fmt(tracker.rebGain) })
+        end
+    end
+end)
 
 -- ===================== BOUTONS FENÊTRE =====================
 local minimized = false
@@ -761,6 +966,9 @@ connect(UserInputService.InputBegan, function(input, processed)
     end
 end)
 
+if imageId == "" then
+    warn("[Tazen hub] Aucune image : renseigne IMAGE_ID ou ajoute " .. IMAGE_FILE .. " dans le workspace")
+end
 print("[Tazen hub] Interface chargée")
 
 end)
