@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR (Slider 659 - 3000)
+-- Tazen hub V1 by TZN_THR (standalone: Rayfield-style UI, no HttpGet needed)
 
 local ok, err = pcall(function()
 
@@ -15,9 +15,9 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 -- ===================== SETTINGS =====================
-local REBIRTH_COOLDOWN = 6       -- Cooldown du rebirth (secondes)
+local REBIRTH_COOLDOWN = 6       -- game cooldown between two rebirths (seconds)
 
--- Emojis
+-- Emojis (written as escapes so they survive any executor / copy-paste)
 local E = {
     bolt = "\u{26A1}", cycle = "\u{1F504}", muscle = "\u{1F4AA}", toolbox = "\u{1F9F0}",
     sleep = "\u{1F634}", rocket = "\u{1F680}", sparkles = "\u{2728}", heart = "\u{1F496}",
@@ -28,13 +28,17 @@ local E = {
     party = "\u{1F389}", game = "\u{1F3AE}", crown = "\u{1F451}",
 }
 
+-- Paste your Roblox image ID here (just the number), e.g. 123456789
+local IMAGE_ID = 0
+-- Or put the file in your executor's "workspace" folder
+local IMAGE_FILE = "tazen_logo.png"
+
 local repSpeedPetPriorities = {
     ["Omega Overlord"] = 1,
     ["Mythic Boss Pet"] = 2,
     ["Legendary Boss Pet"] = 3,
     ["Epic Boss Pet"] = 4,
 }
-
 -- ===================== STATE =====================
 local alive = true
 local connections = {}
@@ -47,15 +51,11 @@ end
 local fastRunId = 0
 local autoRunId = 0
 local repRunId = 0
-local repRate = 659          -- Défaut fixé à 659
-local repCounter = 0         
-local repTotal = 0           
+local repRate = 660          -- target reps per second (minimum 659)
+local repCounter = 0         -- reps sent during the last second
+local repTotal = 0           -- total reps sent
 local fastStatus = "Waiting..."
 local autoStatus = "Waiting..."
-
--- References UI pour l'automatisation
-local repToggleObj = nil
-local repSliderObj = nil
 
 -- ===================== GAME HELPERS =====================
 local function canRebirth()
@@ -91,44 +91,42 @@ local function findMuscleEvent(rEvents)
         or rEvents:FindFirstChild("muscleEvent")
 end
 
--- Force le Fast Strength à 659 reps/s
-local function forceFastRep659()
-    if repSliderObj then
-        repSliderObj:Set(659)
-    else
-        repRate = 659
-    end
-    if repToggleObj and not repToggleObj.Value then
-        repToggleObj:Set(true)
-    end
-end
-
 -- ===================== FAST REBIRTH =====================
+-- 6 s cycle:  [ rep-speed pets equipped ~5.90 s ] [ Titanium Hydras ~0.10 s around the rebirth ]
+--   * the best rep pets stay equipped ALL the time
+--   * only the LAST rep pets (as many as there are hydras) are swapped with the hydras
+--   * hydras are equipped HYDRA_LEAD before the rebirth, unequipped HYDRA_TAIL after it
+--   * no "unequip everything" in the loop: only a handful of calls per cycle
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
+    local startClock = os.clock()
 
     local okT, errT = pcall(function()
-        local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
-        local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
-        local equipPetEvent = rEvents and rEvents:WaitForChild("equipPetEvent", 5)
+        local rebirthRemote = ReplicatedStorage.rEvents.rebirthRemote
+        local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
 
-        local SLOTS = 12
-        local AUTO_TRY = 20
+        -- ===== TIMINGS (tune these) =====
+        local HYDRA_LEAD = 0.10             -- hydras equipped this long BEFORE the rebirth is sent (raise it if they are not on yet)
+        local HYDRA_TAIL = 0.05             -- hydras unequipped this long AFTER the rebirth is sent
+        local REP_OFF_LEAD = 0.10           -- rep pets unequipped this long BEFORE the rebirth (>= HYDRA_LEAD).
+                                            -- equal to HYDRA_LEAD = one single step, hydras first in the queue
+        local REP_ON_DELAY = 0.05           -- rep pets re-equipped this long AFTER the rebirth is sent (never before the hydras are off)
+        local REBIRTH_MARGIN = 0.03         -- safety margin added to the 6 s cooldown
+        local SLOTS = 12                    -- rep-speed pets to equip. 0 = AUTO: the script tries the AUTO_TRY best
+                                            -- rep pets and the game only keeps as many as the player has slots
+        local AUTO_TRY = 20                 -- how many pets are tried in AUTO mode (SLOTS = 0)
+        local FULL_SWAP = true              -- true: rebirth window = hydras ONLY (all rep pets off, like the original)
+                                            -- false: only the last rep pets are swapped with the hydras
         local STARTUP_UNEQUIP_PER_FRAME = 20
-        local LIST_REFRESH_EVERY = 5
-
-        if not rebirthRemote or not equipPetEvent then
-            fastStatus = "rEvents / remotes non trouvees"
-            warn("[Tazen hub] " .. fastStatus)
-            return
-        end
+        local LIST_REFRESH_EVERY = 5        -- cycles between two refreshes of the pet lists
 
         local function petRealName(pet)
             if pet:FindFirstChild("PetName") then return pet.PetName.Value end
             return pet.Name
         end
 
+        -- startup only: unequip every pet (in chunks per frame)
         local function unequipAllPets(petsFolder)
             local count = 0
             for _, folderName in ipairs(FOLDERS) do
@@ -144,30 +142,27 @@ local function fastRebirthLoop(myId)
             return count
         end
 
-        local function buildHydraList(petsFolder, slotsCount)
-            local allHydras = {}
+        -- Titanium Hydras (x2 rebirths)
+        local function buildHydraList(petsFolder, slots)
+            local list = {}
             for _, folderName in ipairs(FOLDERS) do
                 local folder = petsFolder:FindFirstChild(folderName)
                 if folder then
                     for _, pet in ipairs(folder:GetChildren()) do
-                        if petRealName(pet) == "Titanium Hydra" then
-                            table.insert(allHydras, pet)
+                        if #list < slots and petRealName(pet) == "Titanium Hydra" then
+                            table.insert(list, pet)
                         end
                     end
                 end
             end
-
-            local list = {}
-            for i = 1, math.min(#allHydras, slotsCount) do
-                list[i] = allHydras[i]
-            end
             return list
         end
 
-        local function buildRepList(petsFolder, slotsCount)
+        -- rep-speed pets sorted by priority (best first), capped to the slots
+        local function buildRepList(petsFolder, slots)
             local repPets = {}
             local uniqueFolder = petsFolder:FindFirstChild("Unique")
-            local priority4Pet = uniqueFolder and uniqueFolder:GetChildren()[4]
+            local priority4Pet = uniqueFolder and uniqueFolder:GetChildren()[4] -- target pet from the video
 
             for _, folderName in ipairs(FOLDERS) do
                 local folder = petsFolder:FindFirstChild(folderName)
@@ -197,26 +192,27 @@ local function fastRebirthLoop(myId)
 
             local list = {}
             for _, entry in ipairs(repPets) do
-                if #list >= slotsCount then break end
+                if #list >= slots then break end
                 table.insert(list, entry.Instance)
             end
             return list
         end
 
+        -- pets currently equipped by this script
         local equipped = {}
 
-        local function setEquipped(wanted, burst)
+        -- switch to the wanted set: unequip only what must go, equip only what is missing.
+        -- equipFirst = true: only as many unequips as needed to free the slots are sent BEFORE the equips,
+        -- the remaining unequips come after (the server handles calls in order, so the equips arrive sooner)
+        local function setEquipped(wanted, burst, equipFirst)
             local want, have = {}, {}
             for _, pet in ipairs(wanted) do want[pet] = true end
             for _, pet in ipairs(equipped) do have[pet] = true end
 
             local outList, inList = {}, {}
             for _, pet in ipairs(equipped) do
-                if not want[pet] and pet.Parent then
-                    table.insert(outList, pet)
-                end
+                if not want[pet] and pet.Parent then table.insert(outList, pet) end
             end
-
             local newEquipped = {}
             for _, pet in ipairs(wanted) do
                 if pet.Parent then
@@ -230,12 +226,22 @@ local function fastRebirthLoop(myId)
                 if not burst then task.wait() end
             end
 
-            for _, pet in ipairs(outList) do fire("unequipPet", pet) end
+            local firstN = equipFirst and math.min(#inList, #outList) or #outList
+            for i = 1, firstN do fire("unequipPet", outList[i]) end
             for _, pet in ipairs(inList) do fire("equipPet", pet) end
+            for i = firstN + 1, #outList do fire("unequipPet", outList[i]) end
 
             equipped = newEquipped
         end
 
+        -- wait until a given os.clock() time (stops early if toggled off)
+        local function waitUntil(t)
+            while isRunning() and os.clock() < t do
+                task.wait()
+            end
+        end
+
+        -- ===== SETUP =====
         local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
         while isRunning() and not petsFolder do
             fastStatus = "petsFolder not found"
@@ -245,54 +251,103 @@ local function fastRebirthLoop(myId)
         if not isRunning() then return end
 
         local autoSlots = (SLOTS <= 0)
-        local slotsCount = autoSlots and AUTO_TRY or SLOTS
+        local slots = autoSlots and AUTO_TRY or SLOTS
 
-        local hydraList, repTarget
+        local hydraList, repTarget, swapList, offList
         local function rebuild()
-            hydraList = buildHydraList(petsFolder, slotsCount)
-            repTarget = buildRepList(petsFolder, slotsCount)
+            hydraList = buildHydraList(petsFolder, slots)
+            local keep = math.max(0, slots - #hydraList)
+            repTarget = buildRepList(petsFolder, slots)          -- what is equipped most of the time
+            offList = {}                                         -- rep pets that STAY equipped while the hydras are on
+            if not FULL_SWAP and not autoSlots then   -- AUTO mode: slots unknown, so always swap everything
+                for i = 1, math.min(keep, #repTarget) do table.insert(offList, repTarget[i]) end
+            end
+            swapList = {}                                        -- what is equipped around the rebirth
+            for _, pet in ipairs(offList) do table.insert(swapList, pet) end
+            for _, h in ipairs(hydraList) do table.insert(swapList, h) end
         end
         rebuild()
 
+        -- Fast rebirth needs the pack (Titanium Hydra); without it, use Auto Rebirth
         if #hydraList == 0 then
             fastStatus = "Pack required: no Titanium Hydra found. Use Auto Rebirth instead."
             warn("[Tazen hub] " .. fastStatus)
             return
         end
+        print(string.format("[Tazen hub] Pet slots: %s | Rep pets: %d | Titanium Hydras: %d",
+            autoSlots and ("AUTO (tries " .. slots .. ")") or tostring(slots), #repTarget, #hydraList))
 
+        -- start: one clean unequip, then the rep pets
         fastStatus = "Starting: cleaning pets..."
-        unequipAllPets(petsFolder)
+        local tClean = os.clock()
+        local nClean = unequipAllPets(petsFolder)
+        print(string.format("[Tazen hub] startup: %d unequip calls took %.2fs (%.0f FPS)",
+            nClean, os.clock() - tClean, 1 / math.max(RunService.Heartbeat:Wait(), 0.001)))
         if not isRunning() then return end
         setEquipped(repTarget, true)
 
+        -- ===== CYCLE =====
         local cycle = 0
+        local rebirthResult = "-"
+        local prevFire = nil
+        local rebirthAt = os.clock() + HYDRA_LEAD  -- first rebirth right away
 
         while isRunning() do
             cycle = cycle + 1
-            local cycleStart = os.clock()
 
-            setEquipped(hydraList, true)
-            task.wait(0.08)
+            -- 1. LAST MOMENT
+            local repOffLead = math.max(REP_OFF_LEAD, HYDRA_LEAD)
+            local tRepOff = os.clock()
+            if repOffLead > HYDRA_LEAD + 0.001 then
+                -- step A: rep pets off a bit earlier than the hydras
+                waitUntil(rebirthAt - repOffLead)
+                if not isRunning() then break end
+                tRepOff = os.clock()
+                setEquipped(offList, true)
+            end
 
+            -- step B: Titanium Hydras on (the unequips that free the slots go first, hydras right after)
+            waitUntil(rebirthAt - HYDRA_LEAD)
+            if not isRunning() then break end
+            local tHydra = os.clock()
+            if repOffLead <= HYDRA_LEAD + 0.001 then tRepOff = tHydra end
+            setEquipped(swapList, true, true)
+
+            -- 2. REBIRTH (own thread: we don't wait for the server answer)
+            waitUntil(rebirthAt)
+            if not isRunning() then break end
+            local tFire = os.clock()
             task.spawn(function()
-                pcall(function()
-                    rebirthRemote:InvokeServer("rebirthRequest")
+                local okR, res = pcall(function()
+                    return rebirthRemote:InvokeServer("rebirthRequest")
                 end)
+                rebirthResult = okR and res or ("error: " .. tostring(res))
             end)
 
-            task.wait(0.02)
+            -- 3. AFTER THE REBIRTH: hydras off, then rep pets back on (burst)
+            waitUntil(tFire + HYDRA_TAIL)
+            local tHydraOff = os.clock()
+            setEquipped(offList, true)
+            waitUntil(tFire + REP_ON_DELAY)
+            local tBack = os.clock()
             setEquipped(repTarget, true)
 
-            fastStatus = string.format("Cycle %d | Rebirth OK | Slots %d | Rep %d | Hydras %d", cycle, slotsCount, #repTarget, #hydraList)
+            local interval = prevFire and (tFire - prevFire) or 0
+            prevFire = tFire
+            fastStatus = string.format("Cycle %d | Rebirth: %s | Slots %d | Rep %d | Hydras %d | %.2fs",
+                cycle, tostring(rebirthResult), slots, #repTarget, #hydraList, interval)
+            if cycle <= 3 then
+                print(string.format("[Tazen hub] cycle %d at t=%.2fs | interval %.2fs | reps off %.2fs before, hydras on %.2fs before | hydras off %.2fs after, reps on %.2fs after",
+                    cycle, tHydra - startClock, interval, tFire - tRepOff, tFire - tHydra, tHydraOff - tFire, tBack - tFire))
+            end
 
+            -- refresh the lists now and then (new pets, deleted pets...)
             if cycle % LIST_REFRESH_EVERY == 0 then
                 petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
                 rebuild()
             end
 
-            local elapsed = os.clock() - cycleStart
-            local timeToWait = math.max(0, REBIRTH_COOLDOWN - elapsed)
-            task.wait(timeToWait)
+            rebirthAt = tFire + REBIRTH_COOLDOWN + REBIRTH_MARGIN
         end
     end)
 
@@ -323,6 +378,7 @@ local function autoRebirthLoop(myId)
                 end)
                 autoStatus = string.format("Attempts: %d | last result: %s",
                     tries, okR and tostring(res) or ("error: " .. tostring(res)))
+                if tries <= 3 then print("[Tazen hub] " .. autoStatus) end
             else
                 autoStatus = "canRebirth = false"
             end
@@ -354,6 +410,7 @@ local function fastRepLoop(myId)
             end
         end
 
+        -- time-based accumulator: the average rate stays correct even if FPS varies
         carry = carry + repRate * dt
         local n = math.floor(carry)
         carry = carry - n
@@ -367,10 +424,10 @@ local function fastRepLoop(myId)
     end
 end
 
--- ===================== CALCULATOR =====================
+-- ===================== CALCULATOR (strength / rebirths) =====================
 local tracker = { strGain = 0, rebGain = 0 }
 local samples = {}
-local WINDOW = 20
+local WINDOW = 20 -- seconds of sliding measurement window
 
 local function bindStat(statName, altName, key)
     task.spawn(function()
@@ -381,6 +438,7 @@ local function bindStat(statName, altName, key)
         local last = tonumber(stat.Value) or 0
         connect(stat.Changed, function(v)
             v = tonumber(v) or last
+            -- only count increases (a rebirth resets strength to 0)
             if v > last then tracker[key] = tracker[key] + (v - last) end
             last = v
         end)
@@ -421,6 +479,7 @@ end
 -- ===================== MISC (ANTI AFK / ANTI LAG / FPS) =====================
 local Lighting = game:GetService("Lighting")
 
+-- Anti AFK
 local antiAfkConn = nil
 local antiAfkRun = 0
 
@@ -434,7 +493,10 @@ local function setAntiAfk(state)
 
     local myId = antiAfkRun
     local okV, VirtualUser = pcall(function() return game:GetService("VirtualUser") end)
-    if not okV or not VirtualUser then return end
+    if not okV or not VirtualUser then
+        warn("[Tazen hub] VirtualUser not available")
+        return
+    end
 
     local function ping()
         pcall(function()
@@ -443,7 +505,9 @@ local function setAntiAfk(state)
         end)
     end
 
+    -- main method: react when Roblox detects inactivity
     antiAfkConn = LocalPlayer.Idled:Connect(ping)
+    -- backup method: small input every 55 s
     task.spawn(function()
         while alive and antiAfkRun == myId do
             task.wait(55)
@@ -452,11 +516,11 @@ local function setAntiAfk(state)
     end)
 end
 
+-- Anti Lag (reversible)
 local antiLagConn = nil
 local antiLagRun = 0
 local antiLagTouched = setmetatable({}, { __mode = "k" })
 local antiLagBackup = nil
-
 local function lagApply(inst)
     if inst:IsA("ParticleEmitter") or inst:IsA("Trail") or inst:IsA("Beam")
         or inst:IsA("Smoke") or inst:IsA("Fire") or inst:IsA("Sparkles") or inst:IsA("PostEffect") then
@@ -485,6 +549,7 @@ local function antiLagStart()
     antiLagRun = antiLagRun + 1
     local myId = antiLagRun
 
+    -- global settings (backed up so they can be restored)
     antiLagBackup = { GlobalShadows = Lighting.GlobalShadows, FogEnd = Lighting.FogEnd }
     pcall(function() antiLagBackup.Quality = settings().Rendering.QualityLevel end)
     pcall(function()
@@ -504,6 +569,7 @@ local function antiLagStart()
     pcall(function() Lighting.FogEnd = 9e9 end)
     pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
 
+    -- sweep existing objects in small batches (no freeze), then watch new ones
     task.spawn(function()
         local n = 0
         local function sweep(root)
@@ -533,17 +599,22 @@ local function antiLagStop()
     antiLagBackup = nil
 
     task.spawn(function()
+        local n = 0
         for inst, props in pairs(touched) do
             if inst and inst.Parent then
                 for k, v in pairs(props) do
                     pcall(function() inst[k] = v end)
                 end
             end
+            n = n + 1
+            if n % 400 == 0 then task.wait() end
         end
         if backup then
             pcall(function() Lighting.GlobalShadows = backup.GlobalShadows end)
             pcall(function() Lighting.FogEnd = backup.FogEnd end)
-            pcall(function() settings().Rendering.QualityLevel = backup.Quality or Enum.QualityLevel.Automatic end)
+            pcall(function()
+                settings().Rendering.QualityLevel = backup.Quality or Enum.QualityLevel.Automatic
+            end)
             if backup.Water then
                 pcall(function()
                     for k, v in pairs(backup.Water) do workspace.Terrain[k] = v end
@@ -553,10 +624,11 @@ local function antiLagStop()
     end)
 end
 
+-- FPS counter
 local fpsFrames = 0
 connect(RunService.Heartbeat, function() fpsFrames = fpsFrames + 1 end)
 
--- ===================== THEME & UI HELPERS =====================
+-- ===================== THEME / UI HELPERS =====================
 local T = {
     Background = Color3.fromRGB(16, 8, 30),
     Topbar = Color3.fromRGB(30, 16, 56),
@@ -568,11 +640,29 @@ local T = {
     Off = Color3.fromRGB(75, 58, 108),
 }
 
+local function resolveImage()
+    if IMAGE_ID and IMAGE_ID ~= 0 then
+        return "rbxassetid://" .. tostring(IMAGE_ID)
+    end
+    local okF, asset = pcall(function()
+        if isfile and getcustomasset and isfile(IMAGE_FILE) then
+            return getcustomasset(IMAGE_FILE)
+        end
+    end)
+    if okF and asset then return asset end
+    return ""
+end
+
 local function getGuiParent()
     local okHui, hui = pcall(function() return gethui and gethui() end)
     if okHui and hui then return hui end
     local okCore, core = pcall(function() return game:GetService("CoreGui") end)
-    if okCore and core then return core end
+    if okCore and core then
+        local test = Instance.new("ScreenGui")
+        local okP = pcall(function() test.Parent = core end)
+        test:Destroy()
+        if okP then return core end
+    end
     return LocalPlayer:WaitForChild("PlayerGui")
 end
 
@@ -590,7 +680,7 @@ local function textLabel(props, parent)
     local p = {
         BackgroundTransparency = 1,
         Font = Enum.Font.GothamMedium,
-        TextSize = 13,
+        TextSize = 14,
         TextColor3 = T.Text,
         TextStrokeColor3 = Color3.new(0, 0, 0),
         TextStrokeTransparency = 0.5,
@@ -605,9 +695,16 @@ local parentGui = getGuiParent()
 local old = parentGui:FindFirstChild("TazenHubGui")
 if old then old:Destroy() end
 
-local gui = new("ScreenGui", { Name = "TazenHubGui", ResetOnSpawn = false }, parentGui)
+local gui = new("ScreenGui", {
+    Name = "TazenHubGui",
+    ResetOnSpawn = false,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+}, parentGui)
 
-local W, H = 500, 360
+local cam = workspace.CurrentCamera
+local vp = cam and cam.ViewportSize or Vector2.new(900, 600)
+local W = math.min(520, vp.X - 30)
+local H = math.min(360, vp.Y - 30)
 
 local main = new("Frame", {
     Name = "Main",
@@ -615,37 +712,84 @@ local main = new("Frame", {
     Position = UDim2.new(0.5, -W / 2, 0.5, -H / 2),
     BackgroundColor3 = T.Background,
     BorderSizePixel = 0,
-    ClipsDescendants = false,
+    ClipsDescendants = true,
 }, gui)
 corner(main, 12)
 stroke(main, T.Stroke, 1.5)
 
--- Arrière-plan "Tazen" (Filigrane original)
-local bgText = textLabel({
-    Name = "BackgroundTazen",
-    Size = UDim2.new(1, 0, 1, -42),
-    Position = UDim2.new(0, 0, 0, 42),
-    Text = "Tazen",
-    Font = Enum.Font.GothamBlack,
-    TextSize = 90,
-    TextColor3 = Color3.fromRGB(255, 255, 255),
-    TextTransparency = 0.94,
-    TextXAlignment = Enum.TextXAlignment.Center,
-    TextYAlignment = Enum.TextYAlignment.Center,
-    ZIndex = 1,
+-- Background image
+local imageId = resolveImage()
+local bg = new("ImageLabel", {
+    Name = "Background",
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundTransparency = 1,
+    Image = imageId,
+    ImageTransparency = 0.45,
+    ScaleType = Enum.ScaleType.Crop,
+    ZIndex = 2,
 }, main)
 
+-- Dark overlay to keep text readable
+new("Frame", {
+    Name = "Shade",
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundColor3 = Color3.new(0, 0, 0),
+    BackgroundTransparency = 0.45,
+    BorderSizePixel = 0,
+    ZIndex = 3,
+}, main)
+
+-- No image: "TAZEN" half white / half pink
+if imageId == "" then
+    bg.Visible = false
+    local wm = textLabel({
+        Name = "Watermark",
+        Size = UDim2.new(1, 0, 0, 110),
+        Position = UDim2.new(0, 0, 0.5, -40),
+        Text = "TAZEN",
+        Font = Enum.Font.GothamBlack,
+        TextSize = 84,
+        TextColor3 = Color3.new(1, 1, 1),
+        TextTransparency = 0.5,
+        TextStrokeTransparency = 1,
+        TextXAlignment = Enum.TextXAlignment.Center,
+        ZIndex = 4,
+    }, main)
+    new("UIGradient", {
+        Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+            ColorSequenceKeypoint.new(0.5, Color3.new(1, 1, 1)),
+            ColorSequenceKeypoint.new(0.501, T.Accent),
+            ColorSequenceKeypoint.new(1, T.Accent),
+        }),
+    }, wm)
+end
+
+-- Top bar
 local topbar = new("Frame", {
     Name = "Topbar",
     Size = UDim2.new(1, 0, 0, 42),
     BackgroundColor3 = T.Topbar,
+    BackgroundTransparency = 0.1,
     BorderSizePixel = 0,
     ZIndex = 6,
 }, main)
-corner(topbar, 12)
 
-textLabel({ Size = UDim2.new(1, -110, 0, 22), Position = UDim2.new(0, 14, 0, 4), Text = E.sparkles .. " Tazen hub V1", Font = Enum.Font.GothamBlack, TextSize = 16 }, topbar)
-textLabel({ Size = UDim2.new(1, -110, 0, 14), Position = UDim2.new(0, 14, 0, 25), Text = E.heart .. " by TZ_THR  |  press K to hide", TextSize = 11, TextColor3 = T.Accent }, topbar)
+textLabel({
+    Size = UDim2.new(1, -110, 0, 22),
+    Position = UDim2.new(0, 14, 0, 4),
+    Text = E.sparkles .. " Tazen hub V1",
+    Font = Enum.Font.GothamBlack,
+    TextSize = 17,
+}, topbar)
+
+textLabel({
+    Size = UDim2.new(1, -110, 0, 14),
+    Position = UDim2.new(0, 14, 0, 25),
+    Text = E.heart .. " by TZN_THR  |  press K to hide",
+    TextSize = 11,
+    TextColor3 = T.Accent,
+}, topbar)
 
 local function topButton(text, xOffset)
     local b = new("TextButton", {
@@ -655,7 +799,7 @@ local function topButton(text, xOffset)
         BackgroundTransparency = 0.2,
         Text = text,
         Font = Enum.Font.GothamBold,
-        TextSize = 14,
+        TextSize = 15,
         TextColor3 = T.Text,
         BorderSizePixel = 0,
     }, topbar)
@@ -666,46 +810,52 @@ end
 local closeBtn = topButton("X", -38)
 local minBtn = topButton("-", -72)
 
+-- Window dragging (mouse + touch)
 do
     local dragging, dragStart, startPos = false, nil, nil
     connect(topbar.InputBegan, function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             dragStart = input.Position
             startPos = main.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
         end
     end)
     connect(UserInputService.InputChanged, function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch) then
             local d = input.Position - dragStart
-            main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
-        end
-    end)
-    connect(UserInputService.InputEnded, function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
+            main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X,
+                startPos.Y.Scale, startPos.Y.Offset + d.Y)
         end
     end)
 end
 
+-- Tab bar + pages
 local tabBar = new("Frame", {
     Name = "TabBar",
-    Size = UDim2.new(1, -20, 0, 32),
-    Position = UDim2.new(0, 10, 0, 48),
+    Size = UDim2.new(1, 0, 0, 34),
+    Position = UDim2.new(0, 0, 0, 46),
     BackgroundTransparency = 1,
     ZIndex = 6,
 }, main)
-new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, tabBar)
+new("UIListLayout", {
+    FillDirection = Enum.FillDirection.Horizontal,
+    Padding = UDim.new(0, 6),
+    SortOrder = Enum.SortOrder.LayoutOrder,
+}, tabBar)
+new("UIPadding", { PaddingLeft = UDim.new(0, 10) }, tabBar)
 
 local pagesHolder = new("Frame", {
     Name = "Pages",
-    Size = UDim2.new(1, 0, 1, -88),
+    Size = UDim2.new(1, 0, 1, -86),
     Position = UDim2.new(0, 0, 0, 84),
     BackgroundTransparency = 1,
     ZIndex = 5,
-    ClipsDescendants = true,
 }, main)
-
 local tabs = {}
 local tabCount = 0
 
@@ -714,68 +864,110 @@ local function selectTab(name)
         local on = (tabName == name)
         t.page.Visible = on
         t.button.BackgroundColor3 = on and T.Accent or T.Element
-        t.button.BackgroundTransparency = on and 0.1 or 0.3
+        t.button.BackgroundTransparency = on and 0.1 or 0.25
     end
 end
 
 local function createTab(name)
     tabCount = tabCount + 1
-    local tabW = math.floor((W - 20 - 6 * 3) / 4)
+    local tabW = math.floor((W - 20 - 6 * 3) / 4)   -- 4 tabs share the bar
     local button = new("TextButton", {
-        Size = UDim2.fromOffset(tabW, 30),
+        Size = UDim2.fromOffset(tabW, 28),
         BackgroundColor3 = T.Element,
-        BackgroundTransparency = 0.3,
+        BackgroundTransparency = 0.25,
         Text = name,
         Font = Enum.Font.GothamBold,
-        TextSize = 11,
+        TextSize = 12,
+        TextScaled = true,
         TextColor3 = T.Text,
         TextStrokeTransparency = 0.5,
         BorderSizePixel = 0,
         LayoutOrder = tabCount,
     }, tabBar)
     corner(button, 8)
+    new("UITextSizeConstraint", { MaxTextSize = 13, MinTextSize = 8 }, button)
 
     local page = new("ScrollingFrame", {
         Size = UDim2.new(1, 0, 1, 0),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
-        ScrollBarThickness = 4,
+        ScrollBarThickness = 3,
         ScrollBarImageColor3 = T.Accent,
         CanvasSize = UDim2.new(0, 0, 0, 0),
         AutomaticCanvasSize = Enum.AutomaticSize.Y,
         Visible = false,
     }, pagesHolder)
     new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, page)
-    new("UIPadding", { PaddingTop = UDim.new(0, 4), PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 12), PaddingBottom = UDim.new(0, 10) }, page)
+    new("UIPadding", {
+        PaddingTop = UDim.new(0, 4), PaddingLeft = UDim.new(0, 10),
+        PaddingRight = UDim.new(0, 14), PaddingBottom = UDim.new(0, 8),
+    }, page)
 
     tabs[name] = { button = button, page = page }
     button.Activated:Connect(function() selectTab(name) end)
     return page
 end
 
+-- ===================== ELEMENTS (Rayfield style) =====================
 local function addSection(page, text)
-    textLabel({ Size = UDim2.new(1, 0, 0, 18), Text = string.upper(text), Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = T.Accent }, page)
+    textLabel({
+        Size = UDim2.new(1, 0, 0, 20),
+        Text = string.upper(text),
+        Font = Enum.Font.GothamBold,
+        TextSize = 12,
+        TextColor3 = T.Accent,
+    }, page)
 end
-
 local function addLabel(page, text, height)
-    local f = new("Frame", { Size = UDim2.new(1, 0, 0, height or 36), BackgroundColor3 = T.Element, BackgroundTransparency = 0.3, BorderSizePixel = 0 }, page)
+    local f = new("Frame", {
+        Size = UDim2.new(1, 0, 0, height or 40),
+        BackgroundColor3 = T.Element,
+        BackgroundTransparency = 0.3,
+        BorderSizePixel = 0,
+    }, page)
     corner(f, 8)
     stroke(f, T.Stroke, 1)
-    local l = textLabel({ Size = UDim2.new(1, -16, 1, 0), Position = UDim2.new(0, 8, 0, 0), Text = text, TextSize = 11, TextColor3 = T.SubText, TextWrapped = true }, f)
+    local l = textLabel({
+        Size = UDim2.new(1, -20, 1, 0),
+        Position = UDim2.new(0, 10, 0, 0),
+        Text = text,
+        TextSize = 12,
+        TextColor3 = T.SubText,
+        TextWrapped = true,
+    }, f)
     return { SetText = function(_, t) l.Text = t end }
 end
 
 local function addToggle(page, name, callback)
-    local f = new("Frame", { Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = T.Element, BackgroundTransparency = 0.2, BorderSizePixel = 0 }, page)
+    local f = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 44),
+        BackgroundColor3 = T.Element,
+        BackgroundTransparency = 0.2,
+        BorderSizePixel = 0,
+    }, page)
     corner(f, 8)
     stroke(f, T.Stroke, 1)
 
-    textLabel({ Size = UDim2.new(1, -80, 1, 0), Position = UDim2.new(0, 12, 0, 0), Text = name, TextSize = 12 }, f)
+    textLabel({
+        Size = UDim2.new(1, -80, 1, 0),
+        Position = UDim2.new(0, 12, 0, 0),
+        Text = name,
+    }, f)
 
-    local sw = new("Frame", { Size = UDim2.fromOffset(36, 18), Position = UDim2.new(1, -48, 0.5, -9), BackgroundColor3 = T.Off, BorderSizePixel = 0 }, f)
-    corner(sw, 9)
-    local knob = new("Frame", { Size = UDim2.fromOffset(14, 14), Position = UDim2.fromOffset(2, 2), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0 }, sw)
-    corner(knob, 7)
+    local sw = new("Frame", {
+        Size = UDim2.fromOffset(40, 20),
+        Position = UDim2.new(1, -52, 0.5, -10),
+        BackgroundColor3 = T.Off,
+        BorderSizePixel = 0,
+    }, f)
+    corner(sw, 10)
+    local knob = new("Frame", {
+        Size = UDim2.fromOffset(16, 16),
+        Position = UDim2.fromOffset(2, 2),
+        BackgroundColor3 = Color3.new(1, 1, 1),
+        BorderSizePixel = 0,
+    }, sw)
+    corner(knob, 8)
 
     local hit = new("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "" }, f)
 
@@ -784,7 +976,7 @@ local function addToggle(page, name, callback)
         if v == self.Value then return end
         self.Value = v
         local info = TweenInfo.new(0.15, Enum.EasingStyle.Quad)
-        TweenService:Create(knob, info, { Position = v and UDim2.fromOffset(20, 2) or UDim2.fromOffset(2, 2) }):Play()
+        TweenService:Create(knob, info, { Position = v and UDim2.fromOffset(22, 2) or UDim2.fromOffset(2, 2) }):Play()
         TweenService:Create(sw, info, { BackgroundColor3 = v and T.Accent or T.Off }):Play()
         if callback then callback(v) end
     end
@@ -794,13 +986,14 @@ end
 
 local function addButton(page, name, callback)
     local b = new("TextButton", {
-        Size = UDim2.new(1, 0, 0, 34),
+        Size = UDim2.new(1, 0, 0, 38),
         BackgroundColor3 = T.Element,
         BackgroundTransparency = 0.2,
         Text = name,
         Font = Enum.Font.GothamBold,
-        TextSize = 12,
+        TextSize = 14,
         TextColor3 = T.Text,
+        TextStrokeTransparency = 0.5,
         BorderSizePixel = 0,
     }, page)
     corner(b, 8)
@@ -809,71 +1002,116 @@ local function addButton(page, name, callback)
 end
 
 local function addSlider(page, name, min, max, default, callback)
-    local f = new("Frame", { Size = UDim2.new(1, 0, 0, 54), BackgroundColor3 = T.Element, BackgroundTransparency = 0.2, BorderSizePixel = 0 }, page)
+    local f = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 62),
+        BackgroundColor3 = T.Element,
+        BackgroundTransparency = 0.2,
+        BorderSizePixel = 0,
+    }, page)
     corner(f, 8)
     stroke(f, T.Stroke, 1)
 
-    textLabel({ Size = UDim2.new(1, -100, 0, 20), Position = UDim2.new(0, 12, 0, 4), Text = name, TextSize = 12 }, f)
-    local valueLabel = textLabel({ Size = UDim2.fromOffset(80, 20), Position = UDim2.new(1, -92, 0, 4), Text = tostring(default), TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = T.Accent, Font = Enum.Font.GothamBold, TextSize = 12 }, f)
+    textLabel({ Size = UDim2.new(1, -100, 0, 24), Position = UDim2.new(0, 12, 0, 6), Text = name }, f)
+    local valueLabel = textLabel({
+        Size = UDim2.fromOffset(80, 24),
+        Position = UDim2.new(1, -92, 0, 6),
+        Text = tostring(default),
+        TextXAlignment = Enum.TextXAlignment.Right,
+        TextColor3 = T.Accent,
+        Font = Enum.Font.GothamBold,
+    }, f)
 
-    local track = new("Frame", { Size = UDim2.new(1, -24, 0, 6), Position = UDim2.new(0, 12, 0, 34), BackgroundColor3 = T.Off, BorderSizePixel = 0 }, f)
-    corner(track, 3)
-    local fill = new("Frame", { Size = UDim2.new((default - min) / (max - min), 0, 1, 0), BackgroundColor3 = T.Accent, BorderSizePixel = 0 }, track)
-    corner(fill, 3)
+    local track = new("Frame", {
+        Size = UDim2.new(1, -24, 0, 8),
+        Position = UDim2.new(0, 12, 0, 42),
+        BackgroundColor3 = T.Off,
+        BorderSizePixel = 0,
+    }, f)
+    corner(track, 4)
+    local fill = new("Frame", {
+        Size = UDim2.new((default - min) / (max - min), 0, 1, 0),
+        BackgroundColor3 = T.Accent,
+        BorderSizePixel = 0,
+    }, track)
+    corner(fill, 4)
 
-    local hit = new("TextButton", { Size = UDim2.new(1, -12, 0, 24), Position = UDim2.new(0, 6, 0, 25), BackgroundTransparency = 1, Text = "" }, f)
+    local hit = new("TextButton", {
+        Size = UDim2.new(1, -12, 0, 30),
+        Position = UDim2.new(0, 6, 0, 31),
+        BackgroundTransparency = 1,
+        Text = "",
+    }, f)
 
-    local obj = {}
     local dragging = false
-
-    function obj:Set(value)
-        value = math.clamp(value, min, max)
+    local function update(x)
+        local rel = math.clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
+        local value = math.floor(min + rel * (max - min) + 0.5)
         fill.Size = UDim2.new((value - min) / (max - min), 0, 1, 0)
         valueLabel.Text = tostring(value)
         callback(value)
     end
 
-    local function update(x)
-        local rel = math.clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
-        local value = math.floor(min + rel * (max - min) + 0.5)
-        obj:Set(value)
-    end
-
     hit.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             page.ScrollingEnabled = false
             update(input.Position.X)
         end
     end)
     connect(UserInputService.InputChanged, function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch) then
             update(input.Position.X)
         end
     end)
     connect(UserInputService.InputEnded, function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch) then
             dragging = false
             page.ScrollingEnabled = true
         end
     end)
-
-    return obj
 end
 
+-- Stat block (list of "name ... value" rows)
 local function addStatBlock(page, title, rowNames)
-    local h = 24 + #rowNames * 18 + 6
-    local f = new("Frame", { Size = UDim2.new(1, 0, 0, h), BackgroundColor3 = T.Element, BackgroundTransparency = 0.2, BorderSizePixel = 0 }, page)
+    local h = 30 + #rowNames * 22 + 6
+    local f = new("Frame", {
+        Size = UDim2.new(1, 0, 0, h),
+        BackgroundColor3 = T.Element,
+        BackgroundTransparency = 0.2,
+        BorderSizePixel = 0,
+    }, page)
     corner(f, 8)
     stroke(f, T.Stroke, 1)
-
-    textLabel({ Size = UDim2.new(1, -20, 0, 20), Position = UDim2.new(0, 12, 0, 2), Text = title, Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = T.Accent }, f)
+    textLabel({
+        Size = UDim2.new(1, -20, 0, 24),
+        Position = UDim2.new(0, 12, 0, 4),
+        Text = title,
+        Font = Enum.Font.GothamBold,
+        TextSize = 13,
+        TextColor3 = T.Accent,
+    }, f)
 
     local values = {}
     for i, name in ipairs(rowNames) do
-        local y = 22 + (i - 1) * 18
-        textLabel({ Size = UDim2.new(0.5, -12, 0, 16), Position = UDim2.new(0, 12, 0, y), Text = name, TextSize = 11, TextColor3 = T.SubText }, f)
-        values[i] = textLabel({ Size = UDim2.new(0.5, -12, 0, 16), Position = UDim2.new(0.5, 0, 0, y), Text = "--", TextSize = 11, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Right }, f)
+        local y = 28 + (i - 1) * 22
+        textLabel({
+            Size = UDim2.new(0.5, -12, 0, 20),
+            Position = UDim2.new(0, 12, 0, y),
+            Text = name,
+            TextSize = 13,
+            TextColor3 = T.SubText,
+        }, f)
+        values[i] = textLabel({
+            Size = UDim2.new(0.5, -12, 0, 20),
+            Position = UDim2.new(0.5, 0, 0, y),
+            Text = "--",
+            TextSize = 13,
+            Font = Enum.Font.GothamBold,
+            TextXAlignment = Enum.TextXAlignment.Right,
+        }, f)
     end
 
     return {
@@ -886,24 +1124,50 @@ local function addStatBlock(page, title, rowNames)
 end
 
 local function addCredit(page, text)
-    local f = new("Frame", { Size = UDim2.new(1, 0, 0, 50), BackgroundColor3 = T.Element, BackgroundTransparency = 0.2, BorderSizePixel = 0 }, page)
+    local f = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 64),
+        BackgroundColor3 = T.Element,
+        BackgroundTransparency = 0.2,
+        BorderSizePixel = 0,
+    }, page)
     corner(f, 8)
     stroke(f, T.Accent, 1.5)
-    textLabel({ Size = UDim2.new(1, -20, 1, 0), Position = UDim2.new(0, 10, 0, 0), Text = text, Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = T.Text, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center }, f)
+    textLabel({
+        Size = UDim2.new(1, -20, 1, 0),
+        Position = UDim2.new(0, 10, 0, 0),
+        Text = text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        TextColor3 = T.Text,
+        TextWrapped = true,
+        TextXAlignment = Enum.TextXAlignment.Center,
+    }, f)
 end
 
+-- Notifications
 local function notify(title, text)
     if not alive then return end
-    local n = new("Frame", { Size = UDim2.fromOffset(230, 48), Position = UDim2.new(1, 20, 1, -66), BackgroundColor3 = T.Topbar, BorderSizePixel = 0 }, gui)
-    corner(n, 8)
+    local n = new("Frame", {
+        Size = UDim2.fromOffset(250, 56),
+        Position = UDim2.new(1, 20, 1, -76),
+        BackgroundColor3 = T.Topbar,
+        BorderSizePixel = 0,
+    }, gui)
+    corner(n, 10)
     stroke(n, T.Accent, 1.5)
-    textLabel({ Size = UDim2.new(1, -16, 0, 18), Position = UDim2.new(0, 8, 0, 4), Text = title, Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = T.Accent }, n)
-    textLabel({ Size = UDim2.new(1, -16, 0, 18), Position = UDim2.new(0, 8, 0, 22), Text = text, TextSize = 11, TextColor3 = T.SubText }, n)
+    textLabel({
+        Size = UDim2.new(1, -16, 0, 22), Position = UDim2.new(0, 10, 0, 5),
+        Text = title, Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = T.Accent,
+    }, n)
+    textLabel({
+        Size = UDim2.new(1, -16, 0, 22), Position = UDim2.new(0, 10, 0, 27),
+        Text = text, TextSize = 12, TextColor3 = T.SubText,
+    }, n)
     local info = TweenInfo.new(0.25, Enum.EasingStyle.Quad)
-    TweenService:Create(n, info, { Position = UDim2.new(1, -240, 1, -66) }):Play()
+    TweenService:Create(n, info, { Position = UDim2.new(1, -270, 1, -76) }):Play()
     task.delay(2.5, function()
         if n and n.Parent then
-            TweenService:Create(n, info, { Position = UDim2.new(1, 20, 1, -66) }):Play()
+            TweenService:Create(n, info, { Position = UDim2.new(1, 20, 1, -76) }):Play()
             task.wait(0.3)
             n:Destroy()
         end
@@ -921,7 +1185,7 @@ local autoPage = createTab(TAB_AUTO)
 local strPage = createTab(TAB_STR)
 local miscPage = createTab(TAB_MISC)
 
-local fastToggle, autoToggle, antiAfkToggle, antiLagToggle
+local fastToggle, autoToggle, repToggle, antiAfkToggle, antiLagToggle
 
 local function notifyState(title, v)
     notify(title, v and (E.ok .. " Enabled") or (E.no .. " Disabled"))
@@ -946,15 +1210,12 @@ local STR_ROWS = {
 
 -- Fast Rebirth
 addSection(fastPage, E.fire .. " Fast Rebirth (Pack)")
-addLabel(fastPage, "⚠️Make sure to have pack for using fast rebirth", 28)
-addLabel(fastPage, "⚠️ Fast reps automatically set to 659", 28)
-
+addLabel(fastPage, E.bulb .. " Equips Titanium Hydra, rebirths, then re-equips your rep pets.", 34)
 fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", function(v)
     fastRunId = fastRunId + 1
     if v then
         autoRunId = autoRunId + 1
         if autoToggle then autoToggle:Set(false) end
-        forceFastRep659()
         fastStatus = "Starting..."
         notifyState(E.bolt .. " Fast rebirth", true)
         task.spawn(fastRebirthLoop, fastRunId)
@@ -962,7 +1223,7 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", function(v)
         notifyState(E.bolt .. " Fast rebirth", false)
     end
 end)
-local fastStatusLabel = addLabel(fastPage, E.clip .. " " .. fastStatus, 48)
+local fastStatusLabel = addLabel(fastPage, E.clip .. " " .. fastStatus, 60)
 addSection(fastPage, E.chart .. " Rebirth calculator")
 local fastRebBlock = addStatBlock(fastPage, E.loop .. " REBIRTHS (measured over 20 s)", REB_ROWS)
 addButton(fastPage, E.broom .. " Reset stats", resetStats)
@@ -974,7 +1235,6 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", function(v)
     if v then
         fastRunId = fastRunId + 1
         if fastToggle then fastToggle:Set(false) end
-        forceFastRep659()
         autoStatus = "Starting..."
         notifyState(E.cycle .. " Auto rebirth", true)
         task.spawn(autoRebirthLoop, autoRunId)
@@ -982,14 +1242,14 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", function(v)
         notifyState(E.cycle .. " Auto rebirth", false)
     end
 end)
-local autoStatusLabel = addLabel(autoPage, E.clip .. " " .. autoStatus, 36)
+local autoStatusLabel = addLabel(autoPage, E.clip .. " " .. autoStatus, 40)
 addSection(autoPage, E.chart .. " Rebirth calculator")
 local autoRebBlock = addStatBlock(autoPage, E.loop .. " REBIRTHS (measured over 20 s)", REB_ROWS)
 addButton(autoPage, E.broom .. " Reset stats", resetStats)
 
--- Fast Strength (Slider réglé de 659 à 3000)
+-- Fast Strength
 addSection(strPage, E.muscle .. " Fast Strength")
-repToggleObj = addToggle(strPage, E.muscle .. " Fast strength", function(v)
+repToggle = addToggle(strPage, E.muscle .. " Fast strength", function(v)
     repRunId = repRunId + 1
     if v then
         notify(E.muscle .. " Fast strength", E.target .. " " .. repRate .. " reps/s targeted")
@@ -998,8 +1258,8 @@ repToggleObj = addToggle(strPage, E.muscle .. " Fast strength", function(v)
         notifyState(E.muscle .. " Fast strength", false)
     end
 end)
-repSliderObj = addSlider(strPage, E.wrench .. " Reps per second", 659, 3000, repRate, function(v) repRate = v end)
-local repLabel = addLabel(strPage, E.antenna .. " Real reps/s: --", 28)
+addSlider(strPage, E.wrench .. " Reps per second", 659, 3000, repRate, function(v) repRate = v end)
+local repLabel = addLabel(strPage, E.antenna .. " Real reps/s: --", 34)
 addSection(strPage, E.up .. " Strength calculator")
 local strBlock = addStatBlock(strPage, E.muscle .. " STRENGTH (measured over 20 s)", STR_ROWS)
 addButton(strPage, E.broom .. " Reset stats", resetStats)
@@ -1010,24 +1270,24 @@ antiAfkToggle = addToggle(miscPage, E.sleep .. " Anti AFK", function(v)
     setAntiAfk(v)
     notifyState(E.sleep .. " Anti AFK", v)
 end)
-addLabel(miscPage, E.bulb .. " Stops Roblox from kicking you after 20 minutes.", 28)
+addLabel(miscPage, E.bulb .. " Stops Roblox from kicking you after 20 minutes of inactivity.", 34)
 antiLagToggle = addToggle(miscPage, E.rocket .. " Anti Lag (low-end devices)", function(v)
     if v then antiLagStart() else antiLagStop() end
     notifyState(E.rocket .. " Anti Lag", v)
 end)
-addLabel(miscPage, E.bulb .. " Lowers graphics (particles, shadows, textures).", 28)
-local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 28)
+addLabel(miscPage, E.bulb .. " Lowers graphics (particles, shadows, textures, effects). Fully reverted when turned off.", 46)
+local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 34)
 addSection(miscPage, E.heart .. " Credits")
-addCredit(miscPage, E.sparkles .. " Made by TZ_THR, Thank you for using my script " .. E.party)
+addCredit(miscPage, E.sparkles .. " Made by TZN_THR, Thank you for using my script have fun " .. E.party)
 
 selectTab(TAB_FAST)
 
--- ===================== UPDATE =====================
+-- ===================== UPDATE (once per second) =====================
 task.spawn(function()
     while alive do
         task.wait(1)
 
-        repLabel:SetText(E.antenna .. (repToggleObj and repToggleObj.Value and (" Real reps/s: " .. repCounter) or " Real reps/s: --"))
+        repLabel:SetText(E.antenna .. (repToggle.Value and (" Real reps/s: " .. repCounter) or " Real reps/s: --"))
         repCounter = 0
 
         fpsLabel:SetText(E.game .. " FPS: " .. fpsFrames)
@@ -1084,16 +1344,19 @@ closeBtn.Activated:Connect(function()
     gui:Destroy()
 end)
 
+-- K key: hide / show
 connect(UserInputService.InputBegan, function(input, processed)
     if not processed and input.KeyCode == Enum.KeyCode.K then
         gui.Enabled = not gui.Enabled
     end
 end)
 
-print("[Tazen hub] UI loaded with Slider Range 659-3000")
+if imageId == "" then
+    warn("[Tazen hub] No image found: set IMAGE_ID or add " .. IMAGE_FILE .. " to your workspace folder")
+end
+print("[Tazen hub] UI loaded")
 
 end)
-
 if not ok then
     warn("[Tazen hub] Error: " .. tostring(err))
 end
