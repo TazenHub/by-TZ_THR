@@ -45,7 +45,7 @@ local Window = Rayfield:CreateWindow({
    }
 })
 
-local MainTab = Window:CreateTab("Fast Rebirth", nil) -- Title, Image
+local MainTab = Window:CreateTab("Fast Rebirth", 4483362458) -- Title, Image
     local MainSection = MainTab:CreateSection("Fast Rebirth (Pack)")
 
 local autoRebirthActive = false
@@ -183,7 +183,7 @@ local Toggle = MainTab:CreateToggle({
     end,
 })end
 
-local RebTab = Window:CreateTab("Auto Rebirth", nil) -- Title, Image
+local RebTab = Window:CreateTab("Auto Rebirth", 4483362458) -- Title, Image
     local MainSection = MainTab:CreateSection("Auto Rebirth ( No Pack)")
 
 local Toggle = RebTab:CreateToggle({
