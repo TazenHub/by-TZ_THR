@@ -183,10 +183,6 @@ local Toggle = MainTab:CreateToggle({
     end,
 })end
 
-local RebTab = RebWindow:CreateTab("Auto Rebirth", 4483362458) -- Title, Image
-    local RebSection = RebTab:CreateSection("Auto Rebirth ( No Pack)")
-local autoRebirthActive = false
-
 -- TAB 2: Auto Rebirth (Sans Pack)
 local RebTab = Window:CreateTab("Auto Rebirth", 4483362458)
 RebTab:CreateSection("Auto Rebirth (No Pack)")
@@ -203,23 +199,34 @@ RebTab:CreateToggle({
         if autoRebirthActive then
             task.spawn(function()
                 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-                local rEvents = ReplicatedStorage:FindFirstChild("rEvents")
+                local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
                 
-                if not rEvents then return end
-                local rebirthRemote = rEvents:FindFirstChild("rebirthRemote")
+                if not rEvents then
+                    warn("[Tazen Hub] Dossier rEvents introuvable !")
+                    return
+                end
+                
+                local rebirthRemote = rEvents:WaitForChild("rebirthRemote", 5)
+                if not rebirthRemote then
+                    warn("[Tazen Hub] Remote 'rebirthRemote' introuvable !")
+                    return
+                end
+
+                print("[Tazen Hub] Auto Rebirth démarré.")
 
                 while autoRebirthActive do
-                    if rebirthRemote then
-                        -- Utilisation de task.spawn pour ne pas bloquer le script si le serveur prend du temps à répondre
-                        task.spawn(function()
-                            rebirthRemote:InvokeServer("rebirthRequest")
-                        end)
-                    end
-                    task.wait(1) -- Délai stable de 1 seconde entre chaque tentative
+                    task.spawn(function()
+                        -- Envoi avec l'argument classique
+                        rebirthRemote:InvokeServer("rebirthRequest")
+                        -- Certains jeux demandent un 2ème paramètre pour la quantité (ex: 1)
+                        rebirthRemote:InvokeServer("rebirthRequest", 1)
+                    end)
+                    
+                    task.wait(0.5)
                 end
+                
+                print("[Tazen Hub] Auto Rebirth arrêté.")
             end)
         end
-    end,
-})end
     end,
 })end
