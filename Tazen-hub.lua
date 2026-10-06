@@ -192,3 +192,7 @@ local Toggle = RebTab:CreateToggle({
     Flag = "Fast Rebirth",
     Callback = function(Value)
 
+
+
+      end
+
