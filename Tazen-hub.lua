@@ -113,11 +113,12 @@ local function fastRebirthLoop(myId)
         local REP_OFF_LEAD = 0.10           -- rep pets unequipped this long BEFORE the rebirth (>= HYDRA_LEAD)
         local REP_ON_DELAY = 0.05           -- rep pets re-equipped this long AFTER the rebirth is sent (never before the hydras are off)
         local REBIRTH_MARGIN = 0.03         -- safety margin added to the 6 s cooldown
-        local AUTO_DETECT_SLOTS = true   -- true = try to detect the slots on the player (else SLOTS is used)
+        local SLOTS = 12                    -- number of rep-speed pets equipped outside the rebirth window
+        local AUTO_DETECT_SLOTS = false     -- true = try to detect the slots on the player (else SLOTS is used)
         local FULL_SWAP = true              -- true: rebirth window = hydras ONLY (all rep pets off, like the original)
                                             -- false: only the last rep pets are swapped with the hydras
-        local STARTUP_UNEQUIP_PER_FRAME = 0,05
-        local LIST_REFRESH_EVERY = 1       -- cycles between two refreshes of the pet lists
+        local STARTUP_UNEQUIP_PER_FRAME = 20
+        local LIST_REFRESH_EVERY = 5        -- cycles between two refreshes of the pet lists
 
         local function petRealName(pet)
             if pet:FindFirstChild("PetName") then return pet.PetName.Value end
