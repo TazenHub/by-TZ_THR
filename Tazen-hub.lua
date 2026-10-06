@@ -113,8 +113,9 @@ local function fastRebirthLoop(myId)
         local REP_OFF_LEAD = 0.10           -- rep pets unequipped this long BEFORE the rebirth (>= HYDRA_LEAD)
         local REP_ON_DELAY = 0.05           -- rep pets re-equipped this long AFTER the rebirth is sent (never before the hydras are off)
         local REBIRTH_MARGIN = 0.03         -- safety margin added to the 6 s cooldown
-        local SLOTS = 12                    -- number of rep-speed pets equipped outside the rebirth window
-        local AUTO_DETECT_SLOTS = false     -- true = try to detect the slots on the player (else SLOTS is used)
+        local SLOTS = 12                    -- rep-speed pets to equip. 0 = AUTO: the script tries the AUTO_TRY best
+                                            -- rep pets and the game only keeps as many as the player has slots
+        local AUTO_TRY = 20                 -- how many pets are tried in AUTO mode (SLOTS = 0)
         local FULL_SWAP = true              -- true: rebirth window = hydras ONLY (all rep pets off, like the original)
                                             -- false: only the last rep pets are swapped with the hydras
         local STARTUP_UNEQUIP_PER_FRAME = 20
@@ -139,29 +140,6 @@ local function fastRebirthLoop(myId)
                 end
             end
             return count
-        end
-
-        -- number of pet slots: looks for a "pet slots" value on the player, else SLOTS
-        local function detectSlots(petsFolder)
-            local best
-            local function consider(name, v)
-                local n = tonumber(v)
-                local l = string.lower(tostring(name))
-                if n and n >= 1 and n <= 60 and n == math.floor(n)
-                    and ((l:find("slot") and l:find("pet")) or l:find("maxpet") or l:find("maxequip")) then
-                    best = math.max(best or 0, n)
-                end
-            end
-            for _, root in ipairs({LocalPlayer, petsFolder}) do
-                for k, v in pairs(root:GetAttributes()) do consider(k, v) end
-            end
-            for _, d in ipairs(LocalPlayer:GetDescendants()) do
-                if not d:IsDescendantOf(petsFolder) and d:IsA("ValueBase") then
-                    local okV, val = pcall(function() return d.Value end)
-                    if okV then consider(d.Name, val) end
-                end
-            end
-            return best
         end
 
         -- Titanium Hydras (x2 rebirths)
@@ -265,8 +243,8 @@ local function fastRebirthLoop(myId)
         end
         if not isRunning() then return end
 
-        local detected = AUTO_DETECT_SLOTS and detectSlots(petsFolder) or nil
-        local slots = detected or SLOTS
+        local autoSlots = (SLOTS <= 0)
+        local slots = autoSlots and AUTO_TRY or SLOTS
 
         local hydraList, repTarget, swapList, offList
         local function rebuild()
@@ -274,7 +252,7 @@ local function fastRebirthLoop(myId)
             local keep = math.max(0, slots - #hydraList)
             repTarget = buildRepList(petsFolder, slots)          -- what is equipped most of the time
             offList = {}                                         -- rep pets that STAY equipped while the hydras are on
-            if not FULL_SWAP then
+            if not FULL_SWAP and not autoSlots then   -- AUTO mode: slots unknown, so always swap everything
                 for i = 1, math.min(keep, #repTarget) do table.insert(offList, repTarget[i]) end
             end
             swapList = {}                                        -- what is equipped around the rebirth
@@ -289,8 +267,8 @@ local function fastRebirthLoop(myId)
             warn("[Tazen hub] " .. fastStatus)
             return
         end
-        print(string.format("[Tazen hub] Pet slots: %d (%s) | Rep pets: %d | Titanium Hydras: %d",
-            slots, detected and "detected" or "fixed", #repTarget, #hydraList))
+        print(string.format("[Tazen hub] Pet slots: %s | Rep pets: %d | Titanium Hydras: %d",
+            autoSlots and ("AUTO (tries " .. slots .. ")") or tostring(slots), #repTarget, #hydraList))
 
         -- start: one clean unequip, then the rep pets
         fastStatus = "Starting: cleaning pets..."
