@@ -98,7 +98,6 @@ end
 -- ===================== FAST REBIRTH =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
-    local startClock = os.clock()
 
     local okT, errT = pcall(function()
         local rebirthRemote = ReplicatedStorage.rEvents.rebirthRemote
@@ -253,8 +252,7 @@ local function fastRebirthLoop(myId)
         end
 
         fastStatus = "Starting: cleaning pets..."
-        local tClean = os.clock()
-        local nClean = unequipAllPets(petsFolder)
+        unequipAllPets(petsFolder)
         if not isRunning() then return end
         setEquipped(repTarget, true)
 
@@ -267,18 +265,14 @@ local function fastRebirthLoop(myId)
             cycle = cycle + 1
 
             local repOffLead = math.max(REP_OFF_LEAD, HYDRA_LEAD)
-            local tRepOff = os.clock()
             if repOffLead > HYDRA_LEAD + 0.001 then
                 waitUntil(rebirthAt - repOffLead)
                 if not isRunning() then break end
-                tRepOff = os.clock()
                 setEquipped(offList, true)
             end
 
             waitUntil(rebirthAt - HYDRA_LEAD)
             if not isRunning() then break end
-            local tHydra = os.clock()
-            if repOffLead <= HYDRA_LEAD + 0.001 then tRepOff = tHydra end
             setEquipped(swapList, true, true)
 
             waitUntil(rebirthAt)
@@ -292,10 +286,8 @@ local function fastRebirthLoop(myId)
             end)
 
             waitUntil(tFire + HYDRA_TAIL)
-            local tHydraOff = os.clock()
             setEquipped(offList, true)
             waitUntil(tFire + REP_ON_DELAY)
-            local tBack = os.clock()
             setEquipped(repTarget, true)
 
             local interval = prevFire and (tFire - prevFire) or 0
@@ -386,12 +378,19 @@ end
 -- ===================== MISC LOOPS =====================
 local function autoWheelLoop(myId)
     local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
-    local wheelRemote = rEvents and (rEvents:FindFirstChild("wheelRemote") or rEvents:FindFirstChild("spinWheelRemote"))
+    local wheelRemote = rEvents and rEvents:FindFirstChild("openFortuneWheelRemote")
     
     while wheelRunId == myId and alive do
         if wheelRemote then
             pcall(function()
-                wheelRemote:InvokeServer("spinWheel")
+                local shared = ReplicatedStorage:FindFirstChild("shared")
+                local catalogs = shared and shared:FindFirstChild("catalogs")
+                local chances = catalogs and catalogs:FindFirstChild("fortuneWheelChances")
+                local fortuneWheel = chances and chances:FindFirstChild("Fortune Wheel")
+                
+                if fortuneWheel then
+                    wheelRemote:InvokeServer("openFortuneWheel", fortuneWheel)
+                end
             end)
         end
         task.wait(1)
