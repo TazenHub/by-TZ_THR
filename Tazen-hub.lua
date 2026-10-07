@@ -16,6 +16,29 @@ local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 
+-- ===================== CONFIG & SAVE SYSTEM =====================
+local CONFIG_FILE_PREFIX = "TazenHub_Config_"
+
+local function loadCategoryConfig(categoryName)
+    local success, result = pcall(function()
+        if readfile and isfile and isfile(CONFIG_FILE_PREFIX .. categoryName .. ".json") then
+            return HttpService:JSONDecode(readfile(CONFIG_FILE_PREFIX .. categoryName .. ".json"))
+        end
+    end)
+    if success and type(result) == "table" then
+        return result
+    end
+    return {}
+end
+
+local function saveCategoryConfig(categoryName, data)
+    pcall(function()
+        if writefile then
+            writefile(CONFIG_FILE_PREFIX .. categoryName .. ".json", HttpService:JSONEncode(data))
+        end
+    end)
+end
+
 -- ===================== SETTINGS =====================
 local REBIRTH_COOLDOWN = 6       -- game cooldown between two rebirths (seconds)
 
@@ -216,7 +239,7 @@ end
 
 -- ===================== SERVER HOP =====================
 local function serverHop()
-    killStatus = "Changement de serveur (0 kill depuis 20s)..."
+    killStatus = "Changement de serveur (0 kill depuis 60s)..."
     pcall(function()
         local servers = {}
         local req = game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100")
@@ -379,7 +402,8 @@ local function autoKillAllLoop(myId)
             end
         end
 
-        if tick() - lastKillTick > 20 then
+        -- Cooldown de 60 secondes appliqué uniquement à Auto Kill All
+        if tick() - lastKillTick > 60 then
             serverHop()
             break
         end
@@ -454,11 +478,6 @@ local function killTargetPlayerLoop(myId)
                 killStatus = "Aucune Target connectée..."
                 task.wait(0.5)
             end
-        end
-
-        if tick() - lastKillTick > 20 then
-            serverHop()
-            break
         end
 
         task.wait(0.1)
@@ -1211,7 +1230,13 @@ local function addLabel(page, text, height)
     return { SetText = function(_, t) l.Text = t end }
 end
 
-local function addToggle(page, name, callback)
+local function addToggle(page, name, categoryKey, settingKey, defaultState, callback)
+    local configData = loadCategoryConfig(categoryKey)
+    local initialState = defaultState
+    if configData[settingKey] ~= nil then
+        initialState = configData[settingKey]
+    end
+
     local f = new("Frame", {
         Size = UDim2.new(1, 0, 0, 44),
         BackgroundColor3 = T.Element,
@@ -1230,13 +1255,13 @@ local function addToggle(page, name, callback)
     local sw = new("Frame", {
         Size = UDim2.fromOffset(40, 20),
         Position = UDim2.new(1, -52, 0.5, -10),
-        BackgroundColor3 = T.Off,
+        BackgroundColor3 = initialState and T.Accent or T.Off,
         BorderSizePixel = 0,
     }, f)
     corner(sw, 10)
     local knob = new("Frame", {
         Size = UDim2.fromOffset(16, 16),
-        Position = UDim2.fromOffset(2, 2),
+        Position = initialState and UDim2.fromOffset(22, 2) or UDim2.fromOffset(2, 2),
         BackgroundColor3 = Color3.new(1, 1, 1),
         BorderSizePixel = 0,
     }, sw)
@@ -1244,16 +1269,32 @@ local function addToggle(page, name, callback)
 
     local hit = new("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "" }, f)
 
-    local obj = { Value = false }
-    function obj:Set(v)
-        if v == self.Value then return end
+    local obj = { Value = initialState }
+    function obj:Set(v, noSave)
+        if v == self.Value and not noSave then return end
         self.Value = v
         local info = TweenInfo.new(0.15, Enum.EasingStyle.Quad)
         TweenService:Create(knob, info, { Position = v and UDim2.fromOffset(22, 2) or UDim2.fromOffset(2, 2) }):Play()
         TweenService:Create(sw, info, { BackgroundColor3 = v and T.Accent or T.Off }):Play()
+        
+        if not noSave then
+            local currentConfig = loadCategoryConfig(categoryKey)
+            currentConfig[settingKey] = v
+            saveCategoryConfig(categoryKey, currentConfig)
+        end
+
         if callback then callback(v) end
     end
+
     hit.Activated:Connect(function() obj:Set(not obj.Value) end)
+
+    if initialState then
+        task.spawn(function()
+            task.wait(0.2)
+            if callback then callback(true) end
+        end)
+    end
+
     return obj
 end
 
@@ -1276,7 +1317,13 @@ end
 
 local repSliderUpdate = nil
 
-local function addSlider(page, name, min, max, default, callback)
+local function addSlider(page, name, categoryKey, settingKey, min, max, default, callback)
+    local configData = loadCategoryConfig(categoryKey)
+    local initialVal = default
+    if configData[settingKey] ~= nil then
+        initialVal = tonumber(configData[settingKey]) or default
+    end
+
     local f = new("Frame", {
         Size = UDim2.new(1, 0, 0, 62),
         BackgroundColor3 = T.Element,
@@ -1290,7 +1337,7 @@ local function addSlider(page, name, min, max, default, callback)
     local valueLabel = textLabel({
         Size = UDim2.fromOffset(80, 24),
         Position = UDim2.new(1, -92, 0, 6),
-        Text = tostring(default),
+        Text = tostring(initialVal),
         TextXAlignment = Enum.TextXAlignment.Right,
         TextColor3 = T.Accent,
         Font = Enum.Font.GothamBold,
@@ -1304,7 +1351,7 @@ local function addSlider(page, name, min, max, default, callback)
     }, f)
     corner(track, 4)
     local fill = new("Frame", {
-        Size = UDim2.new((default - min) / (max - min), 0, 1, 0),
+        Size = UDim2.new((initialVal - min) / (max - min), 0, 1, 0),
         BackgroundColor3 = T.Accent,
         BorderSizePixel = 0,
     }, track)
@@ -1317,12 +1364,24 @@ local function addSlider(page, name, min, max, default, callback)
         Text = "",
     }, f)
 
-    local function setValue(val)
+    local function setValue(val, noSave)
         val = math.clamp(val, min, max)
         fill.Size = UDim2.new((val - min) / (max - min), 0, 1, 0)
         valueLabel.Text = tostring(val)
+        
+        if not noSave then
+            local currentConfig = loadCategoryConfig(categoryKey)
+            currentConfig[settingKey] = val
+            saveCategoryConfig(categoryKey, currentConfig)
+        end
+
         callback(val)
     end
+
+    task.spawn(function()
+        task.wait(0.2)
+        callback(initialVal)
+    end)
 
     local dragging = false
     local function update(x)
@@ -1469,7 +1528,7 @@ local bossPage = createTab(TAB_BOSS)
 local killPage = createTab(TAB_KILL)
 local miscPage = createTab(TAB_MISC)
 
-local fastToggle, autoToggle, repToggle, bossToggle, killAllToggle, killTargetToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle
+local fastToggle, autoToggle, repToggle, bossToggle, killAllToggle, killTargetToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle, autoExecToggle
 
 local function notifyState(title, v)
     notify(title, v and (E.ok .. " Enabled") or (E.no .. " Disabled"))
@@ -1517,7 +1576,7 @@ local BOSS_ROWS = {
 addSection(fastPage, E.fire .. " Fast Rebirth (Pack)")
 addLabel(fastPage, "\u{26A0}\u{FE0F} You need pack for fast rebirth", 34)
 addLabel(fastPage, "\u{26A0}\u{FE0F} Use a 659 rep speed for no delay", 34)
-fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", function(v)
+fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", "FastRebirth", "Enabled", false, function(v)
     fastRunId = fastRunId + 1
     if v then
         autoRunId = autoRunId + 1
@@ -1539,7 +1598,7 @@ addButton(fastPage, E.broom .. " Reset stats", resetStats)
 addSection(autoPage, E.cycle .. " Auto Rebirth (No Pack)")
 addLabel(autoPage, "\u{26A0}\u{FE0F} This tab can be used by everyone", 34)
 addLabel(autoPage, "\u{26A0}\u{FE0F} Use a 659 rep speed for no delay", 34)
-autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", function(v)
+autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", "AutoRebirth", "Enabled", false, function(v)
     autoRunId = autoRunId + 1
     if v then
         fastRunId = fastRunId + 1
@@ -1559,7 +1618,7 @@ addButton(autoPage, E.broom .. " Reset stats", resetStats)
 
 -- Fast Strength
 addSection(strPage, E.muscle .. " Fast Strength")
-repToggle = addToggle(strPage, E.muscle .. " Fast strength", function(v)
+repToggle = addToggle(strPage, E.muscle .. " Fast strength", "Strength", "Enabled", false, function(v)
     repRunId = repRunId + 1
     if v then
         notify(E.muscle .. " Fast strength", E.target .. " " .. repRate .. " reps/s targeted")
@@ -1568,7 +1627,7 @@ repToggle = addToggle(strPage, E.muscle .. " Fast strength", function(v)
         notifyState(E.muscle .. " Fast strength", false)
     end
 end)
-repSliderUpdate = addSlider(strPage, E.wrench .. " Reps per second", 659, 3000, repRate, function(v) repRate = v end)
+repSliderUpdate = addSlider(strPage, E.wrench .. " Reps per second", "Strength", "Rate", 659, 3000, repRate, function(v) repRate = v end)
 local repLabel = addLabel(strPage, E.antenna .. " Real reps/s: --", 34)
 addSection(strPage, E.up .. " Strength calculator")
 local strBlock = addStatBlock(strPage, E.muscle .. " STRENGTH (measured over 20 s)", STR_ROWS)
@@ -1576,7 +1635,7 @@ addButton(strPage, E.broom .. " Reset stats", resetStats)
 
 -- Boss Tab
 addSection(bossPage, E.skull .. " Auto Farm Boss & Claim Boss Chest")
-bossToggle = addToggle(bossPage, E.target .. " Activer Auto Boss + Weight", function(v)
+bossToggle = addToggle(bossPage, E.target .. " Activer Auto Boss + Weight", "Boss", "Enabled", false, function(v)
     bossRunId = bossRunId + 1
     if v then
         notifyState(E.target .. " Auto Farm Boss", true)
@@ -1594,7 +1653,7 @@ addButton(bossPage, E.broom .. " Réinitialiser compteur boss", resetBossStats)
 -- ===================== KILLING TAB =====================
 addSection(killPage, E.sword .. " Module de Combat / Killing")
 
-killAllToggle = addToggle(killPage, E.sword .. " Auto Kill All Players", function(v)
+killAllToggle = addToggle(killPage, E.sword .. " Auto Kill All Players", "Killing", "AutoKillAll", false, function(v)
     killRunId = killRunId + 1
     if v then
         if killTargetToggle and killTargetToggle.Value then killTargetToggle:Set(false) end
@@ -1605,7 +1664,7 @@ killAllToggle = addToggle(killPage, E.sword .. " Auto Kill All Players", functio
     end
 end)
 
-killTargetToggle = addToggle(killPage, E.target .. " Kill Target Players Only", function(v)
+killTargetToggle = addToggle(killPage, E.target .. " Kill Target Players Only", "Killing", "KillTarget", false, function(v)
     killRunId = killRunId + 1
     if v then
         if killAllToggle and killAllToggle.Value then killAllToggle:Set(false) end
@@ -1715,19 +1774,25 @@ task.spawn(refreshPlayerListUI)
 
 -- Misc Tab
 addSection(miscPage, E.toolbox .. " Utilities")
-antiAfkToggle = addToggle(miscPage, E.sleep .. " Anti AFK (IY Method)", function(v)
+
+autoExecToggle = addToggle(miscPage, E.rocket .. " Auto Execution", "Misc", "AutoExecute", false, function(v)
+    notifyState("Auto Execution", v)
+end)
+addLabel(miscPage, E.bulb .. " Sauvegarde l'état d'auto-exécution (nécessite un executor compatible queue_on_teleport si changement de serveur).", 45)
+
+antiAfkToggle = addToggle(miscPage, E.sleep .. " Anti AFK (IY Method)", "Misc", "AntiAFK", false, function(v)
     setAntiAfk(v)
     notifyState(E.sleep .. " Anti AFK", v)
 end)
 addLabel(miscPage, E.bulb .. " Empêche la déconnexion d'inactivité de Roblox via la méthode Infinite Yield.", 34)
 
-antiLagToggle = addToggle(miscPage, E.rocket .. " Anti Lag (low-end devices)", function(v)
+antiLagToggle = addToggle(miscPage, E.rocket .. " Anti Lag (low-end devices)", "Misc", "AntiLag", false, function(v)
     if v then antiLagStart() else antiLagStop() end
     notifyState(E.rocket .. " Anti Lag", v)
 end)
 addLabel(miscPage, E.bulb .. " Lowers graphics (particles, shadows, textures, effects). Fully reverted when turned off.", 46)
 
-autoWheelToggle = addToggle(miscPage, E.wheel .. " Auto Wheel", function(v)
+autoWheelToggle = addToggle(miscPage, E.wheel .. " Auto Wheel", "Misc", "AutoWheel", false, function(v)
     wheelRunId = wheelRunId + 1
     if v then
         notifyState(E.wheel .. " Auto Wheel", true)
@@ -1737,7 +1802,7 @@ autoWheelToggle = addToggle(miscPage, E.wheel .. " Auto Wheel", function(v)
     end
 end)
 
-autoEggToggle = addToggle(miscPage, E.egg .. " Auto eat protein egg", function(v)
+autoEggToggle = addToggle(miscPage, E.egg .. " Auto eat protein egg", "Misc", "AutoEgg", false, function(v)
     eggRunId = eggRunId + 1
     if v then
         notifyState(E.egg .. " Auto eat protein egg", true)
