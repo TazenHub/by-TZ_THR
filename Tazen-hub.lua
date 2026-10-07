@@ -180,7 +180,7 @@ local function getBossRarity(boss)
     return "Common"
 end
 
--- Équiper uniquement le poing (Fight/Punch) - Modèle robuste inspiré de l'auto weight
+-- Fonction simple et directe d'auto-click / équipement des poings
 local function equipFists()
     local char = LocalPlayer.Character
     if not char then return end
@@ -189,9 +189,11 @@ local function equipFists()
 
     local punchTool = char:FindFirstChild("Fight") or char:FindFirstChild("Punch")
     if not punchTool then
-        punchTool = backpack:FindFirstChild("Fight") or backpack:FindFirstChild("Punch")
-        if punchTool then
-            punchTool.Parent = char
+        for _, tool in ipairs(backpack:GetChildren()) do
+            if tool:IsA("Tool") and (tool.Name:lower():find("fight") or tool.Name:lower():find("punch")) then
+                tool.Parent = char
+                break
+            end
         end
     end
 end
@@ -268,17 +270,23 @@ local function autoFarmBossLoop(myId)
             local minDistance = math.huge
 
             if bossesFolder then
-                for _, npc in ipairs(bossesFolder:GetChildren()) do
-                    local head = npc:FindFirstChild("Head") or npc:FindFirstChild("HumanoidRootPart")
-                    local hum = npc:FindFirstChildOfClass("Humanoid")
-                    if head and hum and hum.Health > 0 then
-                        local dist = (hrp.Position - head.Position).Magnitude
-                        if dist < minDistance then
-                            minDistance = dist
-                            targetBoss = npc
+                local function searchFolder(folder)
+                    for _, npc in ipairs(folder:GetChildren()) do
+                        local head = npc:FindFirstChild("Head") or npc:FindFirstChild("HumanoidRootPart")
+                        local hum = npc:FindFirstChildOfClass("Humanoid")
+                        if head and hum and hum.Health > 0 then
+                            local dist = (hrp.Position - head.Position).Magnitude
+                            if dist < minDistance then
+                                minDistance = dist
+                                targetBoss = npc
+                            end
+                        end
+                        if #npc:GetChildren() > 0 then
+                            searchFolder(npc)
                         end
                     end
                 end
+                searchFolder(bossesFolder)
             end
 
             if targetBoss then
@@ -306,7 +314,7 @@ local function autoFarmBossLoop(myId)
                     if attackRemote then
                         pcall(function() attackRemote:FireServer("punch", targetBoss) end)
                     end
-                    task.wait(0.05)
+                    task.wait(0.03)
                 end
 
                 if deathConn then deathConn:Disconnect() end
@@ -382,7 +390,7 @@ local function autoKillAllLoop(myId)
                     if attackRemote then
                         pcall(function() attackRemote:FireServer("punch", targetPlayer.Character) end)
                     end
-                    task.wait(0.05)
+                    task.wait(0.03)
                 end
 
                 if deathConn then deathConn:Disconnect() end
@@ -460,7 +468,7 @@ local function killTargetPlayerLoop(myId)
                     if attackRemote then
                         pcall(function() attackRemote:FireServer("punch", targetPlayer.Character) end)
                     end
-                    task.wait(0.05)
+                    task.wait(0.03)
                 end
 
                 if deathConn then deathConn:Disconnect() end
