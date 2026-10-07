@@ -17,7 +17,7 @@ local LocalPlayer = Players.LocalPlayer
 -- ===================== SETTINGS =====================
 local REBIRTH_COOLDOWN = 6       -- game cooldown between two rebirths (seconds)
 
--- Emojis (written as escapes so they survive any executor / copy-paste)
+-- Emojis (escaped)
 local E = {
     bolt = "\u{26A1}", cycle = "\u{1F504}", muscle = "\u{1F4AA}", toolbox = "\u{1F9F0}",
     sleep = "\u{1F634}", rocket = "\u{1F680}", sparkles = "\u{2728}", heart = "\u{1F496}",
@@ -26,16 +26,18 @@ local E = {
     trophy = "\u{1F3C6}", target = "\u{1F3AF}", wrench = "\u{1F527}", clip = "\u{1F4CB}",
     bulb = "\u{1F4A1}", fire = "\u{1F525}", loop = "\u{1F501}", antenna = "\u{1F4E1}",
     party = "\u{1F389}", game = "\u{1F3AE}", crown = "\u{1F451}", egg = "\u{1F95A}",
-    wheel = "\u{1F3A1}"
+    wheel = "\u{1F3A1}", skull = "\u{1F480}", rainbow = "\u{1F308}", chest = "\u{1F381}"
 }
 
--- Pet priorities focusing strictly on Fast Rep speed pets
+local IMAGE_ASSET = "rbxassetid://91265185075125"
+
 local repSpeedPetPriorities = {
     ["Omega Overlord"] = 1,
     ["Mythic Boss Pet"] = 1,
     ["Legendary Boss Pet"] = 2,
     ["Epic Boss Pet"] = 3,
 }
+
 -- ===================== STATE =====================
 local alive = true
 local connections = {}
@@ -50,11 +52,46 @@ local autoRunId = 0
 local repRunId = 0
 local wheelRunId = 0
 local eggRunId = 0
-local repRate = 659          -- target reps per second (default recommended: 659)
-local repCounter = 0         -- reps sent during the last second
-local repTotal = 0           -- total reps sent
+local bossRunId = 0
+local chestRunId = 0
+
+local repRate = 659          
+local repCounter = 0         
+local repTotal = 0           
 local fastStatus = "Waiting..."
 local autoStatus = "Waiting..."
+local bossStatus = "Waiting..."
+local chestStatus = "Waiting..."
+
+local bossKills = {
+    Common = 0,
+    Rare = 0,
+    Epic = 0,
+    Legendary = 0,
+    Mythic = 0,
+    Rainbow = 0,
+    Total = 0
+}
+
+-- ===================== ANTI AFK (INFINITE YIELD METHOD) =====================
+local antiAfkConnection = nil
+
+local function setAntiAfk(state)
+    if antiAfkConnection then
+        antiAfkConnection:Disconnect()
+        antiAfkConnection = nil
+    end
+
+    if state then
+        local VirtualUser = game:GetService("VirtualUser")
+        antiAfkConnection = LocalPlayer.Idled:Connect(function()
+            pcall(function()
+                VirtualUser:CaptureController()
+                VirtualUser:ClickButton2(Vector2.new(0, 0))
+            end)
+        end)
+    end
+end
 
 -- ===================== GAME HELPERS =====================
 local function canRebirth()
@@ -88,6 +125,137 @@ local function findMuscleEvent(rEvents)
     return LocalPlayer:FindFirstChild("muscleEvent")
         or (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("muscleEvent"))
         or rEvents:FindFirstChild("muscleEvent")
+end
+
+local function getBossRarity(boss)
+    local name = boss.Name:lower()
+    local rarityAttr = boss:GetAttribute("Rarity") or boss:GetAttribute("Type")
+    if rarityAttr then
+        local r = tostring(rarityAttr):lower()
+        if r:find("rainbow") or r:find("arc") then return "Rainbow" end
+        if r:find("mythic") or r:find("mythique") then return "Mythic" end
+        if r:find("legendary") or r:find("légendaire") or r:find("legendaire") then return "Legendary" end
+        if r:find("epic") or r:find("épique") or r:find("epique") then return "Epic" end
+        if r:find("rare") then return "Rare" end
+        if r:find("common") or r:find("commun") then return "Common" end
+    end
+
+    if name:find("rainbow") or name:find("arc") then return "Rainbow" end
+    if name:find("mythic") or name:find("mythique") then return "Mythic" end
+    if name:find("legendary") or name:find("légendaire") or name:find("legendaire") then return "Legendary" end
+    if name:find("epic") or name:find("épique") or name:find("epique") then return "Epic" end
+    if name:find("rare") then return "Rare" end
+    return "Common"
+end
+
+local function doWeightRep(muscleEvent)
+    if not muscleEvent then return end
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    local weight = backpack and (backpack:FindFirstChild("Weight") or backpack:FindFirstChildOfClass("Tool"))
+    if weight and LocalPlayer.Character then
+        weight.Parent = LocalPlayer.Character
+    end
+    pcall(muscleEvent.FireServer, muscleEvent, "rep")
+end
+
+-- ===================== AUTO FARM BOSS + AUTO WEIGHT =====================
+local function autoFarmBossLoop(myId)
+    local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
+    local attackRemote = rEvents and (rEvents:FindFirstChild("attackEvent") or rEvents:FindFirstChild("muscleEvent"))
+    local muscleEvent = findMuscleEvent(rEvents)
+
+    while bossRunId == myId and alive do
+        local character = LocalPlayer.Character
+        local hrp = character and character:FindFirstChild("HumanoidRootPart")
+
+        if not hrp then
+            bossStatus = "En attente du personnage..."
+            task.wait(1)
+        else
+            local bossesFolder = workspace:FindFirstChild("Bosses") or workspace:FindFirstChild("NPCs") or workspace:FindFirstChild("Monsters")
+            local targetBoss = nil
+            local minDistance = math.huge
+
+            if bossesFolder then
+                for _, npc in ipairs(bossesFolder:GetChildren()) do
+                    local head = npc:FindFirstChild("Head") or npc:FindFirstChild("HumanoidRootPart")
+                    local hum = npc:FindFirstChildOfClass("Humanoid")
+                    if head and hum and hum.Health > 0 then
+                        local dist = (hrp.Position - head.Position).Magnitude
+                        if dist < minDistance then
+                            minDistance = dist
+                            targetBoss = npc
+                        end
+                    end
+                end
+            end
+
+            if targetBoss then
+                local hum = targetBoss:FindFirstChildOfClass("Humanoid")
+                local targetHrp = targetBoss:FindFirstChild("HumanoidRootPart") or targetBoss:FindFirstChild("Head")
+                local rarity = getBossRarity(targetBoss)
+                bossStatus = string.format("Attaque: %s [%s]", targetBoss.Name, rarity)
+
+                local deathConn
+                deathConn = hum.Died:Connect(function()
+                    bossKills[rarity] = bossKills[rarity] + 1
+                    bossKills.Total = bossKills.Total + 1
+                    if deathConn then deathConn:Disconnect() end
+                end)
+
+                while bossRunId == myId and alive and hum and hum.Health > 0 do
+                    if hrp and targetHrp then
+                        hrp.CFrame = targetHrp.CFrame * CFrame.new(0, 4, 2)
+                    end
+                    if attackRemote then
+                        pcall(function() attackRemote:FireServer("punch", targetBoss) end)
+                    end
+                    task.wait(0.1)
+                end
+
+                if deathConn then deathConn:Disconnect() end
+            else
+                bossStatus = "Boss vaincu / Repos -> Auto Weight activé"
+                doWeightRep(muscleEvent)
+            end
+        end
+        task.wait(0.1)
+    end
+end
+
+-- ===================== AUTO COLLECT CHESTS =====================
+local function autoChestLoop(myId)
+    local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
+    local chestRemote = rEvents and (rEvents:FindFirstChild("checkChestRemote") or rEvents:FindFirstChild("collectChestRemote") or rEvents:FindFirstChild("openChestRemote") or rEvents:FindFirstChild("chestRemote"))
+
+    while chestRunId == myId and alive do
+        local collected = 0
+        if chestRemote then
+            for i = 1, 10 do
+                pcall(function()
+                    chestRemote:InvokeServer("collectChest", i)
+                    chestRemote:FireServer("collectChest", i)
+                end)
+            end
+        end
+
+        local chestsFolder = workspace:FindFirstChild("Chests") or workspace:FindFirstChild("ChestFolder") or workspace
+        for _, obj in ipairs(chestsFolder:GetChildren()) do
+            if obj.Name:lower():find("chest") or obj.Name:lower():find("coffre") then
+                local part = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("PrimaryPart") or obj:FindFirstChildOfClass("BasePart")
+                if part and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    pcall(function()
+                        firetouchinterest(LocalPlayer.Character.HumanoidRootPart, part, 0)
+                        firetouchinterest(LocalPlayer.Character.HumanoidRootPart, part, 1)
+                        collected = collected + 1
+                    end)
+                end
+            end
+        end
+
+        chestStatus = "Coffres collectés (" .. collected .. ")"
+        task.wait(2)
+    end
 end
 
 -- ===================== FAST REBIRTH =====================
@@ -457,39 +625,8 @@ local function projections(rate)
     return { fmt(rate), fmt(rate * 60), fmt(rate * 3600), fmt(rate * 86400), fmt(rate * 604800) }
 end
 
--- ===================== MISC =====================
+-- ===================== MISC ANTI LAG =====================
 local Lighting = game:GetService("Lighting")
-
-local antiAfkConn = nil
-local antiAfkRun = 0
-
-local function setAntiAfk(state)
-    antiAfkRun = antiAfkRun + 1
-    if antiAfkConn then
-        antiAfkConn:Disconnect()
-        antiAfkConn = nil
-    end
-    if not state then return end
-
-    local myId = antiAfkRun
-    local okV, VirtualUser = pcall(function() return game:GetService("VirtualUser") end)
-    if not okV or not VirtualUser then return end
-
-    local function ping()
-        pcall(function()
-            VirtualUser:CaptureController()
-            VirtualUser:ClickButton2(Vector2.new(0, 0))
-        end)
-    end
-
-    antiAfkConn = LocalPlayer.Idled:Connect(ping)
-    task.spawn(function()
-        while alive and antiAfkRun == myId do
-            task.wait(55)
-            if alive and antiAfkRun == myId then ping() end
-        end
-    end)
-end
 
 local antiLagConn = nil
 local antiLagRun = 0
@@ -676,16 +813,16 @@ local main = new("Frame", {
 corner(main, 12)
 stroke(main, T.Stroke, 1.5)
 
--- Ton code d'image configuré en arrière-plan du cadre principal
-local image = Instance.new("ImageLabel")
-image.Name = "Background"
-image.Parent = main
-image.Size = UDim2.new(1, 0, 1, 0)
-image.Position = UDim2.new(0, 0, 0, 0)
-image.BackgroundTransparency = 1
-image.Image = "rbxassetid://1791344963088"
-image.ScaleType = Enum.ScaleType.Crop
-image.ZIndex = 2
+local bg = new("ImageLabel", {
+    Name = "Background",
+    Size = UDim2.new(1, 0, 1, 0),
+    Position = UDim2.new(0, 0, 0, 0),
+    BackgroundTransparency = 1,
+    Image = IMAGE_ASSET,
+    ImageTransparency = 0.25,
+    ScaleType = Enum.ScaleType.Crop,
+    ZIndex = 2,
+}, main)
 
 new("Frame", {
     Name = "Shade",
@@ -772,10 +909,10 @@ local tabBar = new("Frame", {
 }, main)
 new("UIListLayout", {
     FillDirection = Enum.FillDirection.Horizontal,
-    Padding = UDim.new(0, 6),
+    Padding = UDim.new(0, 4),
     SortOrder = Enum.SortOrder.LayoutOrder,
 }, tabBar)
-new("UIPadding", { PaddingLeft = UDim.new(0, 10) }, tabBar)
+new("UIPadding", { PaddingLeft = UDim.new(0, 8) }, tabBar)
 
 local pagesHolder = new("Frame", {
     Name = "Pages",
@@ -798,14 +935,14 @@ end
 
 local function createTab(name)
     tabCount = tabCount + 1
-    local tabW = math.floor((W - 20 - 6 * 3) / 4)
+    local tabW = math.floor((W - 16 - 4 * 4) / 5)
     local button = new("TextButton", {
         Size = UDim2.fromOffset(tabW, 28),
         BackgroundColor3 = T.Element,
         BackgroundTransparency = 0.25,
         Text = name,
         Font = Enum.Font.GothamBold,
-        TextSize = 12,
+        TextSize = 11,
         TextScaled = true,
         TextColor3 = T.Text,
         TextStrokeTransparency = 0.5,
@@ -813,7 +950,7 @@ local function createTab(name)
         LayoutOrder = tabCount,
     }, tabBar)
     corner(button, 8)
-    new("UITextSizeConstraint", { MaxTextSize = 13, MinTextSize = 8 }, button)
+    new("UITextSizeConstraint", { MaxTextSize = 12, MinTextSize = 7 }, button)
 
     local page = new("ScrollingFrame", {
         Size = UDim2.new(1, 0, 1, 0),
@@ -1044,7 +1181,7 @@ local function addStatBlock(page, title, rowNames)
         values[i] = textLabel({
             Size = UDim2.new(0.5, -12, 0, 20),
             Position = UDim2.new(0.5, 0, 0, y),
-            Text = "--",
+            Text = "0",
             TextSize = 13,
             Font = Enum.Font.GothamBold,
             TextXAlignment = Enum.TextXAlignment.Right,
@@ -1054,7 +1191,7 @@ local function addStatBlock(page, title, rowNames)
     return {
         Set = function(_, list)
             for i, v in ipairs(list) do
-                if values[i] then values[i].Text = v end
+                if values[i] then values[i].Text = tostring(v) end
             end
         end,
     }
@@ -1111,17 +1248,19 @@ local function notify(title, text)
 end
 
 -- ===================== TABS =====================
-local TAB_FAST = E.bolt .. " Fast Rebirth"
-local TAB_AUTO = E.cycle .. " Auto Rebirth"
-local TAB_STR = E.muscle .. " Fast Strength"
+local TAB_FAST = E.bolt .. " Fast Reb"
+local TAB_AUTO = E.cycle .. " Auto Reb"
+local TAB_STR = E.muscle .. " Strength"
+local TAB_BOSS = E.skull .. " Boss"
 local TAB_MISC = E.toolbox .. " Misc"
 
 local fastPage = createTab(TAB_FAST)
 local autoPage = createTab(TAB_AUTO)
 local strPage = createTab(TAB_STR)
+local bossPage = createTab(TAB_BOSS)
 local miscPage = createTab(TAB_MISC)
 
-local fastToggle, autoToggle, repToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle
+local fastToggle, autoToggle, repToggle, bossToggle, chestToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle
 
 local function notifyState(title, v)
     notify(title, v and (E.ok .. " Enabled") or (E.no .. " Disabled"))
@@ -1132,6 +1271,17 @@ local function resetStats()
     tracker.rebGain = 0
     samples = {}
     notify(E.broom .. " Calculator", E.ok .. " Stats reset")
+end
+
+local function resetBossStats()
+    bossKills.Common = 0
+    bossKills.Rare = 0
+    bossKills.Epic = 0
+    bossKills.Legendary = 0
+    bossKills.Mythic = 0
+    bossKills.Rainbow = 0
+    bossKills.Total = 0
+    notify(E.broom .. " Boss Counter", E.ok .. " Compteur réinitialisé")
 end
 
 local function enableAutoFastRep()
@@ -1149,6 +1299,9 @@ local STR_ROWS = {
     E.bolt .. " Per second", E.clock .. " Per minute", E.hourglass .. " Per hour",
     E.sun .. " Per day", E.calendar .. " Per week", E.trophy .. " Total gained",
     E.target .. " Strength per rep (avg)",
+}
+local BOSS_ROWS = {
+    "⚪ Commun", "🔵 Rare", "🟣 Épique", "🟡 Légendaire", "🔴 Mythique", E.rainbow .. " Arc-en-ciel", E.trophy .. " Total Tués"
 }
 
 -- Fast Rebirth
@@ -1212,13 +1365,41 @@ addSection(strPage, E.up .. " Strength calculator")
 local strBlock = addStatBlock(strPage, E.muscle .. " STRENGTH (measured over 20 s)", STR_ROWS)
 addButton(strPage, E.broom .. " Reset stats", resetStats)
 
--- Misc
+-- Boss Tab
+addSection(bossPage, E.skull .. " Auto Farm Boss & Weight")
+bossToggle = addToggle(bossPage, E.target .. " Activer Auto Farm Boss + Weight", function(v)
+    bossRunId = bossRunId + 1
+    if v then
+        notifyState(E.target .. " Auto Farm Boss", true)
+        task.spawn(autoFarmBossLoop, bossRunId)
+    else
+        notifyState(E.target .. " Auto Farm Boss", false)
+    end
+end)
+local bossStatusLabel = addLabel(bossPage, E.clip .. " " .. bossStatus, 40)
+addSection(bossPage, E.chart .. " Compteur de Boss Tués")
+local bossBlock = addStatBlock(bossPage, E.skull .. " BOSS KILLS", BOSS_ROWS)
+addButton(bossPage, E.broom .. " Réinitialiser compteur boss", resetBossStats)
+
+-- Misc Tab (avec Auto Chest et Anti AFK Infinite Yield)
+addSection(miscPage, E.chest .. " Auto Collect Chests")
+chestToggle = addToggle(miscPage, E.chest .. " Auto Collect Chests", function(v)
+    chestRunId = chestRunId + 1
+    if v then
+        notifyState(E.chest .. " Auto Collect Chests", true)
+        task.spawn(autoChestLoop, chestRunId)
+    else
+        notifyState(E.chest .. " Auto Collect Chests", false)
+    end
+end)
+local chestStatusLabel = addLabel(miscPage, E.clip .. " " .. chestStatus, 34)
+
 addSection(miscPage, E.toolbox .. " Utilities")
-antiAfkToggle = addToggle(miscPage, E.sleep .. " Anti AFK", function(v)
+antiAfkToggle = addToggle(miscPage, E.sleep .. " Anti AFK (IY Method)", function(v)
     setAntiAfk(v)
     notifyState(E.sleep .. " Anti AFK", v)
 end)
-addLabel(miscPage, E.bulb .. " Stops Roblox from kicking you after 20 minutes of inactivity.", 34)
+addLabel(miscPage, E.bulb .. " Empêche la déconnexion d'inactivité de Roblox via la méthode Infinite Yield.", 34)
 
 antiLagToggle = addToggle(miscPage, E.rocket .. " Anti Lag (low-end devices)", function(v)
     if v then antiLagStart() else antiLagStop() end
@@ -1265,6 +1446,18 @@ task.spawn(function()
 
         fastStatusLabel:SetText(E.clip .. " " .. fastStatus)
         autoStatusLabel:SetText(E.clip .. " " .. autoStatus)
+        bossStatusLabel:SetText(E.clip .. " " .. bossStatus)
+        chestStatusLabel:SetText(E.clip .. " " .. chestStatus)
+
+        bossBlock:Set({
+            bossKills.Common,
+            bossKills.Rare,
+            bossKills.Epic,
+            bossKills.Legendary,
+            bossKills.Mythic,
+            bossKills.Rainbow,
+            bossKills.Total
+        })
 
         pushSample()
         local a, b = samples[1], samples[#samples]
@@ -1310,6 +1503,8 @@ closeBtn.Activated:Connect(function()
     repRunId = repRunId + 1
     wheelRunId = wheelRunId + 1
     eggRunId = eggRunId + 1
+    bossRunId = bossRunId + 1
+    chestRunId = chestRunId + 1
     setAntiAfk(false)
     if antiLagToggle and antiLagToggle.Value then antiLagStop() end
     for _, c in ipairs(connections) do pcall(function() c:Disconnect() end) end
