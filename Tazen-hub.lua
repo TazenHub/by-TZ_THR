@@ -72,9 +72,6 @@ local whitelistPlayers = {}
 local targetPlayers = {}
 local lastKillTick = tick()
 
--- Fast Punch state
-local fastPunchEnabled = false
-
 local bossKills = {
     Common = 0,
     Rare = 0,
@@ -296,7 +293,7 @@ local function autoFarmBossLoop(myId)
                     if attackRemote then
                         pcall(function() attackRemote:FireServer("punch", targetBoss) end)
                     end
-                    task.wait(0.1)
+                    task.wait(0.05)
                 end
 
                 if deathConn then deathConn:Disconnect() end
@@ -372,7 +369,7 @@ local function autoKillAllLoop(myId)
                     if attackRemote then
                         pcall(function() attackRemote:FireServer("punch", targetPlayer.Character) end)
                     end
-                    task.wait(0.1)
+                    task.wait(0.05)
                 end
 
                 if deathConn then deathConn:Disconnect() end
@@ -449,7 +446,7 @@ local function killTargetPlayerLoop(myId)
                     if attackRemote then
                         pcall(function() attackRemote:FireServer("punch", targetPlayer.Character) end)
                     end
-                    task.wait(0.1)
+                    task.wait(0.05)
                 end
 
                 if deathConn then deathConn:Disconnect() end
@@ -1730,13 +1727,6 @@ antiLagToggle = addToggle(miscPage, E.rocket .. " Anti Lag (low-end devices)", f
 end)
 addLabel(miscPage, E.bulb .. " Lowers graphics (particles, shadows, textures, effects). Fully reverted when turned off.", 46)
 
--- Fast Punch feature implementation
-addToggle(miscPage, E.sword .. " Fast Punch (Tape plus vite manuellement)", function(v)
-    fastPunchEnabled = v
-    notifyState("Fast Punch", v)
-end)
-addLabel(miscPage, E.bulb .. " Utile pour auto kill et auto kill boss (augmente la fréquence de vos coups).", 48)
-
 autoWheelToggle = addToggle(miscPage, E.wheel .. " Auto Wheel", function(v)
     wheelRunId = wheelRunId + 1
     if v then
@@ -1762,21 +1752,6 @@ addSection(miscPage, E.heart .. " Credits")
 addCredit(miscPage, E.sparkles .. " Made by TZ_THR, Thank you for using my script have fun " .. E.party)
 
 selectTab(TAB_FAST)
-
--- ===================== FAST PUNCH HOOK / LISTENER =====================
-connect(UserInputService.InputBegan, function(input, processed)
-    if not processed and fastPunchEnabled then
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            local rEvents = ReplicatedStorage:FindFirstChild("rEvents")
-            local attackRemote = rEvents and (rEvents:FindFirstChild("attackEvent") or rEvents:FindFirstChild("muscleEvent"))
-            if attackRemote then
-                pcall(function()
-                    attackRemote:FireServer("punch")
-                end)
-            end
-        end
-    end
-end)
 
 -- ===================== UPDATE =====================
 task.spawn(function()
