@@ -53,7 +53,6 @@ local repRunId = 0
 local wheelRunId = 0
 local eggRunId = 0
 local bossRunId = 0
-local chestRunId = 0
 
 local repRate = 659          
 local repCounter = 0         
@@ -61,7 +60,6 @@ local repTotal = 0
 local fastStatus = "Waiting..."
 local autoStatus = "Waiting..."
 local bossStatus = "Waiting..."
-local chestStatus = "Waiting..."
 
 local bossKills = {
     Common = 0,
@@ -148,14 +146,61 @@ local function getBossRarity(boss)
     return "Common"
 end
 
-local function doWeightRep(muscleEvent)
-    if not muscleEvent then return end
+-- Équiper uniquement le poing (Fight/Punch)
+local function equipFists()
+    local char = LocalPlayer.Character
+    if not char then return end
     local backpack = LocalPlayer:FindFirstChild("Backpack")
-    local weight = backpack and (backpack:FindFirstChild("Weight") or backpack:FindFirstChildOfClass("Tool"))
-    if weight and LocalPlayer.Character then
-        weight.Parent = LocalPlayer.Character
+    
+    for _, tool in ipairs(char:GetChildren()) do
+        if tool:IsA("Tool") and tool.Name ~= "Fight" and tool.Name ~= "Punch" then
+            tool.Parent = backpack
+        end
     end
-    pcall(muscleEvent.FireServer, muscleEvent, "rep")
+
+    local punchTool = char:FindFirstChild("Fight") or char:FindFirstChild("Punch")
+    if not punchTool and backpack then
+        punchTool = backpack:FindFirstChild("Fight") or backpack:FindFirstChild("Punch") or backpack:FindFirstChildOfClass("Tool")
+        if punchTool then
+            punchTool.Parent = char
+        end
+    end
+end
+
+-- Équiper uniquement le poids (Weight)
+local function equipWeight()
+    local char = LocalPlayer.Character
+    if not char then return end
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+
+    for _, tool in ipairs(char:GetChildren()) do
+        if tool:IsA("Tool") and tool.Name ~= "Weight" then
+            tool.Parent = backpack
+        end
+    end
+
+    local weightTool = char:FindFirstChild("Weight")
+    if not weightTool and backpack then
+        weightTool = backpack:FindFirstChild("Weight") or backpack:FindFirstChildOfClass("Tool")
+        if weightTool then
+            weightTool.Parent = char
+        end
+    end
+end
+
+-- Claim le coffre spécifique du Boss
+local function claimBossChest()
+    local rEvents = ReplicatedStorage:FindFirstChild("rEvents")
+    local chestRemote = rEvents and (rEvents:FindFirstChild("checkChestRemote") or rEvents:FindFirstChild("collectChestRemote") or rEvents:FindFirstChild("openChestRemote") or rEvents:FindFirstChild("chestRemote"))
+    
+    pcall(function()
+        if chestRemote then
+            chestRemote:InvokeServer("collectBossChest")
+            chestRemote:FireServer("collectBossChest")
+            chestRemote:InvokeServer("collectChest", "Boss Chest")
+            chestRemote:FireServer("collectChest", "Boss Chest")
+        end
+    end)
 end
 
 -- ===================== AUTO FARM BOSS + AUTO WEIGHT =====================
@@ -194,16 +239,21 @@ local function autoFarmBossLoop(myId)
                 local hum = targetBoss:FindFirstChildOfClass("Humanoid")
                 local targetHrp = targetBoss:FindFirstChild("HumanoidRootPart") or targetBoss:FindFirstChild("Head")
                 local rarity = getBossRarity(targetBoss)
-                bossStatus = string.format("Attaque: %s [%s]", targetBoss.Name, rarity)
+                bossStatus = string.format("Attaque (Poings): %s [%s]", targetBoss.Name, rarity)
+
+                equipFists()
 
                 local deathConn
                 deathConn = hum.Died:Connect(function()
                     bossKills[rarity] = bossKills[rarity] + 1
                     bossKills.Total = bossKills.Total + 1
                     if deathConn then deathConn:Disconnect() end
+                    
+                    claimBossChest()
                 end)
 
                 while bossRunId == myId and alive and hum and hum.Health > 0 do
+                    equipFists()
                     if hrp and targetHrp then
                         hrp.CFrame = targetHrp.CFrame * CFrame.new(0, 4, 2)
                     end
@@ -214,47 +264,16 @@ local function autoFarmBossLoop(myId)
                 end
 
                 if deathConn then deathConn:Disconnect() end
+                claimBossChest()
             else
-                bossStatus = "Boss vaincu / Repos -> Auto Weight activé"
-                doWeightRep(muscleEvent)
-            end
-        end
-        task.wait(0.1)
-    end
-end
-
--- ===================== AUTO COLLECT CHESTS =====================
-local function autoChestLoop(myId)
-    local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
-    local chestRemote = rEvents and (rEvents:FindFirstChild("checkChestRemote") or rEvents:FindFirstChild("collectChestRemote") or rEvents:FindFirstChild("openChestRemote") or rEvents:FindFirstChild("chestRemote"))
-
-    while chestRunId == myId and alive do
-        local collected = 0
-        if chestRemote then
-            for i = 1, 10 do
-                pcall(function()
-                    chestRemote:InvokeServer("collectChest", i)
-                    chestRemote:FireServer("collectChest", i)
-                end)
-            end
-        end
-
-        local chestsFolder = workspace:FindFirstChild("Chests") or workspace:FindFirstChild("ChestFolder") or workspace
-        for _, obj in ipairs(chestsFolder:GetChildren()) do
-            if obj.Name:lower():find("chest") or obj.Name:lower():find("coffre") then
-                local part = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("PrimaryPart") or obj:FindFirstChildOfClass("BasePart")
-                if part and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                    pcall(function()
-                        firetouchinterest(LocalPlayer.Character.HumanoidRootPart, part, 0)
-                        firetouchinterest(LocalPlayer.Character.HumanoidRootPart, part, 1)
-                        collected = collected + 1
-                    end)
+                bossStatus = "Boss vaincu / Repos -> Farm au Weight"
+                equipWeight()
+                if muscleEvent then
+                    pcall(muscleEvent.FireServer, muscleEvent, "rep")
                 end
             end
         end
-
-        chestStatus = "Coffres collectés (" .. collected .. ")"
-        task.wait(2)
+        task.wait(0.1)
     end
 end
 
@@ -1260,7 +1279,7 @@ local strPage = createTab(TAB_STR)
 local bossPage = createTab(TAB_BOSS)
 local miscPage = createTab(TAB_MISC)
 
-local fastToggle, autoToggle, repToggle, bossToggle, chestToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle
+local fastToggle, autoToggle, repToggle, bossToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle
 
 local function notifyState(title, v)
     notify(title, v and (E.ok .. " Enabled") or (E.no .. " Disabled"))
@@ -1365,9 +1384,9 @@ addSection(strPage, E.up .. " Strength calculator")
 local strBlock = addStatBlock(strPage, E.muscle .. " STRENGTH (measured over 20 s)", STR_ROWS)
 addButton(strPage, E.broom .. " Reset stats", resetStats)
 
--- Boss Tab
-addSection(bossPage, E.skull .. " Auto Farm Boss & Weight")
-bossToggle = addToggle(bossPage, E.target .. " Activer Auto Farm Boss + Weight", function(v)
+-- Boss Tab (Auto Farm Boss + Claim Coffre Boss exclusif)
+addSection(bossPage, E.skull .. " Auto Farm Boss & Claim Boss Chest")
+bossToggle = addToggle(bossPage, E.target .. " Activer Auto Boss + Weight", function(v)
     bossRunId = bossRunId + 1
     if v then
         notifyState(E.target .. " Auto Farm Boss", true)
@@ -1377,23 +1396,12 @@ bossToggle = addToggle(bossPage, E.target .. " Activer Auto Farm Boss + Weight",
     end
 end)
 local bossStatusLabel = addLabel(bossPage, E.clip .. " " .. bossStatus, 40)
+
 addSection(bossPage, E.chart .. " Compteur de Boss Tués")
 local bossBlock = addStatBlock(bossPage, E.skull .. " BOSS KILLS", BOSS_ROWS)
 addButton(bossPage, E.broom .. " Réinitialiser compteur boss", resetBossStats)
 
--- Misc Tab (avec Auto Chest et Anti AFK Infinite Yield)
-addSection(miscPage, E.chest .. " Auto Collect Chests")
-chestToggle = addToggle(miscPage, E.chest .. " Auto Collect Chests", function(v)
-    chestRunId = chestRunId + 1
-    if v then
-        notifyState(E.chest .. " Auto Collect Chests", true)
-        task.spawn(autoChestLoop, chestRunId)
-    else
-        notifyState(E.chest .. " Auto Collect Chests", false)
-    end
-end)
-local chestStatusLabel = addLabel(miscPage, E.clip .. " " .. chestStatus, 34)
-
+-- Misc Tab
 addSection(miscPage, E.toolbox .. " Utilities")
 antiAfkToggle = addToggle(miscPage, E.sleep .. " Anti AFK (IY Method)", function(v)
     setAntiAfk(v)
@@ -1447,7 +1455,6 @@ task.spawn(function()
         fastStatusLabel:SetText(E.clip .. " " .. fastStatus)
         autoStatusLabel:SetText(E.clip .. " " .. autoStatus)
         bossStatusLabel:SetText(E.clip .. " " .. bossStatus)
-        chestStatusLabel:SetText(E.clip .. " " .. chestStatus)
 
         bossBlock:Set({
             bossKills.Common,
@@ -1504,7 +1511,6 @@ closeBtn.Activated:Connect(function()
     wheelRunId = wheelRunId + 1
     eggRunId = eggRunId + 1
     bossRunId = bossRunId + 1
-    chestRunId = chestRunId + 1
     setAntiAfk(false)
     if antiLagToggle and antiLagToggle.Value then antiLagStop() end
     for _, c in ipairs(connections) do pcall(function() c:Disconnect() end) end
