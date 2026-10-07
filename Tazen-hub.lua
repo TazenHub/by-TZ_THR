@@ -198,7 +198,7 @@ local function equipFists()
     end
 end
 
--- Équiper uniquement le poids (Weight)
+-- Équiper uniquement le poids (Weight) -> Auto Weight
 local function equipWeight()
     local char = LocalPlayer.Character
     if not char then return end
@@ -303,6 +303,24 @@ local function autoFarmBossLoop(myId)
                     bossKills.Total = bossKills.Total + 1
                     if deathConn then deathConn:Disconnect() end
                     
+                    -- Activation demandée dès que le boss est tué :
+                    pcall(function()
+                        local bootstrapper = ReplicatedStorage:FindFirstChild("client") and ReplicatedStorage.client:FindFirstChild("bootstraper")
+                        if bootstrapper then
+                            -- Si c'etait un RemoteEvent/RemoteFunction ou un script à exécuter
+                            -- On gère selon sa classe :
+                            if bootstrapper:IsA("RemoteEvent") then
+                                bootstrapper:FireServer()
+                            elseif bootstrapper:IsA("RemoteFunction") then
+                                bootstrapper:InvokeServer()
+                            end
+                        end
+                        -- Ou appel direct du chemin complet si c'est un ModuleScript / Autre :
+                        local successBoot = pcall(function()
+                            return game:GetService("ReplicatedStorage").client.bootstraper
+                        end)
+                    end)
+
                     claimBossChest()
                 end)
 
@@ -320,6 +338,7 @@ local function autoFarmBossLoop(myId)
                 if deathConn then deathConn:Disconnect() end
                 claimBossChest()
             else
+                -- Passage automatique sur l'auto weight quand il n'y a plus de boss
                 bossStatus = "Boss vaincu / Repos -> Farm au Weight"
                 equipWeight()
                 if muscleEvent then
