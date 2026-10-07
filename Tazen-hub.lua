@@ -59,9 +59,7 @@ local bossRunId = 0
 local killRunId = 0
 
 local repRate = 659
-
 local repCounter = 0
-
 local repTotal = 0
 
 local fastStatus = "Waiting..."
@@ -1673,13 +1671,19 @@ end
 notify("Whitelist", E.ok .. " " .. count .. " ami(s) ajouté(s) à la whitelist !")
 end)
 
-addLabel(killPage, "Astuce : Pour ajouter/retirer un joueur spécifique de la Whitelist ou des Targets, tape son nom exact dans le chat ou utilise les commandes UI ci-dessous.", 55)
+addLabel(killPage, "Astuce : Utilise les boutons Safe et Target ci-dessous pour gérer chaque joueur en direct.", 45)
 
 -- Container / Setup dynamiques pour Whitelist et Target individuelles
 addSection(killPage, E.crosshairs .. " Gestion des Joueurs Connectés")
 
-local function refreshPlayerListUI(container)
-for _, c in ipairs(container:GetChildren()) do
+local playerListContainer = new("Frame", {
+Size = UDim2.new(1, 0, 0, 180),
+BackgroundTransparency = 1,
+}, killPage)
+new("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, playerListContainer)
+
+local function refreshPlayerListUI()
+for _, c in ipairs(playerListContainer:GetChildren()) do
 if c:IsA("Frame") then c:Destroy() end
 end
 
@@ -1689,7 +1693,7 @@ for _, plr in ipairs(Players:GetPlayers()) do
             Size = UDim2.new(1, 0, 0, 36),
             BackgroundColor3 = T.Topbar,
             BorderSizePixel = 0,
-        }, container)
+        }, playerListContainer)
         corner(row, 6)
         
         textLabel({
@@ -1715,7 +1719,8 @@ for _, plr in ipairs(Players:GetPlayers()) do
         wBtn.Activated:Connect(function()
             whitelistPlayers[plr.Name] = not whitelistPlayers[plr.Name]
             wBtn.BackgroundColor3 = whitelistPlayers[plr.Name] and T.Accent or T.Off
-            notify("Whitelist", plr.Name .. (whitelistPlayers[plr.Name] ? " protégé." : " retiré de la whitelist."))
+            local stateStr = whitelistPlayers[plr.Name] and " protégé." or " retiré de la whitelist."
+            notify("Whitelist", plr.Name .. stateStr)
         end)
 
         local tBtn = new("TextButton", {
@@ -1733,7 +1738,8 @@ for _, plr in ipairs(Players:GetPlayers()) do
         tBtn.Activated:Connect(function()
             targetPlayers[plr.Name] = not targetPlayers[plr.Name]
             tBtn.BackgroundColor3 = targetPlayers[plr.Name] and Color3.fromRGB(220, 50, 50) or T.Off
-            notify("Target", plr.Name .. (targetPlayers[plr.Name] ? " ciblé en Priority Target !" : " retiré des targets."))
+            local stateStr = targetPlayers[plr.Name] and " ciblé en Priority Target !" or " retiré des targets."
+            notify("Target", plr.Name .. stateStr)
         end)
     end
 end
@@ -1741,15 +1747,9 @@ end
 
 end
 
-local playerListContainer = new("Frame", {
-Size = UDim2.new(1, 0, 0, 180),
-BackgroundTransparency = 1,
-}, killPage)
-new("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, playerListContainer)
-
-connect(Players.PlayerAdded, function() refreshPlayerListUI(playerListContainer) end)
-connect(Players.PlayerRemoving, function() refreshPlayerListUI(playerListContainer) end)
-task.spawn(function() refreshPlayerListUI(playerListContainer) end)
+connect(Players.PlayerAdded, refreshPlayerListUI)
+connect(Players.PlayerRemoving, refreshPlayerListUI)
+task.spawn(refreshPlayerListUI)
 
 -- Misc Tab
 addSection(miscPage, E.toolbox .. " Utilities")
