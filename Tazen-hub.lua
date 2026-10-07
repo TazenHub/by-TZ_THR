@@ -180,7 +180,7 @@ local function getBossRarity(boss)
     return "Common"
 end
 
--- Équiper uniquement le poing (Fight/Punch)
+-- Équiper uniquement le poing (Fight/Punch) - Sert d'Auto-Clicker natif
 local function equipFists()
     local char = LocalPlayer.Character
     if not char then return end
@@ -309,7 +309,7 @@ local function autoFarmBossLoop(myId)
                 end)
 
                 while bossRunId == myId and alive and hum and hum.Health > 0 do
-                    equipFists()
+                    equipFists() -- Maintient l'auto-frappe active
                     if hrp and targetHrp then
                         hrp.CFrame = targetHrp.CFrame * CFrame.new(0, 4, 2)
                     end
@@ -385,7 +385,7 @@ local function autoKillAllLoop(myId)
                 end
 
                 while killRunId == myId and alive and targetPlayer.Parent and pHum and pHum.Health > 0 and wasAlive do
-                    equipFists()
+                    equipFists() -- Maintient l'auto-frappe active
                     if hrp and pHrp then
                         hrp.CFrame = pHrp.CFrame * CFrame.new(0, 3, 2)
                     end
@@ -463,7 +463,7 @@ local function killTargetPlayerLoop(myId)
                 end
 
                 while killRunId == myId and alive and targetPlayer.Parent and pHum and pHum.Health > 0 and wasAlive do
-                    equipFists()
+                    equipFists() -- Maintient l'auto-frappe active
                     if hrp and pHrp then
                         hrp.CFrame = pHrp.CFrame * CFrame.new(0, 3, 2)
                     end
@@ -767,7 +767,7 @@ end
 -- ===================== MISC LOOPS =====================
 local function autoWheelLoop(myId)
     local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
-    local wheelRemote = rEvents and rEvents:FindFirstChild("openFortuneWheelRemote")
+    local wheelRemote = rEvents and rEvents:FindFirstChild("openFortuneWheel") or rEvents:FindFirstChild("openFortuneWheelRemote")
 
     while wheelRunId == myId and alive do
         if wheelRemote then
@@ -1804,13 +1804,17 @@ addSection(miscPage, E.toolbox .. " Utilities")
 
 autoExecToggle = addToggle(miscPage, E.rocket .. " Auto Execution", "Misc", "AutoExecute", false, function(v)
     notifyState("Auto Execution", v)
-    if v and syn and syn.queue_on_teleport then
+    if v then
         pcall(function()
-            syn.queue_on_teleport("loadstring(game:HttpGet('...'))()")
+            if syn and syn.queue_on_teleport then
+                syn.queue_on_teleport([[loadstring(game:HttpGet("YOUR_SCRIPT_URL_HERE"))()]])
+            elseif queue_on_teleport then
+                queue_on_teleport([[loadstring(game:HttpGet("YOUR_SCRIPT_URL_HERE"))()]])
+            end
         end)
     end
 end)
-addLabel(miscPage, E.bulb .. " Active l'exécution automatique / ré-exécution après teleportation.", 35)
+addLabel(miscPage, E.bulb .. " Active l'exécution automatique et la ré-exécution lors des changements de serveur.", 45)
 
 antiAfkToggle = addToggle(miscPage, E.sleep .. " Anti AFK (IY Method)", "Misc", "AntiAFK", false, function(v)
     setAntiAfk(v)
