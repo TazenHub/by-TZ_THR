@@ -29,9 +29,6 @@ local E = {
     wheel = "\u{1F3A1}"
 }
 
--- Asset ID direct de ton image Roblox
-local IMAGE_ASSET = "rbxassetid://91265185075125"
-
 -- Pet priorities focusing strictly on Fast Rep speed pets
 local repSpeedPetPriorities = {
     ["Omega Overlord"] = 1,
@@ -679,15 +676,16 @@ local main = new("Frame", {
 corner(main, 12)
 stroke(main, T.Stroke, 1.5)
 
-local bg = new("ImageLabel", {
-    Name = "Background",
-    Size = UDim2.new(1, 0, 1, 0),
-    BackgroundTransparency = 1,
-    Image = IMAGE_ASSET,
-    ImageTransparency = 0.2,
-    ScaleType = Enum.ScaleType.Crop,
-    ZIndex = 2,
-}, main)
+-- Ton code d'image configuré en arrière-plan du cadre principal
+local image = Instance.new("ImageLabel")
+image.Name = "Background"
+image.Parent = main
+image.Size = UDim2.new(1, 0, 1, 0)
+image.Position = UDim2.new(0, 0, 0, 0)
+image.BackgroundTransparency = 1
+image.Image = "rbxassetid://1791344963088"
+image.ScaleType = Enum.ScaleType.Crop
+image.ZIndex = 2
 
 new("Frame", {
     Name = "Shade",
