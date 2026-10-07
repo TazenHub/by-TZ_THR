@@ -180,21 +180,16 @@ local function getBossRarity(boss)
     return "Common"
 end
 
--- Équiper uniquement le poing (Fight/Punch) - Sert d'Auto-Clicker natif
+-- Équiper uniquement le poing (Fight/Punch) - Modèle robuste inspiré de l'auto weight
 local function equipFists()
     local char = LocalPlayer.Character
     if not char then return end
     local backpack = LocalPlayer:FindFirstChild("Backpack")
-
-    for _, tool in ipairs(char:GetChildren()) do
-        if tool:IsA("Tool") and tool.Name ~= "Fight" and tool.Name ~= "Punch" then
-            tool.Parent = backpack
-        end
-    end
+    if not backpack then return end
 
     local punchTool = char:FindFirstChild("Fight") or char:FindFirstChild("Punch")
-    if not punchTool and backpack then
-        punchTool = backpack:FindFirstChild("Fight") or backpack:FindFirstChild("Punch") or backpack:FindFirstChildOfClass("Tool")
+    if not punchTool then
+        punchTool = backpack:FindFirstChild("Fight") or backpack:FindFirstChild("Punch")
         if punchTool then
             punchTool.Parent = char
         end
@@ -206,16 +201,11 @@ local function equipWeight()
     local char = LocalPlayer.Character
     if not char then return end
     local backpack = LocalPlayer:FindFirstChild("Backpack")
-
-    for _, tool in ipairs(char:GetChildren()) do
-        if tool:IsA("Tool") and tool.Name ~= "Weight" then
-            tool.Parent = backpack
-        end
-    end
+    if not backpack then return end
 
     local weightTool = char:FindFirstChild("Weight")
-    if not weightTool and backpack then
-        weightTool = backpack:FindFirstChild("Weight") or backpack:FindFirstChildOfClass("Tool")
+    if not weightTool then
+        weightTool = backpack:FindFirstChild("Weight")
         if weightTool then
             weightTool.Parent = char
         end
@@ -309,7 +299,7 @@ local function autoFarmBossLoop(myId)
                 end)
 
                 while bossRunId == myId and alive and hum and hum.Health > 0 do
-                    equipFists() -- Maintient l'auto-frappe active
+                    equipFists()
                     if hrp and targetHrp then
                         hrp.CFrame = targetHrp.CFrame * CFrame.new(0, 4, 2)
                     end
@@ -385,7 +375,7 @@ local function autoKillAllLoop(myId)
                 end
 
                 while killRunId == myId and alive and targetPlayer.Parent and pHum and pHum.Health > 0 and wasAlive do
-                    equipFists() -- Maintient l'auto-frappe active
+                    equipFists()
                     if hrp and pHrp then
                         hrp.CFrame = pHrp.CFrame * CFrame.new(0, 3, 2)
                     end
@@ -463,7 +453,7 @@ local function killTargetPlayerLoop(myId)
                 end
 
                 while killRunId == myId and alive and targetPlayer.Parent and pHum and pHum.Health > 0 and wasAlive do
-                    equipFists() -- Maintient l'auto-frappe active
+                    equipFists()
                     if hrp and pHrp then
                         hrp.CFrame = pHrp.CFrame * CFrame.new(0, 3, 2)
                     end
@@ -767,7 +757,7 @@ end
 -- ===================== MISC LOOPS =====================
 local function autoWheelLoop(myId)
     local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
-    local wheelRemote = rEvents and rEvents:FindFirstChild("openFortuneWheel") or rEvents:FindFirstChild("openFortuneWheelRemote")
+    local wheelRemote = rEvents and (rEvents:FindFirstChild("openFortuneWheel") or rEvents:FindFirstChild("openFortuneWheelRemote"))
 
     while wheelRunId == myId and alive do
         if wheelRemote then
