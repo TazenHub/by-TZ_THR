@@ -1313,6 +1313,7 @@ local function addButton(page, name, callback)
     corner(b, 8)
     stroke(b, T.Accent, 1)
     b.Activated:Connect(callback)
+    return b
 end
 
 local repSliderUpdate = nil
@@ -1589,6 +1590,11 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", "FastRebirth", "Enab
         notifyState(E.bolt .. " Fast rebirth", false)
     end
 end)
+addButton(fastPage, E.wrench .. " Save Config (Fast Rebirth)", function()
+    local cfg = { Enabled = fastToggle.Value }
+    saveCategoryConfig("FastRebirth", cfg)
+    notify("Config", E.ok .. " Fast Rebirth sauvegardé !")
+end)
 local fastStatusLabel = addLabel(fastPage, E.clip .. " " .. fastStatus, 60)
 addSection(fastPage, E.chart .. " Rebirth calculator")
 local fastRebBlock = addStatBlock(fastPage, E.loop .. " REBIRTHS (measured over 20 s)", REB_ROWS)
@@ -1611,6 +1617,11 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", "AutoRebirth", "Ena
         notifyState(E.cycle .. " Auto rebirth", false)
     end
 end)
+addButton(autoPage, E.wrench .. " Save Config (Auto Rebirth)", function()
+    local cfg = { Enabled = autoToggle.Value }
+    saveCategoryConfig("AutoRebirth", cfg)
+    notify("Config", E.ok .. " Auto Rebirth sauvegardé !")
+end)
 local autoStatusLabel = addLabel(autoPage, E.clip .. " " .. autoStatus, 40)
 addSection(autoPage, E.chart .. " Rebirth calculator")
 local autoRebBlock = addStatBlock(autoPage, E.loop .. " REBIRTHS (measured over 20 s)", REB_ROWS)
@@ -1628,6 +1639,11 @@ repToggle = addToggle(strPage, E.muscle .. " Fast strength", "Strength", "Enable
     end
 end)
 repSliderUpdate = addSlider(strPage, E.wrench .. " Reps per second", "Strength", "Rate", 659, 3000, repRate, function(v) repRate = v end)
+addButton(strPage, E.wrench .. " Save Config (Strength)", function()
+    local cfg = { Enabled = repToggle.Value, Rate = repRate }
+    saveCategoryConfig("Strength", cfg)
+    notify("Config", E.ok .. " Strength sauvegardé !")
+end)
 local repLabel = addLabel(strPage, E.antenna .. " Real reps/s: --", 34)
 addSection(strPage, E.up .. " Strength calculator")
 local strBlock = addStatBlock(strPage, E.muscle .. " STRENGTH (measured over 20 s)", STR_ROWS)
@@ -1643,6 +1659,11 @@ bossToggle = addToggle(bossPage, E.target .. " Activer Auto Boss + Weight", "Bos
     else
         notifyState(E.target .. " Auto Farm Boss", false)
     end
+end)
+addButton(bossPage, E.wrench .. " Save Config (Boss)", function()
+    local cfg = { Enabled = bossToggle.Value }
+    saveCategoryConfig("Boss", cfg)
+    notify("Config", E.ok .. " Boss sauvegardé !")
 end)
 local bossStatusLabel = addLabel(bossPage, E.clip .. " " .. bossStatus, 40)
 
@@ -1673,6 +1694,12 @@ killTargetToggle = addToggle(killPage, E.target .. " Kill Target Players Only", 
     else
         notifyState("Kill Target Only", false)
     end
+end)
+
+addButton(killPage, E.wrench .. " Save Config (Killing)", function()
+    local cfg = { AutoKillAll = killAllToggle.Value, KillTarget = killTargetToggle.Value }
+    saveCategoryConfig("Killing", cfg)
+    notify("Config", E.ok .. " Killing sauvegardé !")
 end)
 
 local killStatusLabel = addLabel(killPage, E.clip .. " " .. killStatus, 40)
@@ -1777,8 +1804,13 @@ addSection(miscPage, E.toolbox .. " Utilities")
 
 autoExecToggle = addToggle(miscPage, E.rocket .. " Auto Execution", "Misc", "AutoExecute", false, function(v)
     notifyState("Auto Execution", v)
+    if v and syn and syn.queue_on_teleport then
+        pcall(function()
+            syn.queue_on_teleport("loadstring(game:HttpGet('...'))()")
+        end)
+    end
 end)
-addLabel(miscPage, E.bulb .. " Sauvegarde l'état d'auto-exécution (nécessite un executor compatible queue_on_teleport si changement de serveur).", 45)
+addLabel(miscPage, E.bulb .. " Active l'exécution automatique / ré-exécution après teleportation.", 35)
 
 antiAfkToggle = addToggle(miscPage, E.sleep .. " Anti AFK (IY Method)", "Misc", "AntiAFK", false, function(v)
     setAntiAfk(v)
@@ -1810,6 +1842,18 @@ autoEggToggle = addToggle(miscPage, E.egg .. " Auto eat protein egg", "Misc", "A
     else
         notifyState(E.egg .. " Auto eat protein egg", false)
     end
+end)
+
+addButton(miscPage, E.wrench .. " Save Config (Misc)", function()
+    local cfg = {
+        AutoExecute = autoExecToggle.Value,
+        AntiAFK = antiAfkToggle.Value,
+        AntiLag = antiLagToggle.Value,
+        AutoWheel = autoWheelToggle.Value,
+        AutoEgg = autoEggToggle.Value
+    }
+    saveCategoryConfig("Misc", cfg)
+    notify("Config", E.ok .. " Misc sauvegardé !")
 end)
 
 local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 34)
