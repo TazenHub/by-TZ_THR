@@ -1414,7 +1414,7 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", false, function(v)
     end
 end)
 local autoTimerLabel = addLabel(autoPage, E.clock .. " Session Time: 0s | Rebirth/s: 0.0", 36)
-local autoCalcLabel = addLabel(fastPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0", 55) -- Note: corrigé visuellement dans le code final plus bas
+local autoCalcLabel = addLabel(autoPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0", 55)
 
 -- Fast Strength
 addSection(strPage, E.muscle .. " Fast Strength")
@@ -1617,20 +1617,17 @@ addCredit(miscPage, E.sparkles .. " Made by TZ_THR, Thank you for using my scrip
 
 selectTab(TAB_FAST)
 
--- Recréation propre du label autoCalcLabel qui pointait par erreur sur fastPage
-local autoCalcLabel = addLabel(autoPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0", 55)
-
 -- ===================== UPDATE =====================
 task.spawn(function()
     while alive do
         task.wait(1)
 
-        fpsLabel:SetText(E.game .. " FPS: " + fpsFrames) -- corrigé en sécurisant la concaténation
+        fpsLabel:SetText(E.game .. " FPS: " .. fpsFrames)
         fpsFrames = 0
 
         killStatusLabel:SetText(E.clip .. " " .. killStatus)
 
-        -- Session Timers & Real-Time Live Farm Calculators Update (Opti & Stables)
+        -- Session Timers & Real-Time Live Farm Calculators Update (Optimized & Error-Free)
         if fastStartTime then
             local elapsed = math.max(1, tick() - fastStartTime)
             fastTimerLabel:SetText(string.format("%s Session Time: %s | Dernière renaissance : %s", E.clock, formatSeconds(elapsed), fastRebirthTimerText))
