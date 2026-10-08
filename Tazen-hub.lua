@@ -94,7 +94,7 @@ local killStatus = "Waiting..."
 local sessionStartTime = tick()
 local sessionActive = false
 local lastRealCycleTime = 0
-local prevRebirthTime = 0
+local lastRebirthAttemptTime = 0
 
 -- Killing System Data
 local whitelistPlayers = {}
@@ -495,7 +495,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH =====================
+-- ===================== FAST REBIRTH (OPTIMISÉ ZÉRO LATENCE) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
 
@@ -506,8 +506,6 @@ local function fastRebirthLoop(myId)
 
         local SLOTS = 12                    
         local AUTO_TRY = 20                 
-        local STARTUP_UNEQUIP_PER_FRAME = 20
-        local LIST_REFRESH_EVERY = 5        
 
         local function petRealName(pet)
             if pet:FindFirstChild("PetName") then return pet.PetName.Value end
@@ -515,18 +513,14 @@ local function fastRebirthLoop(myId)
         end
 
         local function unequipAllPets(petsFolder)
-            local count = 0
             for _, folderName in ipairs(FOLDERS) do
                 local folder = petsFolder:FindFirstChild(folderName)
                 if folder then
                     for _, pet in ipairs(folder:GetChildren()) do
-                        equipPetEvent:FireServer("unequipPet", pet)
-                        count = count + 1
-                        if count % STARTUP_UNEQUIP_PER_FRAME == 0 then task.wait() end
+                        pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
                     end
                 end
             end
-            return count
         end
 
         local function buildHydraList(petsFolder, slots)
@@ -561,9 +555,7 @@ local function fastRebirthLoop(myId)
             end
 
             table.sort(repPets, function(a, b)
-                if a.Priority == b.Priority then
-                    return a.Score > b.Score
-                end
+                if a.Priority == b.Priority then return a.Score > b.Score end
                 return a.Priority < b.Priority
             end)
 
@@ -575,40 +567,31 @@ local function fastRebirthLoop(myId)
             return list
         end
 
-        local equipped = {}
-
-        local function setEquipped(wanted, burst)
-            local want, have = {}, {}
-            for _, pet in ipairs(wanted) do want[pet] = true end
-            for _, pet in ipairs(equipped) do have[pet] = true end
-
-            local outList, inList = {}, {}
-            for _, pet in ipairs(equipped) do
-                if not want[pet] and pet.Parent then table.insert(outList, pet) end
-            end
-            local newEquipped = {}
-            for _, pet in ipairs(wanted) do
-                if pet.Parent then
-                    if not have[pet] then table.insert(inList, pet) end
-                    table.insert(newEquipped, pet)
+        local function setEquippedFast(wanted)
+            pcall(function()
+                for _, pet in ipairs(wanted) do
+                    if pet and pet.Parent then
+                        equipPetEvent:FireServer("equipPet", pet)
+                    end
                 end
-            end
-
-            local function fire(kind, pet)
-                equipPetEvent:FireServer(kind, pet)
-                if not burst then task.wait() end
-            end
-
-            for _, pet in ipairs(outList) do fire("unequipPet", pet) end
-            for _, pet in ipairs(inList) do fire("equipPet", pet) end
-
-            equipped = newEquipped
+            end)
         end
 
-        local function waitUntil(t)
-            while isRunning() and os.clock() < t do
-                task.wait()
-            end
+        local function unequipOthers(wanted)
+            local wantMap = {}
+            for _, p in ipairs(wanted) do wantMap[p] = true end
+            pcall(function()
+                for _, folderName in ipairs(FOLDERS) do
+                    local folder = petsFolder:FindFirstChild(folderName)
+                    if folder then
+                        for _, pet in ipairs(folder:GetChildren()) do
+                            if not wantMap[pet] then
+                                equipPetEvent:FireServer("unequipPet", pet)
+                            end
+                        end
+                    end
+                end
+            end)
         end
 
         local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
@@ -619,49 +602,38 @@ local function fastRebirthLoop(myId)
         end
         if not isRunning() then return end
 
-        local autoSlots = (SLOTS <= 0)
-        local slots = autoSlots and AUTO_TRY or SLOTS
-
-        local hydraList, repTarget
-        local function rebuild()
-            hydraList = buildHydraList(petsFolder, slots)
-            repTarget = buildRepList(petsFolder, slots)
-        end
-        rebuild()
+        local slots = (SLOTS <= 0) and AUTO_TRY or SLOTS
+        local hydraList = buildHydraList(petsFolder, slots)
+        local repTarget = buildRepList(petsFolder, slots)
 
         if #hydraList == 0 then
-            fastStatus = "Pack required: no Titanium Hydra found. Use Auto Rebirth instead."
-            warn("[Tazen hub] " .. fastStatus)
+            fastStatus = "Pack required: no Titanium Hydra found."
             return
         end
 
-        fastStatus = "Starting: cleaning pets..."
+        fastStatus = "Starting fast rebirth..."
         unequipAllPets(petsFolder)
-        if not isRunning() then return end
-        
-        setEquipped(repTarget, true)
+        setEquippedFast(repTarget)
 
         local cycle = 0
         local rebirthResult = "-"
-        prevRebirthTime = tick()
-        local nextRebirthAt = os.clock() + 4
+        lastRebirthAttemptTime = tick()
 
         while isRunning() do
             cycle = cycle + 1
 
-            waitUntil(nextRebirthAt - 4)
+            local targetTime = lastRebirthAttemptTime + REBIRTH_COOLDOWN
+            while isRunning() and tick() < targetTime do
+                RunService.Heartbeat:Wait()
+            end
             if not isRunning() then break end
-            setEquipped(repTarget, true)
 
-            waitUntil(nextRebirthAt)
-            if not isRunning() then break end
-            
-            local tFire = os.clock()
-            setEquipped(hydraList, true)
+            unequipOthers(hydraList)
+            setEquippedFast(hydraList)
 
             local nowTick = tick()
-            lastRealCycleTime = nowTick - prevRebirthTime
-            prevRebirthTime = nowTick
+            lastRealCycleTime = nowTick - lastRebirthAttemptTime
+            lastRebirthAttemptTime = nowTick
 
             task.spawn(function()
                 local okR, res = pcall(function()
@@ -670,16 +642,10 @@ local function fastRebirthLoop(myId)
                 rebirthResult = okR and res or ("error: " .. tostring(res))
             end)
 
-            waitUntil(tFire + 2)
+            task.wait(1.8)
             if not isRunning() then break end
-            setEquipped(repTarget, true)
-
-            if cycle % LIST_REFRESH_EVERY == 0 then
-                petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
-                rebuild()
-            end
-
-            nextRebirthAt = tFire + REBIRTH_COOLDOWN
+            unequipOthers(repTarget)
+            setEquippedFast(repTarget)
         end
     end)
 
@@ -701,14 +667,14 @@ local function autoRebirthLoop(myId)
     end
 
     local tries = 0
-    prevRebirthTime = tick()
+    lastRebirthAttemptTime = tick()
     while autoRunId == myId do
         local okC, errC = pcall(function()
             if canRebirth() then
                 tries = tries + 1
                 local nowTick = tick()
-                lastRealCycleTime = nowTick - prevRebirthTime
-                prevRebirthTime = nowTick
+                lastRealCycleTime = nowTick - lastRebirthAttemptTime
+                lastRebirthAttemptTime = nowTick
 
                 local okR, res = pcall(function()
                     return rebirthRemote:InvokeServer("rebirthRequest")
@@ -727,7 +693,7 @@ local function autoRebirthLoop(myId)
     end
 end
 
--- ===================== FAST STRENGTH (REP) - ULTRA RAPIDE 659 REPS =====================
+-- ===================== FAST STRENGTH (659 REPS RÉELS PAR SECONDE) =====================
 local function fastRepLoop(myId)
     local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
     if not rEvents then warn("[Tazen hub] rEvents not found") return end
@@ -737,13 +703,13 @@ local function fastRepLoop(myId)
     task.spawn(function()
         while repRunId == myId and alive do
             pcall(function()
-                for i = 1, 15 do
+                for i = 1, 35 do
                     muscleEvent:FireServer("rep")
                 end
             end)
-            repCounter = repCounter + 15
-            repTotal = repTotal + 15
-            task.wait(15 / 659)
+            repCounter = repCounter + 35
+            repTotal = repTotal + 35
+            task.wait(35 / 659)
         end
     end)
 end
@@ -788,8 +754,6 @@ end
 local tracker = { strGain = 0, rebGain = 0 }
 local lastStrVal = 0
 local lastRebVal = 0
-local strRateInst = 0
-local rebRateInst = 0
 
 local function bindStat(statName, altName, key)
     task.spawn(function()
@@ -1650,7 +1614,7 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", "FastRebirth", "Enab
         fastStatus = "Starting..."
         sessionActive = true
         sessionStartTime = tick()
-        prevRebirthTime = tick()
+        lastRebirthAttemptTime = tick()
         notifyState(E.bolt .. " Fast rebirth", true)
         task.spawn(fastRebirthLoop, fastRunId)
     else
@@ -1933,6 +1897,225 @@ addSection(miscPage, E.heart .. " Credits")
 addCredit(miscPage, E.sparkles .. " Made by TZ_THR, Thank you for using my script have fun " .. E.party)
 
 selectTab(TAB_FAST)
+
+-- ===================== FAST REBIRTH LOOP (OPTIMISÉ ZÉRO LATENCE) =====================
+local function fastRebirthLoop(myId)
+    local function isRunning() return fastRunId == myId end
+
+    local okT, errT = pcall(function()
+        local rebirthRemote = ReplicatedStorage.rEvents.rebirthRemote
+        local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
+        local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
+
+        local SLOTS = 12                    
+        local AUTO_TRY = 20                 
+
+        local function petRealName(pet)
+            if pet:FindFirstChild("PetName") then return pet.PetName.Value end
+            return pet.Name
+        end
+
+        local function unequipAllPets(petsFolder)
+            for _, folderName in ipairs(FOLDERS) do
+                local folder = petsFolder:FindFirstChild(folderName)
+                if folder then
+                    for _, pet in ipairs(folder:GetChildren()) do
+                        pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
+                    end
+                end
+            end
+        end
+
+        local function buildHydraList(petsFolder, slots)
+            local list = {}
+            for _, folderName in ipairs(FOLDERS) do
+                local folder = petsFolder:FindFirstChild(folderName)
+                if folder then
+                    for _, pet in ipairs(folder:GetChildren()) do
+                        if #list < slots and petRealName(pet) == "Titanium Hydra" then
+                            table.insert(list, pet)
+                        end
+                    end
+                end
+            end
+            return list
+        end
+
+        local function buildRepList(petsFolder, slots)
+            local repPets = {}
+            for _, folderName in ipairs(FOLDERS) do
+                local folder = petsFolder:FindFirstChild(folderName)
+                if folder then
+                    for _, pet in ipairs(folder:GetChildren()) do
+                        local priority = repSpeedPetPriorities[petRealName(pet)] or 5
+                        table.insert(repPets, {
+                            Instance = pet,
+                            Priority = priority,
+                            Score = getPetScore(pet)
+                        })
+                    end
+                end
+            end
+
+            table.sort(repPets, function(a, b)
+                if a.Priority == b.Priority then return a.Score > b.Score end
+                return a.Priority < b.Priority
+            end)
+
+            local list = {}
+            for _, entry in ipairs(repPets) do
+                if #list >= slots then break end
+                table.insert(list, entry.Instance)
+            end
+            return list
+        end
+
+        local function setEquippedFast(wanted)
+            pcall(function()
+                for _, pet in ipairs(wanted) do
+                    if pet and pet.Parent then
+                        equipPetEvent:FireServer("equipPet", pet)
+                    end
+                end
+            end)
+        end
+
+        local function unequipOthers(wanted)
+            local wantMap = {}
+            for _, p in ipairs(wanted) do wantMap[p] = true end
+            pcall(function()
+                for _, folderName in ipairs(FOLDERS) do
+                    local folder = petsFolder:FindFirstChild(folderName)
+                    if folder then
+                        for _, pet in ipairs(folder:GetChildren()) do
+                            if not wantMap[pet] then
+                                equipPetEvent:FireServer("unequipPet", pet)
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+
+        local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+        while isRunning() and not petsFolder do
+            fastStatus = "petsFolder not found"
+            task.wait(1)
+            petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+        end
+        if not isRunning() then return end
+
+        local slots = (SLOTS <= 0) and AUTO_TRY or SLOTS
+        local hydraList = buildHydraList(petsFolder, slots)
+        local repTarget = buildRepList(petsFolder, slots)
+
+        if #hydraList == 0 then
+            fastStatus = "Pack required: no Titanium Hydra found."
+            return
+        end
+
+        fastStatus = "Starting fast rebirth..."
+        unequipAllPets(petsFolder)
+        setEquippedFast(repTarget)
+
+        local cycle = 0
+        local rebirthResult = "-"
+        lastRebirthAttemptTime = tick()
+
+        while isRunning() do
+            cycle = cycle + 1
+
+            local targetTime = lastRebirthAttemptTime + REBIRTH_COOLDOWN
+            while isRunning() and tick() < targetTime do
+                RunService.Heartbeat:Wait()
+            end
+            if not isRunning() then break end
+
+            unequipOthers(hydraList)
+            setEquippedFast(hydraList)
+
+            local nowTick = tick()
+            lastRealCycleTime = nowTick - lastRebirthAttemptTime
+            lastRebirthAttemptTime = nowTick
+
+            task.spawn(function()
+                local okR, res = pcall(function()
+                    return rebirthRemote:InvokeServer("rebirthRequest")
+                end)
+                rebirthResult = okR and res or ("error: " .. tostring(res))
+            end)
+
+            task.wait(1.8)
+            if not isRunning() then break end
+            unequipOthers(repTarget)
+            setEquippedFast(repTarget)
+        end
+    end)
+
+    if not okT then
+        fastStatus = "ERROR: " .. tostring(errT)
+        warn("[Tazen hub] " .. fastStatus)
+    end
+end
+
+-- ===================== AUTO REBIRTH LOOP =====================
+local function autoRebirthLoop(myId)
+    local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
+    local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
+
+    if not rebirthRemote then
+        autoStatus = "rEvents / rebirthRemote not found"
+        warn("[Tazen hub] " .. autoStatus)
+        return
+    end
+
+    local tries = 0
+    lastRebirthAttemptTime = tick()
+    while autoRunId == myId do
+        local okC, errC = pcall(function()
+            if canRebirth() then
+                tries = tries + 1
+                local nowTick = tick()
+                lastRealCycleTime = nowTick - lastRebirthAttemptTime
+                lastRebirthAttemptTime = nowTick
+
+                local okR, res = pcall(function()
+                    return rebirthRemote:InvokeServer("rebirthRequest")
+                end)
+                autoStatus = string.format("Attempts: %d | last result: %s",
+                    tries, okR and tostring(res) or ("error: " .. tostring(res)))
+            else
+                autoStatus = "canRebirth = false"
+            end
+        end)
+        if not okC then
+            autoStatus = "ERROR: " .. tostring(errC)
+            warn("[Tazen hub] " .. autoStatus)
+        end
+        task.wait(REBIRTH_COOLDOWN)
+    end
+end
+
+-- ===================== FAST STRENGTH LOOP (659 REPS RÉELS) =====================
+local function fastRepLoop(myId)
+    local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
+    if not rEvents then warn("[Tazen hub] rEvents not found") return end
+    local muscleEvent = findMuscleEvent(rEvents)
+    if not muscleEvent then warn("[Tazen hub] muscleEvent not found") return end
+
+    task.spawn(function()
+        while repRunId == myId and alive do
+            pcall(function()
+                for i = 1, 35 do
+                    muscleEvent:FireServer("rep")
+                end
+            end)
+            repCounter = repCounter + 35
+            repTotal = repTotal + 35
+            task.wait(35 / 659)
+        end
+    end)
+end
 
 -- ===================== UPDATE LOOP (CALCULS EN TEMPS RÉEL) =====================
 task.spawn(function()
