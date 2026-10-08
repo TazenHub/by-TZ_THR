@@ -510,11 +510,10 @@ local function fastRebirthLoop(myId)
         local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
 
-        local HYDRA_LEAD = 0.10             
-        local HYDRA_TAIL = 0.05             
-        local REP_OFF_LEAD = 0.10           
-        local REP_ON_DELAY = 0.05           
-        local REBIRTH_MARGIN = 0.03         
+        -- Nouveaux timings demandés : 
+        -- Les fast rep pets restent 5 secondes, les x2 rebirth pets (Titanium Hydras) restent 1 seconde.
+        local HYDRA_LEAD = 1.0              -- Temps avant la renaissance où l'on équipe les hydras (1 seconde)
+        local HYDRA_TAIL = 1.0              -- Temps pendant lequel les hydras restent équipées après la renaissance
         local SLOTS = 12                    
         local AUTO_TRY = 20                 
         local FULL_SWAP = true              
@@ -670,7 +669,8 @@ local function fastRebirthLoop(myId)
         while isRunning() do
             cycle = cycle + 1
 
-            local repOffLead = math.max(REP_OFF_LEAD, HYDRA_LEAD)
+            -- Les fast rep pets restent 5 secondes avant la renaissance
+            local repOffLead = 5.0
             if repOffLead > HYDRA_LEAD + 0.001 then
                 waitUntil(rebirthAt - repOffLead)
                 if not isRunning() then break end
@@ -691,9 +691,10 @@ local function fastRebirthLoop(myId)
                 rebirthResult = okR and res or ("error: " .. tostring(res))
             end)
 
+            -- Les hydras restent 1 seconde après la renaissance (HYDRA_TAIL = 1.0)
             waitUntil(tFire + HYDRA_TAIL)
             setEquipped(offList, true)
-            waitUntil(tFire + REP_ON_DELAY)
+            waitUntil(tFire + HYDRA_TAIL + 0.05)
             setEquipped(repTarget, true)
 
             local interval = prevFire and (tFire - prevFire) or 0
@@ -706,7 +707,7 @@ local function fastRebirthLoop(myId)
                 rebuild()
             end
 
-            rebirthAt = tFire + REBIRTH_COOLDOWN + REBIRTH_MARGIN
+            rebirthAt = tFire + REBIRTH_COOLDOWN + 0.03
         end
     end)
 
@@ -1577,7 +1578,6 @@ local function enableAutoFastRep()
     end
 end
 
--- Lignes modifiées : suppression de "Per second" pour les rebirths
 local REB_ROWS = {
     E.clock .. " Per minute", E.hourglass .. " Per hour",
     E.sun .. " Per day", E.calendar .. " Per week", E.trophy .. " Total gained",
@@ -1935,13 +1935,13 @@ task.spawn(function()
             strBlock:Set(sList)
 
             local rListFast = projections(rebRate)
-            table.remove(rListFast, 1) -- Retire "Per second"
+            table.remove(rListFast, 1)
             table.insert(rListFast, fmt(tracker.rebGain))
             table.insert(rListFast, fastTimeStr)
             fastRebBlock:Set(rListFast)
 
             local rListAuto = projections(rebRate)
-            table.remove(rListAuto, 1) -- Retire "Per second"
+            table.remove(rListAuto, 1)
             table.insert(rListAuto, fmt(tracker.rebGain))
             table.insert(rListAuto, autoTimeStr)
             autoRebBlock:Set(rListAuto)
