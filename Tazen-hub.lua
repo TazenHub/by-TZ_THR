@@ -489,7 +489,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH (Aide version intégrée) =====================
+-- ===================== FAST REBIRTH (Custom Timing) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
 
@@ -498,14 +498,8 @@ local function fastRebirthLoop(myId)
         local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
 
-        local HYDRA_LEAD = 0.10             
-        local HYDRA_TAIL = 0.05             
-        local REP_OFF_LEAD = 0.10           
-        local REP_ON_DELAY = 0.05           
-        local REBIRTH_MARGIN = 0.03         
         local SLOTS = 12                    
         local AUTO_TRY = 20                 
-        local FULL_SWAP = true              
         local STARTUP_UNEQUIP_PER_FRAME = 20
         local LIST_REFRESH_EVERY = 5        
 
@@ -577,7 +571,7 @@ local function fastRebirthLoop(myId)
 
         local equipped = {}
 
-        local function setEquipped(wanted, burst, equipFirst)
+        local function setEquipped(wanted, burst)
             local want, have = {}, {}
             for _, pet in ipairs(wanted) do want[pet] = true end
             for _, pet in ipairs(equipped) do have[pet] = true end
@@ -599,10 +593,8 @@ local function fastRebirthLoop(myId)
                 if not burst then task.wait() end
             end
 
-            local firstN = equipFirst and math.min(#inList, #outList) or #outList
-            for i = 1, firstN do fire("unequipPet", outList[i]) end
+            for _, pet in ipairs(outList) do fire("unequipPet", pet) end
             for _, pet in ipairs(inList) do fire("equipPet", pet) end
-            for i = firstN + 1, #outList do fire("unequipPet", outList[i]) end
 
             equipped = newEquipped
         end
@@ -624,18 +616,10 @@ local function fastRebirthLoop(myId)
         local autoSlots = (SLOTS <= 0)
         local slots = autoSlots and AUTO_TRY or SLOTS
 
-        local hydraList, repTarget, swapList, offList
+        local hydraList, repTarget
         local function rebuild()
             hydraList = buildHydraList(petsFolder, slots)
-            local keep = math.max(0, slots - #hydraList)
             repTarget = buildRepList(petsFolder, slots)
-            offList = {}
-            if not FULL_SWAP and not autoSlots then
-                for i = 1, math.min(keep, #repTarget) do table.insert(offList, repTarget[i]) end
-            end
-            swapList = {}
-            for _, pet in ipairs(offList) do table.insert(swapList, pet) end
-            for _, h in ipairs(hydraList) do table.insert(swapList, h) end
         end
         rebuild()
 
@@ -648,30 +632,32 @@ local function fastRebirthLoop(myId)
         fastStatus = "Starting: cleaning pets..."
         unequipAllPets(petsFolder)
         if not isRunning() then return end
+        
+        -- On commence avec les pets de force (repTarget)
         setEquipped(repTarget, true)
 
         local cycle = 0
         local rebirthResult = "-"
         local prevFire = nil
-        local rebirthAt = os.clock() + HYDRA_LEAD
+        local nextRebirthAt = os.clock() + 5
 
         while isRunning() do
             cycle = cycle + 1
 
-            local repOffLead = math.max(REP_OFF_LEAD, HYDRA_LEAD)
-            if repOffLead > HYDRA_LEAD + 0.001 then
-                waitUntil(rebirthAt - repOffLead)
-                if not isRunning() then break end
-                setEquipped(offList, true)
-            end
-
-            waitUntil(rebirthAt - HYDRA_LEAD)
+            -- 1. Attendre jusqu'à 5 secondes avant la prochaine renaissance pour équiper les Fast Rep Pets
+            waitUntil(nextRebirthAt - 5)
             if not isRunning() then break end
-            setEquipped(swapList, true, true)
+            setEquipped(repTarget, true)
+            
+            fastStatus = string.format("Cycle %d | Fast Rep Pets équipés (en attente du x2)", cycle)
 
-            waitUntil(rebirthAt)
+            -- 2. Attendre l'instant exact de la renaissance pour envoyer la requête avec les Hydra (ou garder l'état en cours)
+            waitUntil(nextRebirthAt)
             if not isRunning() then break end
+            
             local tFire = os.clock()
+            setEquipped(hydraList, true) -- Équipe les x2 pets rebirth au moment de la renaissance
+
             task.spawn(function()
                 local okR, res = pcall(function()
                     return rebirthRemote:InvokeServer("rebirthRequest")
@@ -679,9 +665,7 @@ local function fastRebirthLoop(myId)
                 rebirthResult = okR and res or ("error: " .. tostring(res))
             end)
 
-            waitUntil(tFire + HYDRA_TAIL)
-            setEquipped(offList, true)
-            waitUntil(tFire + REP_ON_DELAY)
+            -- 3. Remettre immédiatement les fast rep pets juste après la renaissance validée
             setEquipped(repTarget, true)
 
             local interval = prevFire and (tFire - prevFire) or 0
@@ -694,7 +678,7 @@ local function fastRebirthLoop(myId)
                 rebuild()
             end
 
-            rebirthAt = tFire + REBIRTH_COOLDOWN + REBIRTH_MARGIN
+            nextRebirthAt = tFire + REBIRTH_COOLDOWN
         end
     end)
 
