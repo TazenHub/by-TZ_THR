@@ -180,7 +180,6 @@ local function getBossRarity(boss)
     return "Common"
 end
 
--- Fonction simple et directe d'auto-click / équipement des poings
 local function equipFists()
     local char = LocalPlayer.Character
     if not char then return end
@@ -198,7 +197,6 @@ local function equipFists()
     end
 end
 
--- Équiper uniquement le poids (Weight) -> Auto Weight
 local function equipWeight()
     local char = LocalPlayer.Character
     if not char then return end
@@ -214,7 +212,6 @@ local function equipWeight()
     end
 end
 
--- Claim le coffre spécifique du Boss
 local function claimBossChest()
     local rEvents = ReplicatedStorage:FindFirstChild("rEvents")
     local chestRemote = rEvents and (rEvents:FindFirstChild("checkChestRemote") or rEvents:FindFirstChild("collectChestRemote") or rEvents:FindFirstChild("openChestRemote") or rEvents:FindFirstChild("chestRemote"))
@@ -303,22 +300,15 @@ local function autoFarmBossLoop(myId)
                     bossKills.Total = bossKills.Total + 1
                     if deathConn then deathConn:Disconnect() end
                     
-                    -- Activation demandée dès que le boss est tué :
                     pcall(function()
                         local bootstrapper = ReplicatedStorage:FindFirstChild("client") and ReplicatedStorage.client:FindFirstChild("bootstraper")
                         if bootstrapper then
-                            -- Si c'etait un RemoteEvent/RemoteFunction ou un script à exécuter
-                            -- On gère selon sa classe :
                             if bootstrapper:IsA("RemoteEvent") then
                                 bootstrapper:FireServer()
                             elseif bootstrapper:IsA("RemoteFunction") then
                                 bootstrapper:InvokeServer()
                             end
                         end
-                        -- Ou appel direct du chemin complet si c'est un ModuleScript / Autre :
-                        local successBoot = pcall(function()
-                            return game:GetService("ReplicatedStorage").client.bootstraper
-                        end)
                     end)
 
                     claimBossChest()
@@ -338,7 +328,6 @@ local function autoFarmBossLoop(myId)
                 if deathConn then deathConn:Disconnect() end
                 claimBossChest()
             else
-                -- Passage automatique sur l'auto weight quand il n'y a plus de boss
                 bossStatus = "Boss vaincu / Repos -> Farm au Weight"
                 equipWeight()
                 if muscleEvent then
@@ -419,7 +408,6 @@ local function autoKillAllLoop(myId)
             end
         end
 
-        -- Cooldown de 60 secondes appliqué uniquement à Auto Kill All
         if tick() - lastKillTick > 60 then
             serverHop()
             break
