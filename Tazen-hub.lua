@@ -94,7 +94,6 @@ local killStatus = "Waiting..."
 local sessionStartTime = tick()
 local sessionActive = false
 local lastRebirthTick = tick()
-local currentRebirthDuration = 0
 local lastRebirthDuration = 0
 
 -- Killing System Data
@@ -662,7 +661,7 @@ local function fastRebirthLoop(myId)
             local tFire = os.clock()
             setEquipped(hydraList, true)
 
-            -- Calcul du temps pour la renaissance
+            -- Calcul de la vitesse de la renaissance
             lastRebirthDuration = tFire - lastRebirthTick
             lastRebirthTick = tFire
 
@@ -1151,8 +1150,10 @@ local pagesHolder = new("Frame", {
 }, main)
 local tabs = {}
 local tabCount = 0
+local currentSelectedTab = ""
 
 local function selectTab(name)
+    currentSelectedTab = name
     for tabName, t in pairs(tabs) do
         local on = (tabName == name)
         t.page.Visible = on
@@ -1457,7 +1458,6 @@ local function addStatBlockWithSessionTimer(page, title, rowNames)
         }, f)
     end
 
-    -- Ajout du Chronomètre de session juste en dessous de Total gained (dernier élément)
     local sessionTimerIndex = #rowNames + 1
     local yTimer = 28 + (sessionTimerIndex - 1) * 22
     textLabel({
@@ -1689,13 +1689,9 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", "AutoRebirth", "Ena
         if fastToggle then fastToggle:Set(false) end
         enableAutoFastRep()
         autoStatus = "Starting..."
-        sessionActive = true
-        sessionStartTime = tick()
-        lastRebirthTick = tick()
         notifyState(E.cycle .. " Auto rebirth", true)
         task.spawn(autoRebirthLoop, autoRunId)
     else
-        sessionActive = false
         notifyState(E.cycle .. " Auto rebirth", false)
     end
 end)
@@ -1706,7 +1702,7 @@ autoConfigToggle = addToggle(autoPage, E.wrench .. " Save Config (Auto Rebirth)"
 end)
 local autoStatusLabel = addLabel(autoPage, E.clip .. " " .. autoStatus, 40)
 addSection(autoPage, E.chart .. " Rebirth calculator")
-local autoRebBlock = addStatBlockWithSessionTimer(autoPage, E.loop .. " REBIRTHS (measured over 20 s)", REB_ROWS)
+local autoRebBlock = addStatBlock(autoPage, E.loop .. " REBIRTHS (measured over 20 s)", REB_ROWS)
 addButton(autoPage, E.broom .. " Reset stats", resetStats)
 
 -- Fast Strength
@@ -1714,12 +1710,9 @@ addSection(strPage, E.muscle .. " Fast Strength")
 repToggle = addToggle(strPage, E.muscle .. " Fast strength", "Strength", "Enabled", false, function(v)
     repRunId = repRunId + 1
     if v then
-        sessionActive = true
-        sessionStartTime = tick()
         notify(E.muscle .. " Fast strength", E.target .. " " .. repRate .. " reps/s targeted")
         task.spawn(fastRepLoop, repRunId)
     else
-        sessionActive = false
         notifyState(E.muscle .. " Fast strength", false)
     end
 end)
@@ -1731,7 +1724,7 @@ strengthConfigToggle = addToggle(strPage, E.wrench .. " Save Config (Strength)",
 end)
 local repLabel = addLabel(strPage, E.antenna .. " Real reps/s: --", 34)
 addSection(strPage, E.up .. " Strength calculator")
-local strBlock = addStatBlockWithSessionTimer(strPage, E.muscle .. " STRENGTH (measured over 20 s)", STR_ROWS)
+local strBlock = addStatBlock(strPage, E.muscle .. " STRENGTH (measured over 20 s)", STR_ROWS)
 addButton(strPage, E.broom .. " Reset stats", resetStats)
 
 -- Boss Tab
@@ -1977,9 +1970,9 @@ task.spawn(function()
             bossKills.Total
         })
 
-        -- Calcul du chrono de session
+        -- Gestion du chrono de session uniquement si l'onglet Fast est ouvert ET la fonction active
         local sessionDurationStr = "00:00:00"
-        if sessionActive then
+        if sessionActive and currentSelectedTab == TAB_FAST and fastToggle and fastToggle.Value then
             local diff = tick() - sessionStartTime
             local h = math.floor(diff / 3600)
             local m = math.floor((diff % 3600) / 60)
@@ -1998,18 +1991,29 @@ task.spawn(function()
             local sList = projections(strRate)
             table.insert(sList, fmt(tracker.strGain))
             table.insert(sList, dRep > 0 and fmt((b.str - a.str) / dRep) or "--")
-            strBlock:Set(sList, sessionDurationStr)
+            strBlock:Set(sList)
 
-            local currentRebirthTiming = string.format("Dernière: %.1fs | Cours: %.1fs", lastRebirthDuration, tick() - lastRebirthTick)
+            -- Calcul du temps pour chaque renaissance affiché dans la zone Fast Rebirth
+            local currentFastRebirthDuration = tick() - lastRebirthTick
+            if not fastToggle or not fastToggle.Value then
+                currentFastRebirthDuration = 0
+            end
+            
             local rList = projections(rebRate)
             table.insert(rList, fmt(tracker.rebGain))
+            
+            -- Affichage de la vitesse de la dernière renaissance et du chrono session dans l'onglet Fast
+            if currentSelectedTab == TAB_FAST and fastToggle and fastToggle.Value then
+                fastStatusLabel:SetText(string.format("⏱️ Temps dern. rebirth : %.2fs | Cours : %.1fs", lastRebirthDuration, currentFastRebirthDuration))
+            end
+
             fastRebBlock:Set(rList, sessionDurationStr)
-            autoRebBlock:Set(rList, sessionDurationStr)
+            autoRebBlock:Set(rList)
         else
-            strBlock:Set({ "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.strGain), "--" }, sessionDurationStr)
+            strBlock:Set({ "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.strGain), "--" })
             local pending = { "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.rebGain) }
             fastRebBlock:Set(pending, sessionDurationStr)
-            autoRebBlock:Set(pending, sessionDurationStr)
+            autoRebBlock:Set(pending)
         end
     end
 end)
