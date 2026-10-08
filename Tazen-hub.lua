@@ -57,13 +57,6 @@ local E = {
 
 local IMAGE_ASSET = "rbxassetid://91265185075125"
 
-local repSpeedPetPriorities = {
-    ["Omega Overlord"] = 1,
-    ["Mythic Boss Pet"] = 1,
-    ["Legendary Boss Pet"] = 2,
-    ["Epic Boss Pet"] = 3,
-}
-
 -- ===================== STATE =====================
 local alive = true
 local connections = {}
@@ -140,16 +133,6 @@ local function canRebirth()
     end)
     if okC then return result end
     return true
-end
-
-local function getPetScore(pet)
-    local o = pet:FindFirstChild("RepSpeed") or pet:FindFirstChild("Rep Speed")
-    if o and (o:IsA("NumberValue") or o:IsA("IntValue")) then return o.Value end
-    local attr = pet:GetAttribute("RepSpeed") or pet:GetAttribute("Rep Speed")
-    if attr then return tonumber(attr) or 0 end
-    local lvl = pet:FindFirstChild("Level") or pet:FindFirstChild("Lvl")
-    if lvl and lvl.Value then return tonumber(lvl.Value) or 0 end
-    return 1
 end
 
 local function findMuscleEvent(rEvents)
@@ -316,162 +299,41 @@ local function autoFarmBossLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH (PET SWAP RESTAURÉ AVEC TES PARAMÈTRES) =====================
+-- ===================== FAST REBIRTH (TON ANCIEN FAST REBIRTH) =====================
 local function fastRebirthLoop(myId)
-    local function isRunning() return fastRunId == myId end
+    local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
+    local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
 
-    local okT, errT = pcall(function()
-        local rebirthRemote = ReplicatedStorage.rEvents.rebirthRemote
-        local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
-        local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
-
-        local SLOTS = 12                    
-        local AUTO_TRY = 20                 
-
-        local function petRealName(pet)
-            if pet:FindFirstChild("PetName") then return pet.PetName.Value end
-            return pet.Name
-        end
-
-        local function unequipAllPets(petsFolder)
-            for _, folderName in ipairs(FOLDERS) do
-                local folder = petsFolder:FindFirstChild(folderName)
-                if folder then
-                    for _, pet in ipairs(folder:GetChildren()) do
-                        pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
-                    end
-                end
-            end
-        end
-
-        local function buildHydraList(petsFolder, slots)
-            local list = {}
-            for _, folderName in ipairs(FOLDERS) do
-                local folder = petsFolder:FindFirstChild(folderName)
-                if folder then
-                    for _, pet in ipairs(folder:GetChildren()) do
-                        if #list < slots and petRealName(pet) == "Titanium Hydra" then
-                            table.insert(list, pet)
-                        end
-                    end
-                end
-            end
-            return list
-        end
-
-        local function buildRepList(petsFolder, slots)
-            local repPets = {}
-            for _, folderName in ipairs(FOLDERS) do
-                local folder = petsFolder:FindFirstChild(folderName)
-                if folder then
-                    for _, pet in ipairs(folder:GetChildren()) do
-                        local priority = repSpeedPetPriorities[petRealName(pet)] or 5
-                        table.insert(repPets, {
-                            Instance = pet,
-                            Priority = priority,
-                            Score = getPetScore(pet)
-                        })
-                    end
-                end
-            end
-
-            table.sort(repPets, function(a, b)
-                if a.Priority == b.Priority then return a.Score > b.Score end
-                return a.Priority < b.Priority
-            end)
-
-            local list = {}
-            local uniqueMap = {}
-            for _, entry in ipairs(repPets) do
-                if #list >= slots then break end
-                if not uniqueMap[entry.Instance] then
-                    uniqueMap[entry.Instance] = true
-                    table.insert(list, entry.Instance)
-                end
-            end
-            return list
-        end
-
-        local function setEquippedFast(wanted)
-            pcall(function()
-                for _, pet in ipairs(wanted) do
-                    if pet and pet.Parent then
-                        equipPetEvent:FireServer("equipPet", pet)
-                    end
-                end
-            end)
-        end
-
-        local function unequipOthers(wanted)
-            local wantMap = {}
-            for _, p in ipairs(wanted) do wantMap[p] = true end
-            pcall(function()
-                for _, folderName in ipairs(FOLDERS) do
-                    local folder = petsFolder:FindFirstChild(folderName)
-                    if folder then
-                        for _, pet in ipairs(folder:GetChildren()) do
-                            if not wantMap[pet] then
-                                equipPetEvent:FireServer("unequipPet", pet)
-                            end
-                        end
-                    end
-                end
-            end)
-        end
-
-        local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
-        while isRunning() and not petsFolder do
-            fastStatus = "petsFolder not found"
-            task.wait(1)
-            petsFolder = LocalPlayer:FindFirstChild("petsFolder")
-        end
-        if not isRunning() then return end
-
-        local slots = (SLOTS <= 0) and AUTO_TRY or SLOTS
-        local hydraList = buildHydraList(petsFolder, slots)
-        local repTarget = buildRepList(petsFolder, slots)
-
-        if #hydraList == 0 then
-            fastStatus = "Pack required: no Titanium Hydra found."
-            return
-        end
-
-        fastStatus = "Starting fast rebirth..."
-        unequipAllPets(petsFolder)
-        setEquippedFast(repTarget)
-
-        lastRebirthAttemptTime = tick()
-
-        while isRunning() do
-            local targetTime = lastRebirthAttemptTime + REBIRTH_COOLDOWN
-            while isRunning() and tick() < targetTime do
-                RunService.Heartbeat:Wait()
-            end
-            if not isRunning() then break end
-
-            -- Bascule vers les familiers Hydra pour le multiplicateur de Rebirth
-            unequipOthers(hydraList)
-            setEquippedFast(hydraList)
-
-            local nowTick = tick()
-            lastRealCycleTime = nowTick - lastRebirthAttemptTime
-            lastRebirthAttemptTime = nowTick
-
-            task.spawn(function()
-                pcall(function() rebirthRemote:InvokeServer("rebirthRequest") end)
-            end)
-
-            -- Attente pour le passage de la réincarnation, puis retour aux familiers de vitesse
-            task.wait(1.8)
-            if not isRunning() then break end
-            unequipOthers(repTarget)
-            setEquippedFast(repTarget)
-        end
-    end)
-
-    if not okT then
-        fastStatus = "ERROR: " .. tostring(errT)
+    if not rebirthRemote then
+        fastStatus = "rEvents / rebirthRemote not found"
         warn("[Tazen hub] " .. fastStatus)
+        return
+    end
+
+    local tries = 0
+    lastRebirthAttemptTime = tick()
+    while fastRunId == myId do
+        local okC, errC = pcall(function()
+            if canRebirth() then
+                tries = tries + 1
+                local nowTick = tick()
+                lastRealCycleTime = nowTick - lastRebirthAttemptTime
+                lastRebirthAttemptTime = nowTick
+
+                local okR, res = pcall(function()
+                    return rebirthRemote:InvokeServer("rebirthRequest")
+                end)
+                fastStatus = string.format("Attempts: %d | last result: %s",
+                    tries, okR and tostring(res) or ("error: " .. tostring(res)))
+            else
+                fastStatus = "canRebirth = false"
+            end
+        end)
+        if not okC then
+            fastStatus = "ERROR: " .. tostring(errC)
+            warn("[Tazen hub] " .. fastStatus)
+        end
+        task.wait(0.1)
     end
 end
 
@@ -1105,8 +967,6 @@ local function addButton(page, name, callback)
     return b
 end
 
-local repSliderUpdate = nil
-
 local function addSlider(page, name, categoryKey, settingKey, min, max, default, callback)
     local configData = loadCategoryConfig(categoryKey)
     local initialVal = default
@@ -1410,13 +1270,6 @@ local function resetBossStats()
     notify(E.broom .. " Boss Counter", E.ok .. " Compteur réinitialisé")
 end
 
-local function enableAutoFastRep()
-    if repSliderUpdate then repSliderUpdate(659) end
-    if repToggle and not repToggle.Value then
-        repToggle:Set(true)
-    end
-end
-
 local REB_ROWS = {
     E.clock .. " Per minute", E.hourglass .. " Per hour",
     E.sun .. " Per day", E.calendar .. " Per week", E.trophy .. " Total gained",
@@ -1433,13 +1286,11 @@ local BOSS_ROWS = {
 -- Fast Rebirth
 addSection(fastPage, E.fire .. " Fast Rebirth (Pack)")
 addLabel(fastPage, "\u{26A0}\u{FE0F} You need pack for fast rebirth", 34)
-addLabel(fastPage, "\u{26A0}\u{FE0F} Use a 659 rep speed for no delay", 34)
 fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", "FastRebirth", "Enabled", false, function(v)
     fastRunId = fastRunId + 1
     if v then
         autoRunId = autoRunId + 1
         if autoToggle then autoToggle:Set(false) end
-        enableAutoFastRep()
         fastStatus = "Starting..."
         sessionActive = true
         sessionStartTime = tick()
@@ -1464,13 +1315,11 @@ addButton(fastPage, E.broom .. " Reset stats", resetStats)
 -- Auto Rebirth
 addSection(autoPage, E.cycle .. " Auto Rebirth (No Pack)")
 addLabel(autoPage, "\u{26A0}\u{FE0F} This tab can be used by everyone", 34)
-addLabel(autoPage, "\u{26A0}\u{FE0F} Use a 659 rep speed for no delay", 34)
 autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", "AutoRebirth", "Enabled", false, function(v)
     autoRunId = autoRunId + 1
     if v then
         fastRunId = fastRunId + 1
         if fastToggle then fastToggle:Set(false) end
-        enableAutoFastRep()
         autoStatus = "Starting..."
         notifyState(E.cycle .. " Auto rebirth", true)
         task.spawn(autoRebirthLoop, autoRunId)
@@ -1499,7 +1348,7 @@ repToggle = addToggle(strPage, E.muscle .. " Fast strength", "Strength", "Enable
         notifyState(E.muscle .. " Fast strength", false)
     end
 end)
-repSliderUpdate = addSlider(strPage, E.wrench .. " Reps per second", "Strength", "Rate", 659, 3000, repRate, function(v) repRate = v end)
+addSlider(strPage, E.wrench .. " Reps per second", "Strength", "Rate", 0, 659, repRate, function(v) repRate = v end)
 strengthConfigToggle = addToggle(strPage, E.wrench .. " Save Config (Strength)", "Strength", "SaveConfigEnabled", true, function(v)
     local cfg = { Enabled = repToggle.Value, Rate = repRate }
     if v then saveCategoryConfig("Strength", cfg) end
