@@ -90,6 +90,18 @@ local autoStatus = "Waiting..."
 local bossStatus = "Waiting..."
 local killStatus = "Waiting..."
 
+-- Chronos par fonction
+local fastRebirthStartTime = 0
+local autoRebirthStartTime = 0
+local fastStrengthStartTime = 0
+
+local function formatTime(seconds)
+    if seconds <= 0 then return "00:00" end
+    local mins = math.floor(seconds / 60)
+    local secs = math.floor(seconds % 60)
+    return string.format("%02d:%02d", mins, secs)
+end
+
 -- Killing System Data
 local whitelistPlayers = {}
 local targetPlayers = {}
@@ -1565,14 +1577,17 @@ local function enableAutoFastRep()
     end
 end
 
+-- Lignes modifiées : suppression de "Per second" pour les rebirths
 local REB_ROWS = {
-    E.bolt .. " Per second", E.clock .. " Per minute", E.hourglass .. " Per hour",
+    E.clock .. " Per minute", E.hourglass .. " Per hour",
     E.sun .. " Per day", E.calendar .. " Per week", E.trophy .. " Total gained",
+    E.clock .. " Chrono Session"
 }
 local STR_ROWS = {
     E.bolt .. " Per second", E.clock .. " Per minute", E.hourglass .. " Per hour",
     E.sun .. " Per day", E.calendar .. " Per week", E.trophy .. " Total gained",
     E.target .. " Strength per rep (avg)",
+    E.clock .. " Chrono Session"
 }
 local BOSS_ROWS = {
     "⚪ Commun", "🔵 Rare", "🟣 Épique", "🟡 Légendaire", "🔴 Mythique", E.rainbow .. " Arc-en-ciel", E.trophy .. " Total Tués"
@@ -1584,6 +1599,7 @@ addLabel(fastPage, "\u{26A0}\u{FE0F} You need pack for fast rebirth", 34)
 addLabel(fastPage, "\u{26A0}\u{FE0F} Use a 659 rep speed for no delay", 34)
 fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", "FastRebirth", "Enabled", false, function(v)
     fastRunId = fastRunId + 1
+    fastRebirthStartTime = v and tick() or 0
     if v then
         autoRunId = autoRunId + 1
         if autoToggle then autoToggle:Set(false) end
@@ -1611,6 +1627,7 @@ addLabel(autoPage, "\u{26A0}\u{FE0F} This tab can be used by everyone", 34)
 addLabel(autoPage, "\u{26A0}\u{FE0F} Use a 659 rep speed for no delay", 34)
 autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", "AutoRebirth", "Enabled", false, function(v)
     autoRunId = autoRunId + 1
+    autoRebirthStartTime = v and tick() or 0
     if v then
         fastRunId = fastRunId + 1
         if fastToggle then fastToggle:Set(false) end
@@ -1636,6 +1653,7 @@ addButton(autoPage, E.broom .. " Reset stats", resetStats)
 addSection(strPage, E.muscle .. " Fast Strength")
 repToggle = addToggle(strPage, E.muscle .. " Fast strength", "Strength", "Enabled", false, function(v)
     repRunId = repRunId + 1
+    fastStrengthStartTime = v and tick() or 0
     if v then
         notify(E.muscle .. " Fast strength", E.target .. " " .. repRate .. " reps/s targeted")
         task.spawn(fastRepLoop, repRunId)
@@ -1905,20 +1923,40 @@ task.spawn(function()
             local rebRate = (b.reb - a.reb) / dt
             local dRep = b.rep - a.rep
 
+            -- Calcul des chronos dynamiques
+            local fastTimeStr = fastRebirthStartTime > 0 and formatTime(tick() - fastRebirthStartTime) or "00:00"
+            local autoTimeStr = autoRebirthStartTime > 0 and formatTime(tick() - autoRebirthStartTime) or "00:00"
+            local strengthTimeStr = fastStrengthStartTime > 0 and formatTime(tick() - fastStrengthStartTime) or "00:00"
+
             local sList = projections(strRate)
             table.insert(sList, fmt(tracker.strGain))
             table.insert(sList, dRep > 0 and fmt((b.str - a.str) / dRep) or "--")
+            table.insert(sList, strengthTimeStr)
             strBlock:Set(sList)
 
-            local rList = projections(rebRate)
-            table.insert(rList, fmt(tracker.rebGain))
-            fastRebBlock:Set(rList)
-            autoRebBlock:Set(rList)
+            local rListFast = projections(rebRate)
+            table.remove(rListFast, 1) -- Retire "Per second"
+            table.insert(rListFast, fmt(tracker.rebGain))
+            table.insert(rListFast, fastTimeStr)
+            fastRebBlock:Set(rListFast)
+
+            local rListAuto = projections(rebRate)
+            table.remove(rListAuto, 1) -- Retire "Per second"
+            table.insert(rListAuto, fmt(tracker.rebGain))
+            table.insert(rListAuto, autoTimeStr)
+            autoRebBlock:Set(rListAuto)
         else
-            strBlock:Set({ "measuring...", "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.strGain), "--" })
-            local pending = { "measuring...", "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.rebGain) }
-            fastRebBlock:Set(pending)
-            autoRebBlock:Set(pending)
+            local fastTimeStr = fastRebirthStartTime > 0 and formatTime(tick() - fastRebirthStartTime) or "00:00"
+            local autoTimeStr = autoRebirthStartTime > 0 and formatTime(tick() - autoRebirthStartTime) or "00:00"
+            local strengthTimeStr = fastStrengthStartTime > 0 and formatTime(tick() - fastStrengthStartTime) or "00:00"
+
+            strBlock:Set({ "measuring...", "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.strGain), "--", strengthTimeStr })
+            
+            local pendingFast = { "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.rebGain), fastTimeStr }
+            fastRebBlock:Set(pendingFast)
+
+            local pendingAuto = { "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.rebGain), autoTimeStr }
+            autoRebBlock:Set(pendingAuto)
         end
     end
 end)
