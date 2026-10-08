@@ -625,16 +625,18 @@ local function fastRepLoop(myId)
             end
         end
 
-        carry = carry + repRate * dt
-        local n = math.floor(carry)
-        carry = carry - n
-        if n > 200 then n = 200 end
+        if repRate > 0 then
+            carry = carry + repRate * dt
+            local n = math.floor(carry)
+            carry = carry - n
+            if n > 200 then n = 200 end
 
-        for _ = 1, n do
-            pcall(muscleEvent.FireServer, muscleEvent, "rep")
+            for _ = 1, n do
+                pcall(muscleEvent.FireServer, muscleEvent, "rep")
+            end
+            repCounter = repCounter + n
+            repTotal = repTotal + n
         end
-        repCounter = repCounter + n
-        repTotal = repTotal + n
     end
 end
 
@@ -1439,7 +1441,7 @@ repToggle = addToggle(strPage, E.muscle .. " Fast strength", false, function(v)
         notifyState(E.muscle .. " Fast strength", false)
     end
 end)
-repSliderUpdate = addSlider(strPage, E.wrench .. " Reps per second", 659, 3000, repRate, function(v) repRate = v end)
+repSliderUpdate = addSlider(strPage, E.wrench .. " Reps per second", 0, 1050, repRate, function(v) repRate = v end)
 local repLabel = addLabel(strPage, E.antenna .. " Real reps/s: --", 34)
 local repTimerLabel = addLabel(strPage, E.clock .. " Session Time: 0s | Moy. Reps/s: 0", 36)
 
