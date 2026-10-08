@@ -489,7 +489,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH (Custom Timing) =====================
+-- ===================== FAST REBIRTH (Custom Timing: 4s / 2s) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
 
@@ -639,19 +639,19 @@ local function fastRebirthLoop(myId)
         local cycle = 0
         local rebirthResult = "-"
         local prevFire = nil
-        local nextRebirthAt = os.clock() + 5
+        local nextRebirthAt = os.clock() + 4
 
         while isRunning() do
             cycle = cycle + 1
 
-            -- 1. Attendre jusqu'à 5 secondes avant la prochaine renaissance pour équiper les Fast Rep Pets
-            waitUntil(nextRebirthAt - 5)
+            -- 1. Attendre 4 secondes avant la prochaine renaissance pour équiper les Fast Rep Pets
+            waitUntil(nextRebirthAt - 4)
             if not isRunning() then break end
             setEquipped(repTarget, true)
             
-            fastStatus = string.format("Cycle %d | Fast Rep Pets équipés (en attente du x2)", cycle)
+            fastStatus = string.format("Cycle %d | Fast Rep Pets équipés (4s avant)", cycle)
 
-            -- 2. Attendre l'instant exact de la renaissance pour envoyer la requête avec les Hydra (ou garder l'état en cours)
+            -- 2. Attendre l'instant exact de la renaissance pour envoyer la requête et équiper les Hydra
             waitUntil(nextRebirthAt)
             if not isRunning() then break end
             
@@ -665,7 +665,9 @@ local function fastRebirthLoop(myId)
                 rebirthResult = okR and res or ("error: " .. tostring(res))
             end)
 
-            -- 3. Remettre immédiatement les fast rep pets juste après la renaissance validée
+            -- 3. Garder les x2 rebirth pets pendant 2 secondes, puis remettre immédiatement les fast rep pets
+            waitUntil(tFire + 2)
+            if not isRunning() then break end
             setEquipped(repTarget, true)
 
             local interval = prevFire and (tFire - prevFire) or 0
@@ -837,7 +839,7 @@ local function pushSample()
 end
 
 local function projections(rate)
-    return { fmt(rate), fmt(rate * 60), fmt(rate * 3600), fmt(rate * 86400), fmt(rate * 604800) }
+    return { fmt(rate * 60), fmt(rate * 3600), fmt(rate * 86400), fmt(rate * 604800) }
 end
 
 -- ===================== MISC ANTI LAG =====================
@@ -1551,11 +1553,11 @@ local function enableAutoFastRep()
 end
 
 local REB_ROWS = {
-    E.bolt .. " Per second", E.clock .. " Per minute", E.hourglass .. " Per hour",
+    E.clock .. " Per minute", E.hourglass .. " Per hour",
     E.sun .. " Per day", E.calendar .. " Per week", E.trophy .. " Total gained",
 }
 local STR_ROWS = {
-    E.bolt .. " Per second", E.clock .. " Per minute", E.hourglass .. " Per hour",
+    E.clock .. " Per minute", E.hourglass .. " Per hour",
     E.sun .. " Per day", E.calendar .. " Per week", E.trophy .. " Total gained",
     E.target .. " Strength per rep (avg)",
 }
@@ -1900,8 +1902,8 @@ task.spawn(function()
             fastRebBlock:Set(rList)
             autoRebBlock:Set(rList)
         else
-            strBlock:Set({ "measuring...", "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.strGain), "--" })
-            local pending = { "measuring...", "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.rebGain) }
+            strBlock:Set({ "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.strGain), "--" })
+            local pending = { "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.rebGain) }
             fastRebBlock:Set(pending)
             autoRebBlock:Set(pending)
         end
