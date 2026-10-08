@@ -1493,7 +1493,7 @@ addCredit(miscPage, E.sparkles .. " Made by TZ_THR, Have fun " .. E.party)
 
 selectTab(TAB_FAST)
 
--- Update Loop sécurisé avec pcall individuel
+-- ===================== UPDATE & PLAYER-GAIN-BASED PREDICTOR =====================
 task.spawn(function()
     while alive do
         task.wait(1)
@@ -1502,35 +1502,60 @@ task.spawn(function()
             fpsFrames = 0
             killStatusLabel:SetText(E.clip .. " " .. killStatus)
 
+            -- Calculateur Fast Rebirth basé sur les gains réels du joueur par seconde
             if fastStartTime then
                 local elapsed = math.max(1, tick() - fastStartTime)
                 fastTimerLabel:SetText(string.format("%s Session Time: %s | Dernière renaissance : %s", E.clock, formatSeconds(elapsed), fastRebirthTimerText))
-                local effectiveRate = fastRebirthCount / elapsed
+                
+                -- Vitesse réelle basée sur les gains accumulés / temps écoulé
+                local realRate = fastRebirthCount / elapsed
+                local m1 = realRate * 60
+                local h1 = realRate * 3600
+                local d1 = realRate * 86400
+                local w1 = realRate * 604800
+                local mo1 = realRate * 2592000
+
                 fastCalcLabel:SetText(string.format("%s Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
-                    E.chart, formatNumber(fastRebirthCount), formatNumber(effectiveRate * 60), formatNumber(effectiveRate * 3600), formatNumber(effectiveRate * 86400), formatNumber(effectiveRate * 604800), formatNumber(effectiveRate * 2592000)))
+                    E.chart, formatNumber(fastRebirthCount), formatNumber(m1), formatNumber(h1), formatNumber(d1), formatNumber(w1), formatNumber(mo1)))
             else
                 fastTimerLabel:SetText(E.clock .. " Session Time: 0s | Dernière renaissance : 0.00s")
                 fastCalcLabel:SetText(E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
             end
 
+            -- Calculateur Auto Rebirth basé sur les gains réels du joueur
             if autoStartTime then
                 local elapsed = math.max(1, tick() - autoStartTime)
-                local rps = autoRebirthCount / elapsed
-                autoTimerLabel:SetText(string.format("%s Session Time: %s | Rebirth/s: %.2f", E.clock, formatSeconds(elapsed), rps))
+                local realRate = autoRebirthCount / elapsed
+                autoTimerLabel:SetText(string.format("%s Session Time: %s | Rebirth/s: %.2f", E.clock, formatSeconds(elapsed), realRate))
+                
+                local m1 = realRate * 60
+                local h1 = realRate * 3600
+                local d1 = realRate * 86400
+                local w1 = realRate * 604800
+                local mo1 = realRate * 2592000
+
                 autoCalcLabel:SetText(string.format("%s Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
-                    E.chart, formatNumber(autoRebirthCount), formatNumber(rps * 60), formatNumber(rps * 3600), formatNumber(rps * 86400), formatNumber(rps * 604800), formatNumber(rps * 2592000)))
+                    E.chart, formatNumber(autoRebirthCount), formatNumber(m1), formatNumber(h1), formatNumber(d1), formatNumber(w1), formatNumber(mo1)))
             else
                 autoTimerLabel:SetText(E.clock .. " Session Time: 0s | Rebirth/s: 0.0")
                 autoCalcLabel:SetText(E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
             end
 
+            -- Calculateur Fast Strength basé sur les gains réels de reps du joueur
             if repStartTime then
                 local elapsed = math.max(1, tick() - repStartTime)
                 local avgReps = math.floor(repTotal / elapsed)
                 repTimerLabel:SetText(string.format("%s Session Time: %s | Moy. Reps/s: %d", E.clock, formatSeconds(elapsed), avgReps))
-                local effectiveRepRate = repTotal / elapsed
+                
+                local realRate = repTotal / elapsed
+                local m1 = realRate * 60
+                local h1 = realRate * 3600
+                local d1 = realRate * 86400
+                local w1 = realRate * 604800
+                local mo1 = realRate * 2592000
+
                 repCalcLabel:SetText(string.format("%s %d/s | Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
-                    E.chart, repRate, formatNumber(repTotal), formatNumber(effectiveRepRate * 60), formatNumber(effectiveRepRate * 3600), formatNumber(effectiveRepRate * 86400), formatNumber(effectiveRepRate * 604800), formatNumber(effectiveRepRate * 2592000)))
+                    E.chart, repRate, formatNumber(repTotal), formatNumber(m1), formatNumber(h1), formatNumber(d1), formatNumber(w1), formatNumber(mo1)))
             else
                 repTimerLabel:SetText(E.clock .. " Session Time: 0s | Moy. Reps/s: 0")
                 repCalcLabel:SetText(E.chart .. " 0/s | Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
