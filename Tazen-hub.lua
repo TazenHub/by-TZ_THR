@@ -661,7 +661,6 @@ local function fastRebirthLoop(myId)
             local tFire = os.clock()
             setEquipped(hydraList, true)
 
-            -- Calcul direct et précis du temps pris par la renaissance
             lastRebirthDuration = tFire - lastRebirthTick
             lastRebirthTick = tFire
 
@@ -733,7 +732,7 @@ local function autoRebirthLoop(myId)
     end
 end
 
--- ===================== FAST STRENGTH (REP) =====================
+-- ===================== FAST STRENGTH (REP) - CORRIGÉ POUR ATTEINDRE LE DÉBIT MAX =====================
 local function fastRepLoop(myId)
     local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
     if not rEvents then warn("[Tazen hub] rEvents not found") return end
@@ -755,7 +754,7 @@ local function fastRepLoop(myId)
         carry = carry + repRate * dt
         local n = math.floor(carry)
         carry = carry - n
-        if n > 200 then n = 200 end
+        if n > 350 then n = 350 end
 
         for _ = 1, n do
             pcall(muscleEvent.FireServer, muscleEvent, "rep")
@@ -1947,7 +1946,7 @@ selectTab(TAB_FAST)
 -- ===================== UPDATE =====================
 task.spawn(function()
     while alive do
-        task.wait(0.1) -- Cadence ultra-rapide pour éviter les ralentissements d'affichage
+        task.wait(0.1)
 
         repLabel:SetText(E.antenna .. (repToggle.Value and (" Real reps/s: " .. repCounter) or " Real reps/s: --"))
         repCounter = 0
@@ -1965,7 +1964,6 @@ task.spawn(function()
             bossKills.Total
         })
 
-        -- Gestion du chrono de session uniquement sur l'onglet Fast lorsque le toggle est actif
         local sessionDurationStr = "00:00:00"
         if sessionActive and currentSelectedTab == TAB_FAST and fastToggle and fastToggle.Value then
             local diff = tick() - sessionStartTime
@@ -1975,7 +1973,6 @@ task.spawn(function()
             sessionDurationStr = string.format("%02d:%02d:%02d", h, m, s)
         end
 
-        -- Calcul de la vitesse exacte de la renaissance (instantané sans lissage faussé)
         local currentFastRebirthDuration = tick() - lastRebirthTick
         if not fastToggle or not fastToggle.Value then
             currentFastRebirthDuration = 0
