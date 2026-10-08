@@ -85,12 +85,15 @@ local repCounter = 0
 local repTotal = 0
 
 -- Live Stats Tracking
-local fastRebirthCount = 0
 local autoRebirthCount = 0
 
 local fastStatus = "Waiting..."
 local autoStatus = "Waiting..."
 local killStatus = "Waiting..."
+
+-- Chrono / Timer variables for Fast Rebirth
+local fastRebirthTimerText = "0.00s"
+local lastRebirthTick = nil
 
 -- Session Timers Start Ticks
 local fastStartTime = nil
@@ -534,7 +537,11 @@ local function fastRebirthLoop(myId)
                 end)
                 rebirthResult = okR and res or ("error: " .. tostring(res))
                 if okR and (type(res) == "boolean" and res == true or type(res) ~= "boolean") then
-                    fastRebirthCount = fastRebirthCount + 1
+                    if lastRebirthTick then
+                        local diff = tick() - lastRebirthTick
+                        fastRebirthTimerText = string.format("%.2fs", diff)
+                    end
+                    lastRebirthTick = tick()
                 end
             end)
 
@@ -545,8 +552,8 @@ local function fastRebirthLoop(myId)
 
             local interval = prevFire and (tFire - prevFire) or 0
             prevFire = tFire
-            fastStatus = string.format("Cycle %d | Rebirth: %s | Slots %d | Rep %d | Hydras %d | %.2fs",
-                cycle, tostring(rebirthResult), slots, #repTarget, #hydraList, interval)
+            fastStatus = string.format("Rebirth: %s | Slots %d | Rep %d | Hydras %d | %.2fs",
+                tostring(rebirthResult), slots, #repTarget, #hydraList, interval)
 
             if cycle % LIST_REFRESH_EVERY == 0 then
                 petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
@@ -1378,7 +1385,8 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", false, function(v)
     fastRunId = fastRunId + 1
     if v then
         fastStartTime = tick()
-        fastRebirthCount = 0
+        lastRebirthTick = tick()
+        fastRebirthTimerText = "0.00s"
         autoRunId = autoRunId + 1
         if autoToggle then autoToggle:Set(false) end
         enableAutoFastRep()
@@ -1387,11 +1395,12 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", false, function(v)
         task.spawn(fastRebirthLoop, fastRunId)
     else
         fastStartTime = nil
+        lastRebirthTick = nil
         notifyState(E.bolt .. " Fast rebirth", false)
     end
 end)
 local fastStatusLabel = addLabel(fastPage, E.clip .. " " .. fastStatus, 60)
-local fastTimerLabel = addLabel(fastPage, E.clock .. " Session Time: 0s | Rebirth/s: 0.0", 36)
+local fastTimerLabel = addLabel(fastPage, E.clock .. " Session Time: 0s | Dernière renaissance : 0.00s", 36)
 
 -- Auto Rebirth
 addSection(autoPage, E.cycle .. " Auto Rebirth (No Pack)")
@@ -1550,7 +1559,7 @@ local function refreshPlayerListUI()
 
             tBtn.Activated:Connect(function()
                 targetPlayers[plr.Name] = not targetPlayers[plr.Name]
-                tBtn.BackgroundColor3 = targetPlayers[plr.Name] and Color3.fromRGB(220, 50, 50) or T.Off,
+                tBtn.BackgroundColor3 = targetPlayers[plr.Name] and Color3.fromRGB(220, 50, 50) or T.Off
                 local stateStr = targetPlayers[plr.Name] and " ciblé en Priority Target !" or " retiré des targets."
                 notify("Target", plr.Name .. stateStr)
             end)
@@ -1635,10 +1644,9 @@ task.spawn(function()
         -- Session Timers & Real-Time Live Farm Calculators Update
         if fastStartTime then
             local elapsed = tick() - fastStartTime
-            local rps = elapsed > 0 and (fastRebirthCount / elapsed) or 0
-            fastTimerLabel:SetText(string.format("%s Session Time: %s | Rebirth/s: %.2f", E.clock, formatSeconds(elapsed), rps))
+            fastTimerLabel:SetText(string.format("%s Session Time: %s | Dernière renaissance : %s", E.clock, formatSeconds(elapsed), fastRebirthTimerText))
         else
-            fastTimerLabel:SetText(E.clock .. " Session Time: 0s | Rebirth/s: 0.0")
+            fastTimerLabel:SetText(E.clock .. " Session Time: 0s | Dernière renaissance : 0.00s")
         end
 
         if autoStartTime then
