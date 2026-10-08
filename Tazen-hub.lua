@@ -1393,7 +1393,7 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", false, function(v)
     end
 end)
 local fastTimerLabel = addLabel(fastPage, E.clock .. " Session Time: 0s | Dernière renaissance : 0.00s", 36)
-local fastCalcLabel = addLabel(fastPage, E.chart .. " Gain Total : 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1s: 0 | 1m: 0", 55)
+local fastCalcLabel = addLabel(fastPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0", 55)
 
 -- Auto Rebirth
 addSection(autoPage, E.cycle .. " Auto Rebirth (No Pack)")
@@ -1414,7 +1414,7 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", false, function(v)
     end
 end)
 local autoTimerLabel = addLabel(autoPage, E.clock .. " Session Time: 0s | Rebirth/s: 0.0", 36)
-local autoCalcLabel = addLabel(autoPage, E.chart .. " Gain Total : 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1s: 0 | 1m: 0", 55)
+local autoCalcLabel = addLabel(autoPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0", 55)
 
 -- Fast Strength
 addSection(strPage, E.muscle .. " Fast Strength")
@@ -1432,7 +1432,7 @@ repToggle = addToggle(strPage, E.muscle .. " Fast strength", false, function(v)
 end)
 repSliderUpdate = addSlider(strPage, E.wrench .. " Reps per second", 0, 1050, repRate, function(v) repRate = v end)
 local repTimerLabel = addLabel(strPage, E.clock .. " Session Time: 0s | Moy. Reps/s: 0", 36)
-local repCalcLabel = addLabel(strPage, E.chart .. " Par sec: 0 | Gain Total: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1s: 0 | 1m: 0", 65)
+local repCalcLabel = addLabel(strPage, E.chart .. " 0/s | Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0", 65)
 
 -- ===================== KILLING TAB (WITH SAVE CONFIG) =====================
 addSection(killPage, E.sword .. " Module de Combat / Killing")
@@ -1550,7 +1550,7 @@ local function refreshPlayerListUI()
 
             tBtn.Activated:Connect(function()
                 targetPlayers[plr.Name] = not targetPlayers[plr.Name]
-                tBtn.BackgroundColor3 = targetPlayers[plr.Name] and Color3.fromRGB(220, 50, 50) or T.Off,
+                tBtn.BackgroundColor3 = targetPlayers[plr.Name] and Color3.fromRGB(220, 50, 50) or T.Off
                 local stateStr = targetPlayers[plr.Name] and " ciblé en Priority Target !" or " retiré des targets."
                 notify("Target", plr.Name .. stateStr)
             end)
@@ -1640,11 +1640,11 @@ task.spawn(function()
             local w1 = ratePerSec * 604800
             local mo1 = ratePerSec * 2592000
 
-            fastCalcLabel:SetText(string.format("%s Total: %s | 1m: %s | 1h: %s | 1j: %s | 1s: %s | 1m: %s",
+            fastCalcLabel:SetText(string.format("%s Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
                 E.chart, formatNumber(totalGain), formatNumber(m1), formatNumber(h1), formatNumber(d1), formatNumber(w1), formatNumber(mo1)))
         else
             fastTimerLabel:SetText(E.clock .. " Session Time: 0s | Dernière renaissance : 0.00s")
-            fastCalcLabel:SetText(E.chart .. " Gain Total : 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1s: 0 | 1m: 0")
+            fastCalcLabel:SetText(E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
         end
 
         if autoStartTime then
@@ -1659,11 +1659,11 @@ task.spawn(function()
             local w1 = rps * 604800
             local mo1 = rps * 2592000
 
-            autoCalcLabel:SetText(string.format("%s Total: %s | 1m: %s | 1h: %s | 1j: %s | 1s: %s | 1m: %s",
+            autoCalcLabel:SetText(string.format("%s Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
                 E.chart, formatNumber(totalGain), formatNumber(m1), formatNumber(h1), formatNumber(d1), formatNumber(w1), formatNumber(mo1)))
         else
             autoTimerLabel:SetText(E.clock .. " Session Time: 0s | Rebirth/s: 0.0")
-            autoCalcLabel:SetText(E.chart .. " Gain Total : 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1s: 0 | 1m: 0")
+            autoCalcLabel:SetText(E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
         end
 
         if repStartTime then
@@ -1679,11 +1679,11 @@ task.spawn(function()
             local w1 = ratePerSec * 604800
             local mo1 = ratePerSec * 2592000
 
-            repCalcLabel:SetText(string.format("%s Sec: %d | Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1s: %s | 1m: %s",
+            repCalcLabel:SetText(string.format("%s %d/s | Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
                 E.chart, ratePerSec, formatNumber(totalGain), formatNumber(m1), formatNumber(h1), formatNumber(d1), formatNumber(w1), formatNumber(mo1)))
         else
             repTimerLabel:SetText(E.clock .. " Session Time: 0s | Moy. Reps/s: 0")
-            repCalcLabel:SetText(E.chart .. " Par sec: 0 | Gain Total: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1s: 0 | 1m: 0")
+            repCalcLabel:SetText(E.chart .. " 0/s | Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
         end
     end
 end)
