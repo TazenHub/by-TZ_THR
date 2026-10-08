@@ -40,7 +40,7 @@ local function saveCategoryConfig(categoryName, data)
 end
 
 -- ===================== SETTINGS =====================
-local REBIRTH_COOLDOWN = 3       -- Délai modifié entre deux renaissances (secondes)[cite: 4]
+local REBIRTH_COOLDOWN = 6       -- game cooldown between two rebirths (seconds)
 
 -- Emojis (escaped)
 local E = {
@@ -89,18 +89,6 @@ local fastStatus = "Waiting..."
 local autoStatus = "Waiting..."
 local bossStatus = "Waiting..."
 local killStatus = "Waiting..."
-
--- Chronos par fonction
-local fastRebirthStartTime = 0
-local autoRebirthStartTime = 0
-local fastStrengthStartTime = 0
-
-local function formatTime(seconds)
-    if seconds <= 0 then return "00:00" end
-    local mins = math.floor(seconds / 60)
-    local secs = math.floor(seconds % 60)
-    return string.format("%02d:%02d", mins, secs)
-end
 
 -- Killing System Data
 local whitelistPlayers = {}
@@ -501,7 +489,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH =====================
+-- ===================== FAST REBIRTH (Aide version intégrée) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
 
@@ -510,8 +498,11 @@ local function fastRebirthLoop(myId)
         local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
 
-        local HYDRA_LEAD = 1.0              
-        local HYDRA_TAIL = 1.0              
+        local HYDRA_LEAD = 0.10             
+        local HYDRA_TAIL = 0.05             
+        local REP_OFF_LEAD = 0.10           
+        local REP_ON_DELAY = 0.05           
+        local REBIRTH_MARGIN = 0.03         
         local SLOTS = 12                    
         local AUTO_TRY = 20                 
         local FULL_SWAP = true              
@@ -667,7 +658,7 @@ local function fastRebirthLoop(myId)
         while isRunning() do
             cycle = cycle + 1
 
-            local repOffLead = 5.0
+            local repOffLead = math.max(REP_OFF_LEAD, HYDRA_LEAD)
             if repOffLead > HYDRA_LEAD + 0.001 then
                 waitUntil(rebirthAt - repOffLead)
                 if not isRunning() then break end
@@ -690,7 +681,7 @@ local function fastRebirthLoop(myId)
 
             waitUntil(tFire + HYDRA_TAIL)
             setEquipped(offList, true)
-            waitUntil(tFire + HYDRA_TAIL + 0.05)
+            waitUntil(tFire + REP_ON_DELAY)
             setEquipped(repTarget, true)
 
             local interval = prevFire and (tFire - prevFire) or 0
@@ -703,7 +694,7 @@ local function fastRebirthLoop(myId)
                 rebuild()
             end
 
-            rebirthAt = tFire + REBIRTH_COOLDOWN + 0.03
+            rebirthAt = tFire + REBIRTH_COOLDOWN + REBIRTH_MARGIN
         end
     end)
 
@@ -1544,6 +1535,7 @@ local killPage = createTab(TAB_KILL)
 local miscPage = createTab(TAB_MISC)
 
 local fastToggle, autoToggle, repToggle, bossToggle, killAllToggle, killTargetToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle, autoExecToggle
+local fastConfigToggle, autoConfigToggle, strengthConfigToggle, bossConfigToggle, killingConfigToggle
 
 local function notifyState(title, v)
     notify(title, v and (E.ok .. " Enabled") or (E.no .. " Disabled"))
@@ -1575,15 +1567,13 @@ local function enableAutoFastRep()
 end
 
 local REB_ROWS = {
-    E.clock .. " Per minute", E.hourglass .. " Per hour",
+    E.bolt .. " Per second", E.clock .. " Per minute", E.hourglass .. " Per hour",
     E.sun .. " Per day", E.calendar .. " Per week", E.trophy .. " Total gained",
-    E.clock .. " Chrono Session"
 }
 local STR_ROWS = {
     E.bolt .. " Per second", E.clock .. " Per minute", E.hourglass .. " Per hour",
     E.sun .. " Per day", E.calendar .. " Per week", E.trophy .. " Total gained",
     E.target .. " Strength per rep (avg)",
-    E.clock .. " Chrono Session"
 }
 local BOSS_ROWS = {
     "⚪ Commun", "🔵 Rare", "🟣 Épique", "🟡 Légendaire", "🔴 Mythique", E.rainbow .. " Arc-en-ciel", E.trophy .. " Total Tués"
@@ -1595,7 +1585,6 @@ addLabel(fastPage, "\u{26A0}\u{FE0F} You need pack for fast rebirth", 34)
 addLabel(fastPage, "\u{26A0}\u{FE0F} Use a 659 rep speed for no delay", 34)
 fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", "FastRebirth", "Enabled", false, function(v)
     fastRunId = fastRunId + 1
-    fastRebirthStartTime = v and tick() or 0
     if v then
         autoRunId = autoRunId + 1
         if autoToggle then autoToggle:Set(false) end
@@ -1607,10 +1596,10 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", "FastRebirth", "Enab
         notifyState(E.bolt .. " Fast rebirth", false)
     end
 end)
-addButton(fastPage, E.wrench .. " Save Config (Fast Rebirth)", function()
+fastConfigToggle = addToggle(fastPage, E.wrench .. " Save Config (Fast Rebirth)", "FastRebirth", "SaveConfigEnabled", true, function(v)
     local cfg = { Enabled = fastToggle.Value }
-    saveCategoryConfig("FastRebirth", cfg)
-    notify("Config", E.ok .. " Fast Rebirth sauvegardé !")
+    if v then saveCategoryConfig("FastRebirth", cfg) end
+    notify("Config", v and (E.ok .. " Fast Rebirth sauvegarde auto activée") or (E.no .. " Sauvegarde auto désactivée"))
 end)
 local fastStatusLabel = addLabel(fastPage, E.clip .. " " .. fastStatus, 60)
 addSection(fastPage, E.chart .. " Rebirth calculator")
@@ -1623,7 +1612,6 @@ addLabel(autoPage, "\u{26A0}\u{FE0F} This tab can be used by everyone", 34)
 addLabel(autoPage, "\u{26A0}\u{FE0F} Use a 659 rep speed for no delay", 34)
 autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", "AutoRebirth", "Enabled", false, function(v)
     autoRunId = autoRunId + 1
-    autoRebirthStartTime = v and tick() or 0
     if v then
         fastRunId = fastRunId + 1
         if fastToggle then fastToggle:Set(false) end
@@ -1635,10 +1623,10 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", "AutoRebirth", "Ena
         notifyState(E.cycle .. " Auto rebirth", false)
     end
 end)
-addButton(autoPage, E.wrench .. " Save Config (Auto Rebirth)", function()
+autoConfigToggle = addToggle(autoPage, E.wrench .. " Save Config (Auto Rebirth)", "AutoRebirth", "SaveConfigEnabled", true, function(v)
     local cfg = { Enabled = autoToggle.Value }
-    saveCategoryConfig("AutoRebirth", cfg)
-    notify("Config", E.ok .. " Auto Rebirth sauvegardé !")
+    if v then saveCategoryConfig("AutoRebirth", cfg) end
+    notify("Config", v and (E.ok .. " Auto Rebirth sauvegarde auto activée") or (E.no .. " Sauvegarde auto désactivée"))
 end)
 local autoStatusLabel = addLabel(autoPage, E.clip .. " " .. autoStatus, 40)
 addSection(autoPage, E.chart .. " Rebirth calculator")
@@ -1649,7 +1637,6 @@ addButton(autoPage, E.broom .. " Reset stats", resetStats)
 addSection(strPage, E.muscle .. " Fast Strength")
 repToggle = addToggle(strPage, E.muscle .. " Fast strength", "Strength", "Enabled", false, function(v)
     repRunId = repRunId + 1
-    fastStrengthStartTime = v and tick() or 0
     if v then
         notify(E.muscle .. " Fast strength", E.target .. " " .. repRate .. " reps/s targeted")
         task.spawn(fastRepLoop, repRunId)
@@ -1658,10 +1645,10 @@ repToggle = addToggle(strPage, E.muscle .. " Fast strength", "Strength", "Enable
     end
 end)
 repSliderUpdate = addSlider(strPage, E.wrench .. " Reps per second", "Strength", "Rate", 659, 3000, repRate, function(v) repRate = v end)
-addButton(strPage, E.wrench .. " Save Config (Strength)", function()
+strengthConfigToggle = addToggle(strPage, E.wrench .. " Save Config (Strength)", "Strength", "SaveConfigEnabled", true, function(v)
     local cfg = { Enabled = repToggle.Value, Rate = repRate }
-    saveCategoryConfig("Strength", cfg)
-    notify("Config", E.ok .. " Strength sauvegardé !")
+    if v then saveCategoryConfig("Strength", cfg) end
+    notify("Config", v and (E.ok .. " Strength sauvegarde auto activée") or (E.no .. " Sauvegarde auto désactivée"))
 end)
 local repLabel = addLabel(strPage, E.antenna .. " Real reps/s: --", 34)
 addSection(strPage, E.up .. " Strength calculator")
@@ -1679,10 +1666,10 @@ bossToggle = addToggle(bossPage, E.target .. " Activer Auto Boss + Weight", "Bos
         notifyState(E.target .. " Auto Farm Boss", false)
     end
 end)
-addButton(bossPage, E.wrench .. " Save Config (Boss)", function()
+bossConfigToggle = addToggle(bossPage, E.wrench .. " Save Config (Boss)", "Boss", "SaveConfigEnabled", true, function(v)
     local cfg = { Enabled = bossToggle.Value }
-    saveCategoryConfig("Boss", cfg)
-    notify("Config", E.ok .. " Boss sauvegardé !")
+    if v then saveCategoryConfig("Boss", cfg) end
+    notify("Config", v and (E.ok .. " Boss sauvegarde auto activée") or (E.no .. " Sauvegarde auto désactivée"))
 end)
 local bossStatusLabel = addLabel(bossPage, E.clip .. " " .. bossStatus, 40)
 
@@ -1715,10 +1702,10 @@ killTargetToggle = addToggle(killPage, E.target .. " Kill Target Players Only", 
     end
 end)
 
-addButton(killPage, E.wrench .. " Save Config (Killing)", function()
+killingConfigToggle = addToggle(killPage, E.wrench .. " Save Config (Killing)", "Killing", "SaveConfigEnabled", true, function(v)
     local cfg = { AutoKillAll = killAllToggle.Value, KillTarget = killTargetToggle.Value }
-    saveCategoryConfig("Killing", cfg)
-    notify("Config", E.ok .. " Killing sauvegardé !")
+    if v then saveCategoryConfig("Killing", cfg) end
+    notify("Config", v and (E.ok .. " Killing sauvegarde auto activée") or (E.no .. " Sauvegarde auto désactivée"))
 end)
 
 local killStatusLabel = addLabel(killPage, E.clip .. " " .. killStatus, 40)
@@ -1867,7 +1854,7 @@ autoEggToggle = addToggle(miscPage, E.egg .. " Auto eat protein egg", "Misc", "A
     end
 end)
 
-addButton(miscPage, E.wrench .. " Save Config (Misc)", function()
+addToggle(miscPage, E.wrench .. " Save Config (Misc)", "Misc", "SaveConfigEnabled", true, function(v)
     local cfg = {
         AutoExecute = autoExecToggle.Value,
         AntiAFK = antiAfkToggle.Value,
@@ -1875,8 +1862,8 @@ addButton(miscPage, E.wrench .. " Save Config (Misc)", function()
         AutoWheel = autoWheelToggle.Value,
         AutoEgg = autoEggToggle.Value
     }
-    saveCategoryConfig("Misc", cfg)
-    notify("Config", E.ok .. " Misc sauvegardé !")
+    if v then saveCategoryConfig("Misc", cfg) end
+    notify("Config", v and (E.ok .. " Misc sauvegarde auto activée") or (E.no .. " Sauvegarde auto désactivée"))
 end)
 
 local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 34)
@@ -1919,40 +1906,20 @@ task.spawn(function()
             local rebRate = (b.reb - a.reb) / dt
             local dRep = b.rep - a.rep
 
-            -- Calcul des chronos dynamiques
-            local fastTimeStr = fastRebirthStartTime > 0 and formatTime(tick() - fastRebirthStartTime) or "00:00"
-            local autoTimeStr = autoRebirthStartTime > 0 and formatTime(tick() - autoRebirthStartTime) or "00:00"
-            local strengthTimeStr = fastStrengthStartTime > 0 and formatTime(tick() - fastStrengthStartTime) or "00:00"
-
             local sList = projections(strRate)
             table.insert(sList, fmt(tracker.strGain))
             table.insert(sList, dRep > 0 and fmt((b.str - a.str) / dRep) or "--")
-            table.insert(sList, strengthTimeStr)
             strBlock:Set(sList)
 
-            local rListFast = projections(rebRate)
-            table.remove(rListFast, 1)
-            table.insert(rListFast, fmt(tracker.rebGain))
-            table.insert(rListFast, fastTimeStr)
-            fastRebBlock:Set(rListFast)
-
-            local rListAuto = projections(rebRate)
-            table.remove(rListAuto, 1)
-            table.insert(rListAuto, fmt(tracker.rebGain))
-            table.insert(rListAuto, autoTimeStr)
-            autoRebBlock:Set(rListAuto)
+            local rList = projections(rebRate)
+            table.insert(rList, fmt(tracker.rebGain))
+            fastRebBlock:Set(rList)
+            autoRebBlock:Set(rList)
         else
-            local fastTimeStr = fastRebirthStartTime > 0 and formatTime(tick() - fastRebirthStartTime) or "00:00"
-            local autoTimeStr = autoRebirthStartTime > 0 and formatTime(tick() - autoRebirthStartTime) or "00:00"
-            local strengthTimeStr = fastStrengthStartTime > 0 and formatTime(tick() - fastStrengthStartTime) or "00:00"
-
-            strBlock:Set({ "measuring...", "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.strGain), "--", strengthTimeStr })
-            
-            local pendingFast = { "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.rebGain), fastTimeStr }
-            fastRebBlock:Set(pendingFast)
-
-            local pendingAuto = { "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.rebGain), autoTimeStr }
-            autoRebBlock:Set(pendingAuto)
+            strBlock:Set({ "measuring...", "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.strGain), "--" })
+            local pending = { "measuring...", "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.rebGain) }
+            fastRebBlock:Set(pending)
+            autoRebBlock:Set(pending)
         end
     end
 end)
