@@ -81,7 +81,6 @@ local eggRunId = 0
 local killRunId = 0
 
 local repRate = 659
-local repCounter = 0
 local repTotal = 0
 
 -- Live Stats Tracking
@@ -634,7 +633,6 @@ local function fastRepLoop(myId)
             for _ = 1, n do
                 pcall(muscleEvent.FireServer, muscleEvent, "rep")
             end
-            repCounter = repCounter + n
             repTotal = repTotal + n
         end
     end
@@ -1382,7 +1380,6 @@ end
 -- Fast Rebirth
 addSection(fastPage, E.fire .. " Fast Rebirth (Pack)")
 addLabel(fastPage, "\u{26A0}\u{FE0F} You need pack for fast rebirth", 34)
-addLabel(fastPage, "\u{26A0}\u{FE0F} Use a 659 rep speed for no delay", 34)
 fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", false, function(v)
     fastRunId = fastRunId + 1
     if v then
@@ -1407,7 +1404,6 @@ local fastTimerLabel = addLabel(fastPage, E.clock .. " Session Time: 0s | Derni√
 -- Auto Rebirth
 addSection(autoPage, E.cycle .. " Auto Rebirth (No Pack)")
 addLabel(autoPage, "\u{26A0}\u{FE0F} This tab can be used by everyone", 34)
-addLabel(autoPage, "\u{26A0}\u{FE0F} Use a 659 rep speed for no delay", 34)
 autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", false, function(v)
     autoRunId = autoRunId + 1
     if v then
@@ -1442,7 +1438,6 @@ repToggle = addToggle(strPage, E.muscle .. " Fast strength", false, function(v)
     end
 end)
 repSliderUpdate = addSlider(strPage, E.wrench .. " Reps per second", 0, 1050, repRate, function(v) repRate = v end)
-local repLabel = addLabel(strPage, E.antenna .. " Real reps/s: --", 34)
 local repTimerLabel = addLabel(strPage, E.clock .. " Session Time: 0s | Moy. Reps/s: 0", 36)
 
 -- ===================== KILLING TAB (WITH SAVE CONFIG) =====================
@@ -1632,9 +1627,6 @@ selectTab(TAB_FAST)
 task.spawn(function()
     while alive do
         task.wait(1)
-
-        repLabel:SetText(E.antenna .. (repToggle.Value and (" Real reps/s: " .. repCounter) or " Real reps/s: --"))
-        repCounter = 0
 
         fpsLabel:SetText(E.game .. " FPS: " .. fpsFrames)
         fpsFrames = 0
