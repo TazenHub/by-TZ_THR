@@ -86,8 +86,6 @@ local repTotal = 0
 -- Live Stats Tracking
 local autoRebirthCount = 0
 
-local fastStatus = "Waiting..."
-local autoStatus = "Waiting..."
 local killStatus = "Waiting..."
 
 -- Chrono / Timer variables for Fast Rebirth
@@ -473,7 +471,6 @@ local function fastRebirthLoop(myId)
 
         local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
         while isRunning() and not petsFolder do
-            fastStatus = "petsFolder not found"
             task.wait(1)
             petsFolder = LocalPlayer:FindFirstChild("petsFolder")
         end
@@ -498,18 +495,15 @@ local function fastRebirthLoop(myId)
         rebuild()
 
         if #hydraList == 0 then
-            fastStatus = "Pack required: no Titanium Hydra found. Use Auto Rebirth instead."
-            warn("[Tazen hub] " .. fastStatus)
+            warn("[Tazen hub] Pack required: no Titanium Hydra found. Use Auto Rebirth instead.")
             return
         end
 
-        fastStatus = "Starting: cleaning pets..."
         unequipAllPets(petsFolder)
         if not isRunning() then return end
         setEquipped(repTarget, true)
 
         local cycle = 0
-        local prevFire = nil
         local rebirthAt = os.clock() + HYDRA_LEAD
 
         while isRunning() do
@@ -547,11 +541,6 @@ local function fastRebirthLoop(myId)
             waitUntil(tFire + REP_ON_DELAY)
             setEquipped(repTarget, true)
 
-            local interval = prevFire and (tFire - prevFire) or 0
-            prevFire = tFire
-            fastStatus = string.format("Slots %d | Rep %d | Hydras %d | %.2fs",
-                slots, #repTarget, #hydraList, interval)
-
             if cycle % LIST_REFRESH_EVERY == 0 then
                 petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
                 rebuild()
@@ -562,8 +551,7 @@ local function fastRebirthLoop(myId)
     end)
 
     if not okT then
-        fastStatus = "ERROR: " .. tostring(errT)
-        warn("[Tazen hub] " .. fastStatus)
+        warn("[Tazen hub] ERROR: " .. tostring(errT))
     end
 end
 
@@ -573,30 +561,23 @@ local function autoRebirthLoop(myId)
     local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
 
     if not rebirthRemote then
-        autoStatus = "rEvents / rebirthRemote not found"
-        warn("[Tazen hub] " .. autoStatus)
+        warn("[Tazen hub] rEvents / rebirthRemote not found")
         return
     end
 
-    local tries = 0
     while autoRunId == myId do
         local okC, errC = pcall(function()
             if canRebirth() then
-                tries = tries + 1
                 local okR, res = pcall(function()
                     return rebirthRemote:InvokeServer("rebirthRequest")
                 end)
                 if okR then
                     autoRebirthCount = autoRebirthCount + 1
                 end
-                autoStatus = string.format("Attempts: %d", tries)
-            else
-                autoStatus = "canRebirth = false"
             end
         end)
         if not okC then
-            autoStatus = "ERROR: " .. tostring(errC)
-            warn("[Tazen hub] " .. autoStatus)
+            warn("[Tazen hub] ERROR: " .. tostring(errC))
         end
         task.wait(REBIRTH_COOLDOWN)
     end
@@ -1386,7 +1367,6 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", false, function(v)
         autoRunId = autoRunId + 1
         if autoToggle then autoToggle:Set(false) end
         enableAutoFastRep()
-        fastStatus = "Starting..."
         notifyState(E.bolt .. " Fast rebirth", true)
         task.spawn(fastRebirthLoop, fastRunId)
     else
@@ -1395,7 +1375,6 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", false, function(v)
         notifyState(E.bolt .. " Fast rebirth", false)
     end
 end)
-local fastStatusLabel = addLabel(fastPage, E.clip .. " " .. fastStatus, 60)
 local fastTimerLabel = addLabel(fastPage, E.clock .. " Session Time: 0s | Dernière renaissance : 0.00s", 36)
 
 -- Auto Rebirth
@@ -1409,7 +1388,6 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", false, function(v)
         fastRunId = fastRunId + 1
         if fastToggle then fastToggle:Set(false) end
         enableAutoFastRep()
-        autoStatus = "Starting..."
         notifyState(E.cycle .. " Auto rebirth", true)
         task.spawn(autoRebirthLoop, autoRunId)
     else
@@ -1417,7 +1395,6 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", false, function(v)
         notifyState(E.cycle .. " Auto rebirth", false)
     end
 end)
-local autoStatusLabel = addLabel(autoPage, E.clip .. " " .. autoStatus, 40)
 local autoTimerLabel = addLabel(autoPage, E.clock .. " Session Time: 0s | Rebirth/s: 0.0", 36)
 
 -- Fast Strength
@@ -1628,8 +1605,6 @@ task.spawn(function()
         fpsLabel:SetText(E.game .. " FPS: " .. fpsFrames)
         fpsFrames = 0
 
-        fastStatusLabel:SetText(E.clip .. " " .. fastStatus)
-        autoStatusLabel:SetText(E.clip .. " " .. autoStatus)
         killStatusLabel:SetText(E.clip .. " " .. killStatus)
 
         -- Session Timers & Real-Time Live Farm Calculators Update
