@@ -90,7 +90,7 @@ local autoStatus = "Waiting..."
 local bossStatus = "Waiting..."
 local killStatus = "Waiting..."
 
--- Chrono & Rebirth timing variables
+-- Chrono & Rebirth timing variables corrigées
 local sessionStartTime = tick()
 local sessionActive = false
 local lastRebirthTick = tick()
@@ -644,6 +644,7 @@ local function fastRebirthLoop(myId)
         local cycle = 0
         local rebirthResult = "-"
         local prevFire = nil
+        lastRebirthTick = tick() -- Correction du bug du timer
         local nextRebirthAt = os.clock() + 4
 
         while isRunning() do
@@ -661,8 +662,8 @@ local function fastRebirthLoop(myId)
             local tFire = os.clock()
             setEquipped(hydraList, true)
 
-            lastRebirthDuration = tFire - lastRebirthTick
-            lastRebirthTick = tFire
+            lastRebirthDuration = tick() - lastRebirthTick
+            lastRebirthTick = tick()
 
             task.spawn(function()
                 local okR, res = pcall(function()
@@ -707,6 +708,7 @@ local function autoRebirthLoop(myId)
     end
 
     local tries = 0
+    lastRebirthTick = tick() -- Correction timer
     while autoRunId == myId do
         local okC, errC = pcall(function()
             if canRebirth() then
@@ -732,35 +734,22 @@ local function autoRebirthLoop(myId)
     end
 end
 
--- ===================== FAST STRENGTH (REP) - CORRIGÉ POUR ATTEINDRE LE DÉBIT MAX =====================
+-- ===================== FAST STRENGTH (REP) - CORRIGÉ À 659 MAX =====================
 local function fastRepLoop(myId)
     local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
     if not rEvents then warn("[Tazen hub] rEvents not found") return end
     local muscleEvent = findMuscleEvent(rEvents)
     if not muscleEvent then warn("[Tazen hub] muscleEvent not found") return end
 
-    local carry = 0
-    local lastCheck = tick()
     while repRunId == myId and alive do
-        local dt = RunService.Heartbeat:Wait()
+        local targetRate = math.min(repRate, 659) -- Limite stricte respectée à 659 max
+        local delayTime = 1 / targetRate
 
-        if tick() - lastCheck > 1 then
-            lastCheck = tick()
-            if not muscleEvent.Parent then
-                muscleEvent = findMuscleEvent(rEvents) or muscleEvent
-            end
-        end
+        pcall(muscleEvent.FireServer, muscleEvent, "rep")
+        repCounter = repCounter + 1
+        repTotal = repTotal + 1
 
-        carry = carry + repRate * dt
-        local n = math.floor(carry)
-        carry = carry - n
-        if n > 350 then n = 350 end
-
-        for _ = 1, n do
-            pcall(muscleEvent.FireServer, muscleEvent, "rep")
-        end
-        repCounter = repCounter + n
-        repTotal = repTotal + n
+        task.wait(delayTime)
     end
 end
 
@@ -1467,7 +1456,7 @@ local function addStatBlockWithSessionTimer(page, title, rowNames)
         TextColor3 = T.SubText,
     }, f)
     local sessionTimerVal = textLabel({
-        Size = UDim2.new(0.5, -12, 0, yTimer > 0 and yTimer or 0),
+        Size = UDim2.new(0.5, -12, 0, 20),
         Position = UDim2.new(0.5, 0, 0, yTimer),
         Text = "00:00:00",
         TextSize = 13,
@@ -1946,7 +1935,7 @@ selectTab(TAB_FAST)
 -- ===================== UPDATE =====================
 task.spawn(function()
     while alive do
-        task.wait(0.1)
+        task.wait(1)
 
         repLabel:SetText(E.antenna .. (repToggle.Value and (" Real reps/s: " .. repCounter) or " Real reps/s: --"))
         repCounter = 0
@@ -1973,9 +1962,10 @@ task.spawn(function()
             sessionDurationStr = string.format("%02d:%02d:%02d", h, m, s)
         end
 
-        local currentFastRebirthDuration = tick() - lastRebirthTick
-        if not fastToggle or not fastToggle.Value then
-            currentFastRebirthDuration = 0
+        local currentFastRebirthDuration = 0
+        if fastToggle and fastToggle.Value then
+            currentFastRebirthDuration = math.max(0, tick() - lastRebirthTick)
+        else
             lastRebirthDuration = 0
         end
 
