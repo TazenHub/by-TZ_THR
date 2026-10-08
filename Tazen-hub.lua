@@ -90,11 +90,11 @@ local autoStatus = "Waiting..."
 local bossStatus = "Waiting..."
 local killStatus = "Waiting..."
 
--- Chrono & Rebirth timing variables corrigées
+-- Chrono & Rebirth timing variables
 local sessionStartTime = tick()
 local sessionActive = false
-local lastRebirthTick = tick()
-local lastRebirthDuration = 0
+local lastRealCycleTime = 0
+local prevRebirthTime = 0
 
 -- Killing System Data
 local whitelistPlayers = {}
@@ -495,7 +495,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH (Custom Timing: 4s / 2s) =====================
+-- ===================== FAST REBIRTH =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
 
@@ -643,8 +643,7 @@ local function fastRebirthLoop(myId)
 
         local cycle = 0
         local rebirthResult = "-"
-        local prevFire = nil
-        lastRebirthTick = tick() -- Correction du bug du timer
+        prevRebirthTime = tick()
         local nextRebirthAt = os.clock() + 4
 
         while isRunning() do
@@ -653,8 +652,6 @@ local function fastRebirthLoop(myId)
             waitUntil(nextRebirthAt - 4)
             if not isRunning() then break end
             setEquipped(repTarget, true)
-            
-            fastStatus = string.format("Cycle %d | Fast Rep Pets équipés (4s avant)", cycle)
 
             waitUntil(nextRebirthAt)
             if not isRunning() then break end
@@ -662,8 +659,9 @@ local function fastRebirthLoop(myId)
             local tFire = os.clock()
             setEquipped(hydraList, true)
 
-            lastRebirthDuration = tick() - lastRebirthTick
-            lastRebirthTick = tick()
+            local nowTick = tick()
+            lastRealCycleTime = nowTick - prevRebirthTime
+            prevRebirthTime = nowTick
 
             task.spawn(function()
                 local okR, res = pcall(function()
@@ -675,11 +673,6 @@ local function fastRebirthLoop(myId)
             waitUntil(tFire + 2)
             if not isRunning() then break end
             setEquipped(repTarget, true)
-
-            local interval = prevFire and (tFire - prevFire) or 0
-            prevFire = tFire
-            fastStatus = string.format("Cycle %d | Rebirth: %s | Slots %d | Rep %d | Hydras %d | %.2fs",
-                cycle, tostring(rebirthResult), slots, #repTarget, #hydraList, interval)
 
             if cycle % LIST_REFRESH_EVERY == 0 then
                 petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
@@ -708,14 +701,14 @@ local function autoRebirthLoop(myId)
     end
 
     local tries = 0
-    lastRebirthTick = tick() -- Correction timer
+    prevRebirthTime = tick()
     while autoRunId == myId do
         local okC, errC = pcall(function()
             if canRebirth() then
                 tries = tries + 1
-                local tNow = tick()
-                lastRebirthDuration = tNow - lastRebirthTick
-                lastRebirthTick = tNow
+                local nowTick = tick()
+                lastRealCycleTime = nowTick - prevRebirthTime
+                prevRebirthTime = nowTick
 
                 local okR, res = pcall(function()
                     return rebirthRemote:InvokeServer("rebirthRequest")
@@ -734,23 +727,25 @@ local function autoRebirthLoop(myId)
     end
 end
 
--- ===================== FAST STRENGTH (REP) - CORRIGÉ À 659 MAX =====================
+-- ===================== FAST STRENGTH (REP) - ULTRA RAPIDE 659 REPS =====================
 local function fastRepLoop(myId)
     local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
     if not rEvents then warn("[Tazen hub] rEvents not found") return end
     local muscleEvent = findMuscleEvent(rEvents)
     if not muscleEvent then warn("[Tazen hub] muscleEvent not found") return end
 
-    while repRunId == myId and alive do
-        local targetRate = math.min(repRate, 659) -- Limite stricte respectée à 659 max
-        local delayTime = 1 / targetRate
-
-        pcall(muscleEvent.FireServer, muscleEvent, "rep")
-        repCounter = repCounter + 1
-        repTotal = repTotal + 1
-
-        task.wait(delayTime)
-    end
+    task.spawn(function()
+        while repRunId == myId and alive do
+            pcall(function()
+                for i = 1, 15 do
+                    muscleEvent:FireServer("rep")
+                end
+            end)
+            repCounter = repCounter + 15
+            repTotal = repTotal + 15
+            task.wait(15 / 659)
+        end
+    end)
 end
 
 -- ===================== MISC LOOPS =====================
@@ -789,10 +784,12 @@ local function autoEggLoop(myId)
     end
 end
 
--- ===================== CALCULATOR =====================
+-- ===================== CALCULATEUR TEMPS RÉEL (INSTANTANÉ) =====================
 local tracker = { strGain = 0, rebGain = 0 }
-local samples = {}
-local WINDOW = 20
+local lastStrVal = 0
+local lastRebVal = 0
+local strRateInst = 0
+local rebRateInst = 0
 
 local function bindStat(statName, altName, key)
     task.spawn(function()
@@ -800,11 +797,25 @@ local function bindStat(statName, altName, key)
         if not ls then warn("[Tazen hub] leaderstats not found") return end
         local stat = ls:WaitForChild(statName, 10) or (altName and ls:FindFirstChild(altName))
         if not stat then warn("[Tazen hub] stat not found: " .. statName) return end
-        local last = tonumber(stat.Value) or 0
+        
+        if key == "strGain" then lastStrVal = tonumber(stat.Value) or 0 end
+        if key == "rebGain" then lastRebVal = tonumber(stat.Value) or 0 end
+
         connect(stat.Changed, function(v)
-            v = tonumber(v) or last
-            if v > last then tracker[key] = tracker[key] + (v - last) end
-            last = v
+            v = tonumber(v) or 0
+            if key == "strGain" then
+                local diff = v - lastStrVal
+                if diff > 0 then
+                    tracker.strGain = tracker.strGain + diff
+                end
+                lastStrVal = v
+            elseif key == "rebGain" then
+                local diff = v - lastRebVal
+                if diff > 0 then
+                    tracker.rebGain = tracker.rebGain + diff
+                end
+                lastRebVal = v
+            end
         end)
     end)
 end
@@ -826,14 +837,6 @@ local function fmt(n)
         i = i + 1
     end
     return string.format("%.2f%s", n, SUFFIX[i])
-end
-
-local function pushSample()
-    local now = tick()
-    table.insert(samples, { t = now, str = tracker.strGain, reb = tracker.rebGain, rep = repTotal })
-    while #samples > 2 and now - samples[1].t > WINDOW do
-        table.remove(samples, 1)
-    end
 end
 
 local function projections(rate)
@@ -1600,7 +1603,6 @@ end
 local function resetStats()
     tracker.strGain = 0
     tracker.rebGain = 0
-    samples = {}
     notify(E.broom .. " Calculator", E.ok .. " Stats reset")
 end
 
@@ -1648,7 +1650,7 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", "FastRebirth", "Enab
         fastStatus = "Starting..."
         sessionActive = true
         sessionStartTime = tick()
-        lastRebirthTick = tick()
+        prevRebirthTime = tick()
         notifyState(E.bolt .. " Fast rebirth", true)
         task.spawn(fastRebirthLoop, fastRunId)
     else
@@ -1663,7 +1665,7 @@ fastConfigToggle = addToggle(fastPage, E.wrench .. " Save Config (Fast Rebirth)"
 end)
 local fastStatusLabel = addLabel(fastPage, E.clip .. " " .. fastStatus, 60)
 addSection(fastPage, E.chart .. " Rebirth calculator")
-local fastRebBlock = addStatBlockWithSessionTimer(fastPage, E.loop .. " REBIRTHS (measured over 20 s)", REB_ROWS)
+local fastRebBlock = addStatBlockWithSessionTimer(fastPage, E.loop .. " REBIRTHS (Instant Real-Time)", REB_ROWS)
 addButton(fastPage, E.broom .. " Reset stats", resetStats)
 
 -- Auto Rebirth
@@ -1690,7 +1692,7 @@ autoConfigToggle = addToggle(autoPage, E.wrench .. " Save Config (Auto Rebirth)"
 end)
 local autoStatusLabel = addLabel(autoPage, E.clip .. " " .. autoStatus, 40)
 addSection(autoPage, E.chart .. " Rebirth calculator")
-local autoRebBlock = addStatBlock(autoPage, E.loop .. " REBIRTHS (measured over 20 s)", REB_ROWS)
+local autoRebBlock = addStatBlock(autoPage, E.loop .. " REBIRTHS (Instant Real-Time)", REB_ROWS)
 addButton(autoPage, E.broom .. " Reset stats", resetStats)
 
 -- Fast Strength
@@ -1712,7 +1714,7 @@ strengthConfigToggle = addToggle(strPage, E.wrench .. " Save Config (Strength)",
 end)
 local repLabel = addLabel(strPage, E.antenna .. " Real reps/s: --", 34)
 addSection(strPage, E.up .. " Strength calculator")
-local strBlock = addStatBlock(strPage, E.muscle .. " STRENGTH (measured over 20 s)", STR_ROWS)
+local strBlock = addStatBlock(strPage, E.muscle .. " STRENGTH (Instant Real-Time)", STR_ROWS)
 addButton(strPage, E.broom .. " Reset stats", resetStats)
 
 -- Boss Tab
@@ -1932,12 +1934,17 @@ addCredit(miscPage, E.sparkles .. " Made by TZ_THR, Thank you for using my scrip
 
 selectTab(TAB_FAST)
 
--- ===================== UPDATE =====================
+-- ===================== UPDATE LOOP (CALCULS EN TEMPS RÉEL) =====================
 task.spawn(function()
+    local lastTime = tick()
     while alive do
-        task.wait(1)
+        task.wait(0.2) -- Mise à jour fluide 5 fois par seconde
 
-        repLabel:SetText(E.antenna .. (repToggle.Value and (" Real reps/s: " .. repCounter) or " Real reps/s: --"))
+        local now = tick()
+        local dt = now - lastTime
+        lastTime = now
+
+        repLabel:SetText(E.antenna .. (repToggle.Value and (" Real reps/s: " .. math.floor(repCounter / dt)) or " Real reps/s: --"))
         repCounter = 0
 
         fpsLabel:SetText(E.game .. " FPS: " .. fpsFrames)
@@ -1962,43 +1969,27 @@ task.spawn(function()
             sessionDurationStr = string.format("%02d:%02d:%02d", h, m, s)
         end
 
-        local currentFastRebirthDuration = 0
-        if fastToggle and fastToggle.Value then
-            currentFastRebirthDuration = math.max(0, tick() - lastRebirthTick)
-        else
-            lastRebirthDuration = 0
-        end
-
         if currentSelectedTab == TAB_FAST and fastToggle and fastToggle.Value then
-            fastStatusLabel:SetText(string.format("⏱️ Temps dern. rebirth : %.1fs | En cours : %.1fs", lastRebirthDuration, currentFastRebirthDuration))
+            fastStatusLabel:SetText(string.format("⏱️ Temps cycle réel : %.1fs", lastRealCycleTime))
         else
             fastStatusLabel:SetText(E.clip .. " " .. fastStatus)
         end
 
-        pushSample()
-        local a, b = samples[1], samples[#samples]
-        if a and b and b.t - a.t >= 3 then
-            local dt = b.t - a.t
-            local strRate = (b.str - a.str) / dt
-            local rebRate = (b.reb - a.reb) / dt
-            local dRep = b.rep - a.rep
+        -- Calcul instantané basé sur l'évolution globale depuis le début
+        local sessionElapsed = math.max(1, tick() - sessionStartTime)
+        local currentStrRate = tracker.strGain / sessionElapsed
+        local currentRebRate = tracker.rebGain / sessionElapsed
 
-            local sList = projections(strRate)
-            table.insert(sList, fmt(tracker.strGain))
-            table.insert(sList, dRep > 0 and fmt((b.str - a.str) / dRep) or "--")
-            strBlock:Set(sList)
+        local sList = projections(currentStrRate)
+        table.insert(sList, fmt(tracker.strGain))
+        table.insert(sList, repTotal > 0 and fmt(tracker.strGain / repTotal) or "--")
+        strBlock:Set(sList)
 
-            local rList = projections(rebRate)
-            table.insert(rList, fmt(tracker.rebGain))
-            
-            fastRebBlock:Set(rList, sessionDurationStr)
-            autoRebBlock:Set(rList)
-        else
-            strBlock:Set({ "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.strGain), "--" })
-            local pending = { "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.rebGain) }
-            fastRebBlock:Set(pending, sessionDurationStr)
-            autoRebBlock:Set(pending)
-        end
+        local rList = projections(currentRebRate)
+        table.insert(rList, fmt(tracker.rebGain))
+        
+        fastRebBlock:Set(rList, sessionDurationStr)
+        autoRebBlock:Set(rList)
     end
 end)
 
