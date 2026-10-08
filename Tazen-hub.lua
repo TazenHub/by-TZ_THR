@@ -79,6 +79,7 @@ local repRunId = 0
 local wheelRunId = 0
 local eggRunId = 0
 local bossRunId = 0
+local killRunId = 0
 
 local repRate = 659
 local repCounter = 0
@@ -87,6 +88,12 @@ local repTotal = 0
 local fastStatus = "Waiting..."
 local autoStatus = "Waiting..."
 local bossStatus = "Waiting..."
+local killStatus = "Waiting..."
+
+-- Killing System Data
+local whitelistPlayers = {}
+local targetPlayers = {}
+local lastKillTick = tick()
 
 local bossKills = {
     Common = 0,
@@ -219,6 +226,28 @@ local function claimBossChest()
     end)
 end
 
+-- ===================== SERVER HOP =====================
+local function serverHop()
+    killStatus = "Changement de serveur (0 kill depuis 60s)..."
+    pcall(function()
+        local servers = {}
+        local req = game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100")
+        local data = HttpService:JSONDecode(req)
+        if data and data.data then
+            for _, s in ipairs(data.data) do
+                if type(s) == "table" and s.playing < s.maxPlayers and s.id ~= game.JobId then
+                    table.insert(servers, s.id)
+                end
+            end
+        end
+        if #servers > 0 then
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, servers[math.random(1, #servers)], LocalPlayer)
+        else
+            TeleportService:Teleport(game.PlaceId, LocalPlayer)
+        end
+    end)
+end
+
 -- ===================== AUTO FARM BOSS + AUTO WEIGHT =====================
 local function autoFarmBossLoop(myId)
     local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
@@ -310,7 +339,157 @@ local function autoFarmBossLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH (VERSION ORIGINALE AVEC PET SWAP) =====================
+-- ===================== KILLING SYSTEM LOOPS =====================
+local function autoKillAllLoop(myId)
+    local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
+    local attackRemote = rEvents and (rEvents:FindFirstChild("attackEvent") or rEvents:FindFirstChild("muscleEvent"))
+
+    lastKillTick = tick()
+
+    while killRunId == myId and alive do
+        local character = LocalPlayer.Character
+        local hrp = character and character:FindFirstChild("HumanoidRootPart")
+
+        if not hrp then
+            killStatus = "En attente du personnage..."
+            task.wait(1)
+        else
+            local targetPlayer = nil
+            local minDist = math.huge
+
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and not whitelistPlayers[plr.Name] then
+                    local pChar = plr.Character
+                    local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
+                    local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
+                    if pHrp and pHum and pHum.Health > 0 then
+                        local dist = (hrp.Position - pHrp.Position).Magnitude
+                        if dist < minDist then
+                            minDist = dist
+                            targetPlayer = plr
+                        end
+                    end
+                end
+            end
+
+            if targetPlayer then
+                local pChar = targetPlayer.Character
+                local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
+                local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
+
+                killStatus = "Kill All : " .. targetPlayer.Name
+                equipFists()
+
+                local wasAlive = true
+                local deathConn
+                if pHum then
+                    deathConn = pHum.Died:Connect(function()
+                        wasAlive = false
+                        lastKillTick = tick()
+                        if deathConn then deathConn:Disconnect() end
+                    end)
+                end
+
+                while killRunId == myId and alive and targetPlayer.Parent and pHum and pHum.Health > 0 and wasAlive do
+                    equipFists()
+                    if hrp and pHrp then
+                        hrp.CFrame = pHrp.CFrame * CFrame.new(0, 3, 2)
+                    end
+                    if attackRemote then
+                        pcall(function() attackRemote:FireServer("punch", targetPlayer.Character) end)
+                    end
+                    task.wait(0.03)
+                end
+
+                if deathConn then deathConn:Disconnect() end
+            else
+                killStatus = "Aucune cible dispo..."
+                task.wait(0.5)
+            end
+        end
+
+        if tick() - lastKillTick > 60 then
+            serverHop()
+            break
+        end
+
+        task.wait(0.1)
+    end
+end
+
+local function killTargetPlayerLoop(myId)
+    local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
+    local attackRemote = rEvents and (rEvents:FindFirstChild("attackEvent") or rEvents:FindFirstChild("muscleEvent"))
+
+    lastKillTick = tick()
+
+    while killRunId == myId and alive do
+        local character = LocalPlayer.Character
+        local hrp = character and character:FindFirstChild("HumanoidRootPart")
+
+        if not hrp then
+            killStatus = "En attente du personnage..."
+            task.wait(1)
+        else
+            local targetPlayer = nil
+            local minDist = math.huge
+
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if targetPlayers[plr.Name] and plr ~= LocalPlayer and not whitelistPlayers[plr.Name] then
+                    local pChar = plr.Character
+                    local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
+                    local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
+                    if pHrp and pHum and pHum.Health > 0 then
+                        local dist = (hrp.Position - pHrp.Position).Magnitude
+                        if dist < minDist then
+                            minDist = dist
+                            targetPlayer = plr
+                        end
+                    end
+                end
+            end
+
+            if targetPlayer then
+                local pChar = targetPlayer.Character
+                local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
+                local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
+
+                killStatus = "Cible prioritaire : " .. targetPlayer.Name
+                equipFists()
+
+                local wasAlive = true
+                local deathConn
+                if pHum then
+                    deathConn = pHum.Died:Connect(function()
+                        wasAlive = false
+                        lastKillTick = tick()
+                        if deathConn then deathConn:Disconnect() end
+                    end)
+                end
+
+                while killRunId == myId and alive and targetPlayer.Parent and pHum and pHum.Health > 0 and wasAlive do
+                    equipFists()
+                    if hrp and pHrp then
+                        hrp.CFrame = pHrp.CFrame * CFrame.new(0, 3, 2)
+                    end
+                    if attackRemote then
+                        pcall(function() attackRemote:FireServer("punch", targetPlayer.Character) end)
+                    end
+                    task.wait(0.03)
+                end
+
+                if deathConn then deathConn:Disconnect() end
+            else
+                killStatus = "Aucune Target connectée..."
+                task.wait(0.5)
+            end
+        end
+
+        task.wait(0.1)
+    end
+end
+
+-- ===================== FAST REBIRTH (TON ANCIENNE VERSION INTÉGRÉE EXACTEMENT) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
 
@@ -1340,7 +1519,7 @@ local function notify(title, text)
     end)
 end
 
--- ===================== TABS (5 ONGLETS SANS KILLING) =====================
+-- ===================== TABS (5 ONGLET SANS KILLING) =====================
 local TAB_FAST = E.bolt .. " Fast"
 local TAB_AUTO = E.cycle .. " Auto"
 local TAB_STR = E.muscle .. " Strength"
@@ -1409,6 +1588,7 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", "FastRebirth", "Enab
         enableAutoFastRep()
         fastStatus = "Starting..."
         notifyState(E.bolt .. " Fast rebirth", true)
+        task.spawn(fastRebLoop, fastRunId) -- Note: utilise bien fastRebirthLoop
         task.spawn(fastRebirthLoop, fastRunId)
     else
         notifyState(E.bolt .. " Fast rebirth", false)
