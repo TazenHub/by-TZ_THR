@@ -509,7 +509,6 @@ local function fastRebirthLoop(myId)
         setEquipped(repTarget, true)
 
         local cycle = 0
-        local rebirthResult = "-"
         local prevFire = nil
         local rebirthAt = os.clock() + HYDRA_LEAD
 
@@ -534,7 +533,6 @@ local function fastRebirthLoop(myId)
                 local okR, res = pcall(function()
                     return rebirthRemote:InvokeServer("rebirthRequest")
                 end)
-                rebirthResult = okR and res or ("error: " .. tostring(res))
                 if okR and (type(res) == "boolean" and res == true or type(res) ~= "boolean") then
                     if lastRebirthTick then
                         local diff = tick() - lastRebirthTick
@@ -551,8 +549,8 @@ local function fastRebirthLoop(myId)
 
             local interval = prevFire and (tFire - prevFire) or 0
             prevFire = tFire
-            fastStatus = string.format("Rebirth: %s | Slots %d | Rep %d | Hydras %d | %.2fs",
-                tostring(rebirthResult), slots, #repTarget, #hydraList, interval)
+            fastStatus = string.format("Slots %d | Rep %d | Hydras %d | %.2fs",
+                slots, #repTarget, #hydraList, interval)
 
             if cycle % LIST_REFRESH_EVERY == 0 then
                 petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
@@ -591,8 +589,7 @@ local function autoRebirthLoop(myId)
                 if okR then
                     autoRebirthCount = autoRebirthCount + 1
                 end
-                autoStatus = string.format("Attempts: %d | last result: %s",
-                    tries, okR and tostring(res) or ("error: " .. tostring(res)))
+                autoStatus = string.format("Attempts: %d", tries)
             else
                 autoStatus = "canRebirth = false"
             end
