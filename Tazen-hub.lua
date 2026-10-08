@@ -40,7 +40,7 @@ local function saveCategoryConfig(categoryName, data)
 end
 
 -- ===================== SETTINGS =====================
-local REBIRTH_COOLDOWN = 6       -- game cooldown between two rebirths (seconds)
+local REBIRTH_COOLDOWN = 3       -- Délai modifié entre deux renaissances (secondes)[cite: 4]
 
 -- Emojis (escaped)
 local E = {
@@ -510,10 +510,8 @@ local function fastRebirthLoop(myId)
         local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
 
-        -- Nouveaux timings demandés : 
-        -- Les fast rep pets restent 5 secondes, les x2 rebirth pets (Titanium Hydras) restent 1 seconde.
-        local HYDRA_LEAD = 1.0              -- Temps avant la renaissance où l'on équipe les hydras (1 seconde)
-        local HYDRA_TAIL = 1.0              -- Temps pendant lequel les hydras restent équipées après la renaissance
+        local HYDRA_LEAD = 1.0              
+        local HYDRA_TAIL = 1.0              
         local SLOTS = 12                    
         local AUTO_TRY = 20                 
         local FULL_SWAP = true              
@@ -669,7 +667,6 @@ local function fastRebirthLoop(myId)
         while isRunning() do
             cycle = cycle + 1
 
-            -- Les fast rep pets restent 5 secondes avant la renaissance
             local repOffLead = 5.0
             if repOffLead > HYDRA_LEAD + 0.001 then
                 waitUntil(rebirthAt - repOffLead)
@@ -691,7 +688,6 @@ local function fastRebirthLoop(myId)
                 rebirthResult = okR and res or ("error: " .. tostring(res))
             end)
 
-            -- Les hydras restent 1 seconde après la renaissance (HYDRA_TAIL = 1.0)
             waitUntil(tFire + HYDRA_TAIL)
             setEquipped(offList, true)
             waitUntil(tFire + HYDRA_TAIL + 0.05)
