@@ -16,7 +16,7 @@ local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 
--- ===================== CONFIG & SAVE SYSTEM =====================
+-- ===================== CONFIG & SAVE SYSTEM (KILLING ONLY) =====================
 local CONFIG_FILE_PREFIX = "TazenHub_Config_"
 
 local function loadCategoryConfig(categoryName)
@@ -78,32 +78,29 @@ local autoRunId = 0
 local repRunId = 0
 local wheelRunId = 0
 local eggRunId = 0
-local bossRunId = 0
 local killRunId = 0
 
 local repRate = 659
 local repCounter = 0
 local repTotal = 0
 
+-- Live Stats Tracking
+local fastRebirthCount = 0
+local autoRebirthCount = 0
+
 local fastStatus = "Waiting..."
 local autoStatus = "Waiting..."
-local bossStatus = "Waiting..."
 local killStatus = "Waiting..."
+
+-- Session Timers Start Ticks
+local fastStartTime = nil
+local autoStartTime = nil
+local repStartTime = nil
 
 -- Killing System Data
 local whitelistPlayers = {}
 local targetPlayers = {}
 local lastKillTick = tick()
-
-local bossKills = {
-    Common = 0,
-    Rare = 0,
-    Epic = 0,
-    Legendary = 0,
-    Mythic = 0,
-    Rainbow = 0,
-    Total = 0
-}
 
 -- ===================== ANTI AFK (INFINITE YIELD METHOD) =====================
 local antiAfkConnection = nil
@@ -159,27 +156,6 @@ local function findMuscleEvent(rEvents)
         or rEvents:FindFirstChild("muscleEvent")
 end
 
-local function getBossRarity(boss)
-    local name = boss.Name:lower()
-    local rarityAttr = boss:GetAttribute("Rarity") or boss:GetAttribute("Type")
-    if rarityAttr then
-        local r = tostring(rarityAttr):lower()
-        if r:find("rainbow") or r:find("arc") then return "Rainbow" end
-        if r:find("mythic") or r:find("mythique") then return "Mythic" end
-        if r:find("legendary") or r:find("légendaire") or r:find("legendaire") then return "Legendary" end
-        if r:find("epic") or r:find("épique") or r:find("epique") then return "Epic" end
-        if r:find("rare") then return "Rare" end
-        if r:find("common") or r:find("commun") then return "Common" end
-    end
-
-    if name:find("rainbow") or name:find("arc") then return "Rainbow" end
-    if name:find("mythic") or name:find("mythique") then return "Mythic" end
-    if name:find("legendary") or name:find("légendaire") or name:find("legendaire") then return "Legendary" end
-    if name:find("epic") or name:find("épique") or name:find("epique") then return "Epic" end
-    if name:find("rare") then return "Rare" end
-    return "Common"
-end
-
 local function equipFists()
     local char = LocalPlayer.Character
     if not char then return end
@@ -195,35 +171,6 @@ local function equipFists()
             end
         end
     end
-end
-
-local function equipWeight()
-    local char = LocalPlayer.Character
-    if not char then return end
-    local backpack = LocalPlayer:FindFirstChild("Backpack")
-    if not backpack then return end
-
-    local weightTool = char:FindFirstChild("Weight")
-    if not weightTool then
-        weightTool = backpack:FindFirstChild("Weight")
-        if weightTool then
-            weightTool.Parent = char
-        end
-    end
-end
-
-local function claimBossChest()
-    local rEvents = ReplicatedStorage:FindFirstChild("rEvents")
-    local chestRemote = rEvents and (rEvents:FindFirstChild("checkChestRemote") or rEvents:FindFirstChild("collectChestRemote") or rEvents:FindFirstChild("openChestRemote") or rEvents:FindFirstChild("chestRemote"))
-
-    pcall(function()
-        if chestRemote then
-            chestRemote:InvokeServer("collectBossChest")
-            chestRemote:FireServer("collectBossChest")
-            chestRemote:InvokeServer("collectChest", "Boss Chest")
-            chestRemote:FireServer("collectChest", "Boss Chest")
-        end
-    end)
 end
 
 -- ===================== SERVER HOP =====================
@@ -246,97 +193,6 @@ local function serverHop()
             TeleportService:Teleport(game.PlaceId, LocalPlayer)
         end
     end)
-end
-
--- ===================== AUTO FARM BOSS + AUTO WEIGHT =====================
-local function autoFarmBossLoop(myId)
-    local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
-    local attackRemote = rEvents and (rEvents:FindFirstChild("attackEvent") or rEvents:FindFirstChild("muscleEvent"))
-    local muscleEvent = findMuscleEvent(rEvents)
-
-    while bossRunId == myId and alive do
-        local character = LocalPlayer.Character
-        local hrp = character and character:FindFirstChild("HumanoidRootPart")
-
-        if not hrp then
-            bossStatus = "En attente du personnage..."
-            task.wait(1)
-        else
-            local bossesFolder = workspace:FindFirstChild("Bosses") or workspace:FindFirstChild("NPCs") or workspace:FindFirstChild("Monsters")
-            local targetBoss = nil
-            local minDistance = math.huge
-
-            if bossesFolder then
-                local function searchFolder(folder)
-                    for _, npc in ipairs(folder:GetChildren()) do
-                        local head = npc:FindFirstChild("Head") or npc:FindFirstChild("HumanoidRootPart")
-                        local hum = npc:FindFirstChildOfClass("Humanoid")
-                        if head and hum and hum.Health > 0 then
-                            local dist = (hrp.Position - head.Position).Magnitude
-                            if dist < minDistance then
-                                minDistance = dist
-                                targetBoss = npc
-                            end
-                        end
-                        if #npc:GetChildren() > 0 then
-                            searchFolder(npc)
-                        end
-                    end
-                end
-                searchFolder(bossesFolder)
-            end
-
-            if targetBoss then
-                local hum = targetBoss:FindFirstChildOfClass("Humanoid")
-                local targetHrp = targetBoss:FindFirstChild("HumanoidRootPart") or targetBoss:FindFirstChild("Head")
-                local rarity = getBossRarity(targetBoss)
-                bossStatus = string.format("Attaque (Poings): %s [%s]", targetBoss.Name, rarity)
-
-                equipFists()
-
-                local deathConn
-                deathConn = hum.Died:Connect(function()
-                    bossKills[rarity] = bossKills[rarity] + 1
-                    bossKills.Total = bossKills.Total + 1
-                    if deathConn then deathConn:Disconnect() end
-                    
-                    pcall(function()
-                        local bootstrapper = ReplicatedStorage:FindFirstChild("client") and ReplicatedStorage.client:FindFirstChild("bootstraper")
-                        if bootstrapper then
-                            if bootstrapper:IsA("RemoteEvent") then
-                                bootstrapper:FireServer()
-                            elseif bootstrapper:IsA("RemoteFunction") then
-                                bootstrapper:InvokeServer()
-                            end
-                        end
-                    end)
-
-                    claimBossChest()
-                end)
-
-                while bossRunId == myId and alive and hum and hum.Health > 0 do
-                    equipFists()
-                    if hrp and targetHrp then
-                        hrp.CFrame = targetHrp.CFrame * CFrame.new(0, 4, 2)
-                    end
-                    if attackRemote then
-                        pcall(function() attackRemote:FireServer("punch", targetBoss) end)
-                    end
-                    task.wait(0.03)
-                end
-
-                if deathConn then deathConn:Disconnect() end
-                claimBossChest()
-            else
-                bossStatus = "Boss vaincu / Repos -> Farm au Weight"
-                equipWeight()
-                if muscleEvent then
-                    pcall(muscleEvent.FireServer, muscleEvent, "rep")
-                end
-            end
-        end
-        task.wait(0.1)
-    end
 end
 
 -- ===================== KILLING SYSTEM LOOPS =====================
@@ -489,7 +345,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH (RESTORED FROM V1) =====================
+-- ===================== FAST REBIRTH =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
 
@@ -677,6 +533,9 @@ local function fastRebirthLoop(myId)
                     return rebirthRemote:InvokeServer("rebirthRequest")
                 end)
                 rebirthResult = okR and res or ("error: " .. tostring(res))
+                if okR and (type(res) == "boolean" and res == true or type(res) ~= "boolean") then
+                    fastRebirthCount = fastRebirthCount + 1
+                end
             end)
 
             waitUntil(tFire + HYDRA_TAIL)
@@ -723,6 +582,9 @@ local function autoRebirthLoop(myId)
                 local okR, res = pcall(function()
                     return rebirthRemote:InvokeServer("rebirthRequest")
                 end)
+                if okR then
+                    autoRebirthCount = autoRebirthCount + 1
+                end
                 autoStatus = string.format("Attempts: %d | last result: %s",
                     tries, okR and tostring(res) or ("error: " .. tostring(res)))
             else
@@ -805,55 +667,18 @@ local function autoEggLoop(myId)
     end
 end
 
--- ===================== CALCULATOR & CHRONOS =====================
-local tracker = { strGain = 0, rebGain = 0 }
-local samples = {}
-local WINDOW = 20
-
-local function bindStat(statName, altName, key)
-    task.spawn(function()
-        local ls = LocalPlayer:WaitForChild("leaderstats", 10)
-        if not ls then warn("[Tazen hub] leaderstats not found") return end
-        local stat = ls:WaitForChild(statName, 10) or (altName and ls:FindFirstChild(altName))
-        if not stat then warn("[Tazen hub] stat not found: " .. statName) return end
-        local last = tonumber(stat.Value) or 0
-        connect(stat.Changed, function(v)
-            v = tonumber(v) or last
-            if v > last then tracker[key] = tracker[key] + (v - last) end
-            last = v
-        end)
-    end)
-end
-bindStat("Strength", "Muscle", "strGain")
-bindStat("Rebirths", "Rebirth", "rebGain")
-
-local SUFFIX = { "", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc" }
-local function fmt(n)
-    if n ~= n or n == math.huge then return "--" end
-    if n < 1000 then
-        if n == 0 then return "0" end
-        if n >= 100 then return string.format("%.0f", n) end
-        if n >= 10 then return string.format("%.1f", n) end
-        return string.format("%.2f", n)
+local function formatSeconds(totalSeconds)
+    totalSeconds = math.floor(totalSeconds)
+    local hours = math.floor(totalSeconds / 3600)
+    local minutes = math.floor((totalSeconds % 3600) / 60)
+    local seconds = totalSeconds % 60
+    if hours > 0 then
+        return string.format("%dh %02dm %02ds", hours, minutes, seconds)
+    elseif minutes > 0 then
+        return string.format("%dm %02ds", minutes, seconds)
+    else
+        return string.format("%ds", seconds)
     end
-    local i = 1
-    while n >= 1000 and i < #SUFFIX do
-        n = n / 1000
-        i = i + 1
-    end
-    return string.format("%.2f%s", n, SUFFIX[i])
-end
-
-local function pushSample()
-    local now = tick()
-    table.insert(samples, { t = now, str = tracker.strGain, reb = tracker.rebGain, rep = repTotal })
-    while #samples > 2 and now - samples[1].t > WINDOW do
-        table.remove(samples, 1)
-    end
-end
-
-local function projections(rate)
-    return { fmt(rate), fmt(rate * 60), fmt(rate * 3600), fmt(rate * 86400), fmt(rate * 604800) }
 end
 
 -- ===================== MISC ANTI LAG =====================
@@ -1166,7 +991,7 @@ end
 
 local function createTab(name)
     tabCount = tabCount + 1
-    local tabW = math.floor((W - 12 - 5 * 4) / 6)
+    local tabW = math.floor((W - 12 - 4 * 4) / 5)
     local button = new("TextButton", {
         Size = UDim2.fromOffset(tabW, 28),
         BackgroundColor3 = T.Element,
@@ -1235,7 +1060,66 @@ local function addLabel(page, text, height)
     return { SetText = function(_, t) l.Text = t end }
 end
 
-local function addToggle(page, name, categoryKey, settingKey, defaultState, callback)
+local function addToggle(page, name, defaultState, callback)
+    local initialState = defaultState
+
+    local f = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 44),
+        BackgroundColor3 = T.Element,
+        BackgroundTransparency = 0.2,
+        BorderSizePixel = 0,
+    }, page)
+    corner(f, 8)
+    stroke(f, T.Stroke, 1)
+
+    textLabel({
+        Size = UDim2.new(1, -80, 1, 0),
+        Position = UDim2.new(0, 12, 0, 0),
+        Text = name,
+    }, f)
+
+    local sw = new("Frame", {
+        Size = UDim2.fromOffset(40, 20),
+        Position = UDim2.new(1, -52, 0.5, -10),
+        BackgroundColor3 = initialState and T.Accent or T.Off,
+        BorderSizePixel = 0,
+    }, f)
+    corner(sw, 10)
+    local knob = new("Frame", {
+        Size = UDim2.fromOffset(16, 16),
+        Position = initialState and UDim2.fromOffset(22, 2) or UDim2.fromOffset(2, 2),
+        BackgroundColor3 = Color3.new(1, 1, 1),
+        BorderSizePixel = 0,
+    }, sw)
+    corner(knob, 8)
+
+    local hit = new("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "" }, f)
+
+    local obj = { Value = initialState }
+    function obj:Set(v, noSave)
+        if v == self.Value and not noSave then return end
+        self.Value = v
+        local info = TweenInfo.new(0.15, Enum.EasingStyle.Quad)
+        TweenService:Create(knob, info, { Position = v and UDim2.fromOffset(22, 2) or UDim2.fromOffset(2, 2) }):Play()
+        TweenService:Create(sw, info, { BackgroundColor3 = v and T.Accent or T.Off }):Play()
+
+        if callback then callback(v) end
+    end
+
+    hit.Activated:Connect(function() obj:Set(not obj.Value) end)
+
+    if initialState then
+        task.spawn(function()
+            task.wait(0.2)
+            if callback then callback(true) end
+        end)
+    end
+
+    return obj
+end
+
+-- Spécial Killing pour garder sa sauvegarde
+local function addKillingToggle(page, name, categoryKey, settingKey, defaultState, callback)
     local configData = loadCategoryConfig(categoryKey)
     local initialState = defaultState
     if configData[settingKey] ~= nil then
@@ -1323,12 +1207,8 @@ end
 
 local repSliderUpdate = nil
 
-local function addSlider(page, name, categoryKey, settingKey, min, max, default, callback)
-    local configData = loadCategoryConfig(categoryKey)
+local function addSlider(page, name, min, max, default, callback)
     local initialVal = default
-    if configData[settingKey] ~= nil then
-        initialVal = tonumber(configData[settingKey]) or default
-    end
 
     local f = new("Frame", {
         Size = UDim2.new(1, 0, 0, 62),
@@ -1370,17 +1250,10 @@ local function addSlider(page, name, categoryKey, settingKey, min, max, default,
         Text = "",
     }, f)
 
-    local function setValue(val, noSave)
+    local function setValue(val)
         val = math.clamp(val, min, max)
         fill.Size = UDim2.new((val - min) / (max - min), 0, 1, 0)
         valueLabel.Text = tostring(val)
-        
-        if not noSave then
-            local currentConfig = loadCategoryConfig(categoryKey)
-            currentConfig[settingKey] = val
-            saveCategoryConfig(categoryKey, currentConfig)
-        end
-
         callback(val)
     end
 
@@ -1419,54 +1292,6 @@ local function addSlider(page, name, categoryKey, settingKey, min, max, default,
     end)
 
     return setValue
-end
-
-local function addStatBlock(page, title, rowNames)
-    local h = 30 + #rowNames * 22 + 6
-    local f = new("Frame", {
-        Size = UDim2.new(1, 0, 0, h),
-        BackgroundColor3 = T.Element,
-        BackgroundTransparency = 0.2,
-        BorderSizePixel = 0,
-    }, page)
-    corner(f, 8)
-    stroke(f, T.Stroke, 1)
-    textLabel({
-        Size = UDim2.new(1, -20, 0, 24),
-        Position = UDim2.new(0, 12, 0, 4),
-        Text = title,
-        Font = Enum.Font.GothamBold,
-        TextSize = 13,
-        TextColor3 = T.Accent,
-    }, f)
-
-    local values = {}
-    for i, name in ipairs(rowNames) do
-        local y = 28 + (i - 1) * 22
-        textLabel({
-            Size = UDim2.new(0.5, -12, 0, 20),
-            Position = UDim2.new(0, 12, 0, y),
-            Text = name,
-            TextSize = 13,
-            TextColor3 = T.SubText,
-        }, f)
-        values[i] = textLabel({
-            Size = UDim2.new(0.5, -12, 0, 20),
-            Position = UDim2.new(0.5, 0, 0, y),
-            Text = "0",
-            TextSize = 13,
-            Font = Enum.Font.GothamBold,
-            TextXAlignment = Enum.TextXAlignment.Right,
-        }, f)
-    end
-
-    return {
-        Set = function(_, list)
-            for i, v in ipairs(list) do
-                if values[i] then values[i].Text = tostring(v) end
-            end
-        end,
-    }
 end
 
 local function addCredit(page, text)
@@ -1523,39 +1348,19 @@ end
 local TAB_FAST = E.bolt .. " Fast"
 local TAB_AUTO = E.cycle .. " Auto"
 local TAB_STR = E.muscle .. " Strength"
-local TAB_BOSS = E.skull .. " Boss"
 local TAB_KILL = E.sword .. " Killing"
 local TAB_MISC = E.toolbox .. " Misc"
 
 local fastPage = createTab(TAB_FAST)
 local autoPage = createTab(TAB_AUTO)
 local strPage = createTab(TAB_STR)
-local bossPage = createTab(TAB_BOSS)
 local killPage = createTab(TAB_KILL)
 local miscPage = createTab(TAB_MISC)
 
-local fastToggle, autoToggle, repToggle, bossToggle, killAllToggle, killTargetToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle, autoExecToggle
+local fastToggle, autoToggle, repToggle, killAllToggle, killTargetToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle, autoExecToggle
 
 local function notifyState(title, v)
     notify(title, v and (E.ok .. " Enabled") or (E.no .. " Disabled"))
-end
-
-local function resetStats()
-    tracker.strGain = 0
-    tracker.rebGain = 0
-    samples = {}
-    notify(E.broom .. " Calculator", E.ok .. " Stats reset")
-end
-
-local function resetBossStats()
-    bossKills.Common = 0
-    bossKills.Rare = 0
-    bossKills.Epic = 0
-    bossKills.Legendary = 0
-    bossKills.Mythic = 0
-    bossKills.Rainbow = 0
-    bossKills.Total = 0
-    notify(E.broom .. " Boss Counter", E.ok .. " Compteur réinitialisé")
 end
 
 local function enableAutoFastRep()
@@ -1565,26 +1370,15 @@ local function enableAutoFastRep()
     end
 end
 
-local REB_ROWS = {
-    E.bolt .. " Per second", E.clock .. " Per minute", E.hourglass .. " Per hour",
-    E.sun .. " Per day", E.calendar .. " Per week", E.trophy .. " Total gained",
-}
-local STR_ROWS = {
-    E.bolt .. " Per second", E.clock .. " Per minute", E.hourglass .. " Per hour",
-    E.sun .. " Per day", E.calendar .. " Per week", E.trophy .. " Total gained",
-    E.target .. " Strength per rep (avg)",
-}
-local BOSS_ROWS = {
-    "⚪ Commun", "🔵 Rare", "🟣 Épique", "🟡 Légendaire", "🔴 Mythique", E.rainbow .. " Arc-en-ciel", E.trophy .. " Total Tués"
-}
-
 -- Fast Rebirth
 addSection(fastPage, E.fire .. " Fast Rebirth (Pack)")
 addLabel(fastPage, "\u{26A0}\u{FE0F} You need pack for fast rebirth", 34)
 addLabel(fastPage, "\u{26A0}\u{FE0F} Use a 659 rep speed for no delay", 34)
-fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", "FastRebirth", "Enabled", false, function(v)
+fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", false, function(v)
     fastRunId = fastRunId + 1
     if v then
+        fastStartTime = tick()
+        fastRebirthCount = 0
         autoRunId = autoRunId + 1
         if autoToggle then autoToggle:Set(false) end
         enableAutoFastRep()
@@ -1592,26 +1386,22 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", "FastRebirth", "Enab
         notifyState(E.bolt .. " Fast rebirth", true)
         task.spawn(fastRebirthLoop, fastRunId)
     else
+        fastStartTime = nil
         notifyState(E.bolt .. " Fast rebirth", false)
     end
 end)
-addButton(fastPage, E.wrench .. " Save Config (Fast Rebirth)", function()
-    local cfg = { Enabled = fastToggle.Value }
-    saveCategoryConfig("FastRebirth", cfg)
-    notify("Config", E.ok .. " Fast Rebirth sauvegardé !")
-end)
 local fastStatusLabel = addLabel(fastPage, E.clip .. " " .. fastStatus, 60)
-addSection(fastPage, E.chart .. " Rebirth calculator")
-local fastRebBlock = addStatBlock(fastPage, E.loop .. " REBIRTHS (measured over 20 s)", REB_ROWS)
-addButton(fastPage, E.broom .. " Reset stats", resetStats)
+local fastTimerLabel = addLabel(fastPage, E.clock .. " Session Time: 0s | Rebirth/s: 0.0", 36)
 
 -- Auto Rebirth
 addSection(autoPage, E.cycle .. " Auto Rebirth (No Pack)")
 addLabel(autoPage, "\u{26A0}\u{FE0F} This tab can be used by everyone", 34)
 addLabel(autoPage, "\u{26A0}\u{FE0F} Use a 659 rep speed for no delay", 34)
-autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", "AutoRebirth", "Enabled", false, function(v)
+autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", false, function(v)
     autoRunId = autoRunId + 1
     if v then
+        autoStartTime = tick()
+        autoRebirthCount = 0
         fastRunId = fastRunId + 1
         if fastToggle then fastToggle:Set(false) end
         enableAutoFastRep()
@@ -1619,67 +1409,35 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", "AutoRebirth", "Ena
         notifyState(E.cycle .. " Auto rebirth", true)
         task.spawn(autoRebirthLoop, autoRunId)
     else
+        autoStartTime = nil
         notifyState(E.cycle .. " Auto rebirth", false)
     end
 end)
-addButton(autoPage, E.wrench .. " Save Config (Auto Rebirth)", function()
-    local cfg = { Enabled = autoToggle.Value }
-    saveCategoryConfig("AutoRebirth", cfg)
-    notify("Config", E.ok .. " Auto Rebirth sauvegardé !")
-end)
 local autoStatusLabel = addLabel(autoPage, E.clip .. " " .. autoStatus, 40)
-addSection(autoPage, E.chart .. " Rebirth calculator")
-local autoRebBlock = addStatBlock(autoPage, E.loop .. " REBIRTHS (measured over 20 s)", REB_ROWS)
-addButton(autoPage, E.broom .. " Reset stats", resetStats)
+local autoTimerLabel = addLabel(autoPage, E.clock .. " Session Time: 0s | Rebirth/s: 0.0", 36)
 
 -- Fast Strength
 addSection(strPage, E.muscle .. " Fast Strength")
-repToggle = addToggle(strPage, E.muscle .. " Fast strength", "Strength", "Enabled", false, function(v)
+repToggle = addToggle(strPage, E.muscle .. " Fast strength", false, function(v)
     repRunId = repRunId + 1
     if v then
+        repStartTime = tick()
+        repTotal = 0
         notify(E.muscle .. " Fast strength", E.target .. " " .. repRate .. " reps/s targeted")
         task.spawn(fastRepLoop, repRunId)
     else
+        repStartTime = nil
         notifyState(E.muscle .. " Fast strength", false)
     end
 end)
-repSliderUpdate = addSlider(strPage, E.wrench .. " Reps per second", "Strength", "Rate", 659, 3000, repRate, function(v) repRate = v end)
-addButton(strPage, E.wrench .. " Save Config (Strength)", function()
-    local cfg = { Enabled = repToggle.Value, Rate = repRate }
-    saveCategoryConfig("Strength", cfg)
-    notify("Config", E.ok .. " Strength sauvegardé !")
-end)
+repSliderUpdate = addSlider(strPage, E.wrench .. " Reps per second", 659, 3000, repRate, function(v) repRate = v end)
 local repLabel = addLabel(strPage, E.antenna .. " Real reps/s: --", 34)
-addSection(strPage, E.up .. " Strength calculator")
-local strBlock = addStatBlock(strPage, E.muscle .. " STRENGTH (measured over 20 s)", STR_ROWS)
-addButton(strPage, E.broom .. " Reset stats", resetStats)
+local repTimerLabel = addLabel(strPage, E.clock .. " Session Time: 0s | Moy. Reps/s: 0", 36)
 
--- Boss Tab
-addSection(bossPage, E.skull .. " Auto Farm Boss & Claim Boss Chest")
-bossToggle = addToggle(bossPage, E.target .. " Activer Auto Boss + Weight", "Boss", "Enabled", false, function(v)
-    bossRunId = bossRunId + 1
-    if v then
-        notifyState(E.target .. " Auto Farm Boss", true)
-        task.spawn(autoFarmBossLoop, bossRunId)
-    else
-        notifyState(E.target .. " Auto Farm Boss", false)
-    end
-end)
-addButton(bossPage, E.wrench .. " Save Config (Boss)", function()
-    local cfg = { Enabled = bossToggle.Value }
-    saveCategoryConfig("Boss", cfg)
-    notify("Config", E.ok .. " Boss sauvegardé !")
-end)
-local bossStatusLabel = addLabel(bossPage, E.clip .. " " .. bossStatus, 40)
-
-addSection(bossPage, E.chart .. " Compteur de Boss Tués")
-local bossBlock = addStatBlock(bossPage, E.skull .. " BOSS KILLS", BOSS_ROWS)
-addButton(bossPage, E.broom .. " Réinitialiser compteur boss", resetBossStats)
-
--- ===================== KILLING TAB =====================
+-- ===================== KILLING TAB (WITH SAVE CONFIG) =====================
 addSection(killPage, E.sword .. " Module de Combat / Killing")
 
-killAllToggle = addToggle(killPage, E.sword .. " Auto Kill All Players", "Killing", "AutoKillAll", false, function(v)
+killAllToggle = addKillingToggle(killPage, E.sword .. " Auto Kill All Players", "Killing", "AutoKillAll", false, function(v)
     killRunId = killRunId + 1
     if v then
         if killTargetToggle and killTargetToggle.Value then killTargetToggle:Set(false) end
@@ -1690,7 +1448,7 @@ killAllToggle = addToggle(killPage, E.sword .. " Auto Kill All Players", "Killin
     end
 end)
 
-killTargetToggle = addToggle(killPage, E.target .. " Kill Target Players Only", "Killing", "KillTarget", false, function(v)
+killTargetToggle = addKillingToggle(killPage, E.target .. " Kill Target Players Only", "Killing", "KillTarget", false, function(v)
     killRunId = killRunId + 1
     if v then
         if killAllToggle and killAllToggle.Value then killAllToggle:Set(false) end
@@ -1792,7 +1550,7 @@ local function refreshPlayerListUI()
 
             tBtn.Activated:Connect(function()
                 targetPlayers[plr.Name] = not targetPlayers[plr.Name]
-                tBtn.BackgroundColor3 = targetPlayers[plr.Name] and Color3.fromRGB(220, 50, 50) or T.Off
+                tBtn.BackgroundColor3 = targetPlayers[plr.Name] and Color3.fromRGB(220, 50, 50) or T.Off,
                 local stateStr = targetPlayers[plr.Name] and " ciblé en Priority Target !" or " retiré des targets."
                 notify("Target", plr.Name .. stateStr)
             end)
@@ -1807,7 +1565,7 @@ task.spawn(refreshPlayerListUI)
 -- Misc Tab
 addSection(miscPage, E.toolbox .. " Utilities")
 
-autoExecToggle = addToggle(miscPage, E.rocket .. " Auto Execution", "Misc", "AutoExecute", false, function(v)
+autoExecToggle = addToggle(miscPage, E.rocket .. " Auto Execution", false, function(v)
     notifyState("Auto Execution", v)
     if v then
         pcall(function()
@@ -1821,19 +1579,19 @@ autoExecToggle = addToggle(miscPage, E.rocket .. " Auto Execution", "Misc", "Aut
 end)
 addLabel(miscPage, E.bulb .. " Active l'exécution automatique et la ré-exécution lors des changements de serveur.", 45)
 
-antiAfkToggle = addToggle(miscPage, E.sleep .. " Anti AFK (IY Method)", "Misc", "AntiAFK", false, function(v)
+antiAfkToggle = addToggle(miscPage, E.sleep .. " Anti AFK (IY Method)", false, function(v)
     setAntiAfk(v)
     notifyState(E.sleep .. " Anti AFK", v)
 end)
 addLabel(miscPage, E.bulb .. " Empêche la déconnexion d'inactivité de Roblox via la méthode Infinite Yield.", 34)
 
-antiLagToggle = addToggle(miscPage, E.rocket .. " Anti Lag (low-end devices)", "Misc", "AntiLag", false, function(v)
+antiLagToggle = addToggle(miscPage, E.rocket .. " Anti Lag (low-end devices)", false, function(v)
     if v then antiLagStart() else antiLagStop() end
     notifyState(E.rocket .. " Anti Lag", v)
 end)
 addLabel(miscPage, E.bulb .. " Lowers graphics (particles, shadows, textures, effects). Fully reverted when turned off.", 46)
 
-autoWheelToggle = addToggle(miscPage, E.wheel .. " Auto Wheel", "Misc", "AutoWheel", false, function(v)
+autoWheelToggle = addToggle(miscPage, E.wheel .. " Auto Wheel", false, function(v)
     wheelRunId = wheelRunId + 1
     if v then
         notifyState(E.wheel .. " Auto Wheel", true)
@@ -1843,7 +1601,7 @@ autoWheelToggle = addToggle(miscPage, E.wheel .. " Auto Wheel", "Misc", "AutoWhe
     end
 end)
 
-autoEggToggle = addToggle(miscPage, E.egg .. " Auto eat protein egg", "Misc", "AutoEgg", false, function(v)
+autoEggToggle = addToggle(miscPage, E.egg .. " Auto eat protein egg", false, function(v)
     eggRunId = eggRunId + 1
     if v then
         notifyState(E.egg .. " Auto eat protein egg", true)
@@ -1851,18 +1609,6 @@ autoEggToggle = addToggle(miscPage, E.egg .. " Auto eat protein egg", "Misc", "A
     else
         notifyState(E.egg .. " Auto eat protein egg", false)
     end
-end)
-
-addButton(miscPage, E.wrench .. " Save Config (Misc)", function()
-    local cfg = {
-        AutoExecute = autoExecToggle.Value,
-        AntiAFK = antiAfkToggle.Value,
-        AntiLag = antiLagToggle.Value,
-        AutoWheel = autoWheelToggle.Value,
-        AutoEgg = autoEggToggle.Value
-    }
-    saveCategoryConfig("Misc", cfg)
-    notify("Config", E.ok .. " Misc sauvegardé !")
 end)
 
 local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 34)
@@ -1884,41 +1630,31 @@ task.spawn(function()
 
         fastStatusLabel:SetText(E.clip .. " " .. fastStatus)
         autoStatusLabel:SetText(E.clip .. " " .. autoStatus)
-        bossStatusLabel:SetText(E.clip .. " " .. bossStatus)
         killStatusLabel:SetText(E.clip .. " " .. killStatus)
 
-        bossBlock:Set({
-            bossKills.Common,
-            bossKills.Rare,
-            bossKills.Epic,
-            bossKills.Legendary,
-            bossKills.Mythic,
-            bossKills.Rainbow,
-            bossKills.Total
-        })
-
-        pushSample()
-        local a, b = samples[1], samples[#samples]
-        if a and b and b.t - a.t >= 3 then
-            local dt = b.t - a.t
-            local strRate = (b.str - a.str) / dt
-            local rebRate = (b.reb - a.reb) / dt
-            local dRep = b.rep - a.rep
-
-            local sList = projections(strRate)
-            table.insert(sList, fmt(tracker.strGain))
-            table.insert(sList, dRep > 0 and fmt((b.str - a.str) / dRep) or "--")
-            strBlock:Set(sList)
-
-            local rList = projections(rebRate)
-            table.insert(rList, fmt(tracker.rebGain))
-            fastRebBlock:Set(rList)
-            autoRebBlock:Set(rList)
+        -- Session Timers & Real-Time Live Farm Calculators Update
+        if fastStartTime then
+            local elapsed = tick() - fastStartTime
+            local rps = elapsed > 0 and (fastRebirthCount / elapsed) or 0
+            fastTimerLabel:SetText(string.format("%s Session Time: %s | Rebirth/s: %.2f", E.clock, formatSeconds(elapsed), rps))
         else
-            strBlock:Set({ "measuring...", "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.strGain), "--" })
-            local pending = { "measuring...", "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.rebGain) }
-            fastRebBlock:Set(pending)
-            autoRebBlock:Set(pending)
+            fastTimerLabel:SetText(E.clock .. " Session Time: 0s | Rebirth/s: 0.0")
+        end
+
+        if autoStartTime then
+            local elapsed = tick() - autoStartTime
+            local rps = elapsed > 0 and (autoRebirthCount / elapsed) or 0
+            autoTimerLabel:SetText(string.format("%s Session Time: %s | Rebirth/s: %.2f", E.clock, formatSeconds(elapsed), rps))
+        else
+            autoTimerLabel:SetText(E.clock .. " Session Time: 0s | Rebirth/s: 0.0")
+        end
+
+        if repStartTime then
+            local elapsed = tick() - repStartTime
+            local avgReps = elapsed > 0 and math.floor(repTotal / elapsed) or 0
+            repTimerLabel:SetText(string.format("%s Session Time: %s | Moy. Reps/s: %d", E.clock, formatSeconds(elapsed), avgReps))
+        else
+            repTimerLabel:SetText(E.clock .. " Session Time: 0s | Moy. Reps/s: 0")
         end
     end
 end)
@@ -1941,7 +1677,6 @@ closeBtn.Activated:Connect(function()
     repRunId = repRunId + 1
     wheelRunId = wheelRunId + 1
     eggRunId = eggRunId + 1
-    bossRunId = bossRunId + 1
     killRunId = killRunId + 1
     setAntiAfk(false)
     if antiLagToggle and antiLagToggle.Value then antiLagStop() end
