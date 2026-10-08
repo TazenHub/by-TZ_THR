@@ -57,6 +57,13 @@ local E = {
 
 local IMAGE_ASSET = "rbxassetid://91265185075125"
 
+local repSpeedPetPriorities = {
+    ["Omega Overlord"] = 1,
+    ["Mythic Boss Pet"] = 1,
+    ["Legendary Boss Pet"] = 2,
+    ["Epic Boss Pet"] = 3,
+}
+
 -- ===================== STATE =====================
 local alive = true
 local connections = {}
@@ -72,6 +79,7 @@ local repRunId = 0
 local wheelRunId = 0
 local eggRunId = 0
 local bossRunId = 0
+local killRunId = 0
 
 local repRate = 659
 local repCounter = 0
@@ -80,12 +88,12 @@ local repTotal = 0
 local fastStatus = "Waiting..."
 local autoStatus = "Waiting..."
 local bossStatus = "Waiting..."
+local killStatus = "Waiting..."
 
--- Chrono & Rebirth timing variables
-local sessionStartTime = tick()
-local sessionActive = false
-local lastRealCycleTime = 0
-local lastRebirthAttemptTime = 0
+-- Killing System Data
+local whitelistPlayers = {}
+local targetPlayers = {}
+local lastKillTick = tick()
 
 local bossKills = {
     Common = 0,
@@ -133,6 +141,16 @@ local function canRebirth()
     end)
     if okC then return result end
     return true
+end
+
+local function getPetScore(pet)
+    local o = pet:FindFirstChild("RepSpeed") or pet:FindFirstChild("Rep Speed")
+    if o and (o:IsA("NumberValue") or o:IsA("IntValue")) then return o.Value end
+    local attr = pet:GetAttribute("RepSpeed") or pet:GetAttribute("Rep Speed")
+    if attr then return tonumber(attr) or 0 end
+    local lvl = pet:FindFirstChild("Level") or pet:FindFirstChild("Lvl")
+    if lvl and lvl.Value then return tonumber(lvl.Value) or 0 end
+    return 1
 end
 
 local function findMuscleEvent(rEvents)
@@ -204,6 +222,28 @@ local function claimBossChest()
             chestRemote:FireServer("collectBossChest")
             chestRemote:InvokeServer("collectChest", "Boss Chest")
             chestRemote:FireServer("collectChest", "Boss Chest")
+        end
+    end)
+end
+
+-- ===================== SERVER HOP =====================
+local function serverHop()
+    killStatus = "Changement de serveur (0 kill depuis 60s)..."
+    pcall(function()
+        local servers = {}
+        local req = game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100")
+        local data = HttpService:JSONDecode(req)
+        if data and data.data then
+            for _, s in ipairs(data.data) do
+                if type(s) == "table" and s.playing < s.maxPlayers and s.id ~= game.JobId then
+                    table.insert(servers, s.id)
+                end
+            end
+        end
+        if #servers > 0 then
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, servers[math.random(1, #servers)], LocalPlayer)
+        else
+            TeleportService:Teleport(game.PlaceId, LocalPlayer)
         end
     end)
 end
@@ -299,45 +339,372 @@ local function autoFarmBossLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH (TON ANCIEN FAST REBIRTH) =====================
-local function fastRebirthLoop(myId)
+-- ===================== KILLING SYSTEM LOOPS =====================
+local function autoKillAllLoop(myId)
     local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
-    local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
+    local attackRemote = rEvents and (rEvents:FindFirstChild("attackEvent") or rEvents:FindFirstChild("muscleEvent"))
 
-    if not rebirthRemote then
-        fastStatus = "rEvents / rebirthRemote not found"
-        warn("[Tazen hub] " .. fastStatus)
-        return
-    end
+    lastKillTick = tick()
 
-    local tries = 0
-    lastRebirthAttemptTime = tick()
-    while fastRunId == myId do
-        local okC, errC = pcall(function()
-            if canRebirth() then
-                tries = tries + 1
-                local nowTick = tick()
-                lastRealCycleTime = nowTick - lastRebirthAttemptTime
-                lastRebirthAttemptTime = nowTick
+    while killRunId == myId and alive do
+        local character = LocalPlayer.Character
+        local hrp = character and character:FindFirstChild("HumanoidRootPart")
 
-                local okR, res = pcall(function()
-                    return rebirthRemote:InvokeServer("rebirthRequest")
-                end)
-                fastStatus = string.format("Attempts: %d | last result: %s",
-                    tries, okR and tostring(res) or ("error: " .. tostring(res)))
-            else
-                fastStatus = "canRebirth = false"
+        if not hrp then
+            killStatus = "En attente du personnage..."
+            task.wait(1)
+        else
+            local targetPlayer = nil
+            local minDist = math.huge
+
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and not whitelistPlayers[plr.Name] then
+                    local pChar = plr.Character
+                    local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
+                    local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
+                    if pHrp and pHum and pHum.Health > 0 then
+                        local dist = (hrp.Position - pHrp.Position).Magnitude
+                        if dist < minDist then
+                            minDist = dist
+                            targetPlayer = plr
+                        end
+                    end
+                end
             end
-        end)
-        if not okC then
-            fastStatus = "ERROR: " .. tostring(errC)
-            warn("[Tazen hub] " .. fastStatus)
+
+            if targetPlayer then
+                local pChar = targetPlayer.Character
+                local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
+                local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
+
+                killStatus = "Kill All : " .. targetPlayer.Name
+                equipFists()
+
+                local wasAlive = true
+                local deathConn
+                if pHum then
+                    deathConn = pHum.Died:Connect(function()
+                        wasAlive = false
+                        lastKillTick = tick()
+                        if deathConn then deathConn:Disconnect() end
+                    end)
+                end
+
+                while killRunId == myId and alive and targetPlayer.Parent and pHum and pHum.Health > 0 and wasAlive do
+                    equipFists()
+                    if hrp and pHrp then
+                        hrp.CFrame = pHrp.CFrame * CFrame.new(0, 3, 2)
+                    end
+                    if attackRemote then
+                        pcall(function() attackRemote:FireServer("punch", targetPlayer.Character) end)
+                    end
+                    task.wait(0.03)
+                end
+
+                if deathConn then deathConn:Disconnect() end
+            else
+                killStatus = "Aucune cible dispo..."
+                task.wait(0.5)
+            end
         end
+
+        if tick() - lastKillTick > 60 then
+            serverHop()
+            break
+        end
+
         task.wait(0.1)
     end
 end
 
--- ===================== AUTO REBIRTH LOOP =====================
+local function killTargetPlayerLoop(myId)
+    local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
+    local attackRemote = rEvents and (rEvents:FindFirstChild("attackEvent") or rEvents:FindFirstChild("muscleEvent"))
+
+    lastKillTick = tick()
+
+    while killRunId == myId and alive do
+        local character = LocalPlayer.Character
+        local hrp = character and character:FindFirstChild("HumanoidRootPart")
+
+        if not hrp then
+            killStatus = "En attente du personnage..."
+            task.wait(1)
+        else
+            local targetPlayer = nil
+            local minDist = math.huge
+
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if targetPlayers[plr.Name] and plr ~= LocalPlayer and not whitelistPlayers[plr.Name] then
+                    local pChar = plr.Character
+                    local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
+                    local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
+                    if pHrp and pHum and pHum.Health > 0 then
+                        local dist = (hrp.Position - pHrp.Position).Magnitude
+                        if dist < minDist then
+                            minDist = dist
+                            targetPlayer = plr
+                        end
+                    end
+                end
+            end
+
+            if targetPlayer then
+                local pChar = targetPlayer.Character
+                local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
+                local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
+
+                killStatus = "Cible prioritaire : " .. targetPlayer.Name
+                equipFists()
+
+                local wasAlive = true
+                local deathConn
+                if pHum then
+                    deathConn = pHum.Died:Connect(function()
+                        wasAlive = false
+                        lastKillTick = tick()
+                        if deathConn then deathConn:Disconnect() end
+                    end)
+                end
+
+                while killRunId == myId and alive and targetPlayer.Parent and pHum and pHum.Health > 0 and wasAlive do
+                    equipFists()
+                    if hrp and pHrp then
+                        hrp.CFrame = pHrp.CFrame * CFrame.new(0, 3, 2)
+                    end
+                    if attackRemote then
+                        pcall(function() attackRemote:FireServer("punch", targetPlayer.Character) end)
+                    end
+                    task.wait(0.03)
+                end
+
+                if deathConn then deathConn:Disconnect() end
+            else
+                killStatus = "Aucune Target connectée..."
+                task.wait(0.5)
+            end
+        end
+
+        task.wait(0.1)
+    end
+end
+
+-- ===================== FAST REBIRTH (RESTORED FROM V1) =====================
+local function fastRebirthLoop(myId)
+    local function isRunning() return fastRunId == myId end
+
+    local okT, errT = pcall(function()
+        local rebirthRemote = ReplicatedStorage.rEvents.rebirthRemote
+        local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
+        local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
+
+        local HYDRA_LEAD = 0.10             
+        local HYDRA_TAIL = 0.05             
+        local REP_OFF_LEAD = 0.10           
+        local REP_ON_DELAY = 0.05           
+        local REBIRTH_MARGIN = 0.03         
+        local SLOTS = 12                    
+        local AUTO_TRY = 20                 
+        local FULL_SWAP = true              
+        local STARTUP_UNEQUIP_PER_FRAME = 20
+        local LIST_REFRESH_EVERY = 5        
+
+        local function petRealName(pet)
+            if pet:FindFirstChild("PetName") then return pet.PetName.Value end
+            return pet.Name
+        end
+
+        local function unequipAllPets(petsFolder)
+            local count = 0
+            for _, folderName in ipairs(FOLDERS) do
+                local folder = petsFolder:FindFirstChild(folderName)
+                if folder then
+                    for _, pet in ipairs(folder:GetChildren()) do
+                        equipPetEvent:FireServer("unequipPet", pet)
+                        count = count + 1
+                        if count % STARTUP_UNEQUIP_PER_FRAME == 0 then task.wait() end
+                    end
+                end
+            end
+            return count
+        end
+
+        local function buildHydraList(petsFolder, slots)
+            local list = {}
+            for _, folderName in ipairs(FOLDERS) do
+                local folder = petsFolder:FindFirstChild(folderName)
+                if folder then
+                    for _, pet in ipairs(folder:GetChildren()) do
+                        if #list < slots and petRealName(pet) == "Titanium Hydra" then
+                            table.insert(list, pet)
+                        end
+                    end
+                end
+            end
+            return list
+        end
+
+        local function buildRepList(petsFolder, slots)
+            local repPets = {}
+            for _, folderName in ipairs(FOLDERS) do
+                local folder = petsFolder:FindFirstChild(folderName)
+                if folder then
+                    for _, pet in ipairs(folder:GetChildren()) do
+                        local priority = repSpeedPetPriorities[petRealName(pet)] or 5
+                        table.insert(repPets, {
+                            Instance = pet,
+                            Priority = priority,
+                            Score = getPetScore(pet)
+                        })
+                    end
+                end
+            end
+
+            table.sort(repPets, function(a, b)
+                if a.Priority == b.Priority then
+                    return a.Score > b.Score
+                end
+                return a.Priority < b.Priority
+            end)
+
+            local list = {}
+            for _, entry in ipairs(repPets) do
+                if #list >= slots then break end
+                table.insert(list, entry.Instance)
+            end
+            return list
+        end
+
+        local equipped = {}
+
+        local function setEquipped(wanted, burst, equipFirst)
+            local want, have = {}, {}
+            for _, pet in ipairs(wanted) do want[pet] = true end
+            for _, pet in ipairs(equipped) do have[pet] = true end
+
+            local outList, inList = {}, {}
+            for _, pet in ipairs(equipped) do
+                if not want[pet] and pet.Parent then table.insert(outList, pet) end
+            end
+            local newEquipped = {}
+            for _, pet in ipairs(wanted) do
+                if pet.Parent then
+                    if not have[pet] then table.insert(inList, pet) end
+                    table.insert(newEquipped, pet)
+                end
+            end
+
+            local function fire(kind, pet)
+                equipPetEvent:FireServer(kind, pet)
+                if not burst then task.wait() end
+            end
+
+            local firstN = equipFirst and math.min(#inList, #outList) or #outList
+            for i = 1, firstN do fire("unequipPet", outList[i]) end
+            for _, pet in ipairs(inList) do fire("equipPet", pet) end
+            for i = firstN + 1, #outList do fire("unequipPet", outList[i]) end
+
+            equipped = newEquipped
+        end
+
+        local function waitUntil(t)
+            while isRunning() and os.clock() < t do
+                task.wait()
+            end
+        end
+
+        local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+        while isRunning() and not petsFolder do
+            fastStatus = "petsFolder not found"
+            task.wait(1)
+            petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+        end
+        if not isRunning() then return end
+
+        local autoSlots = (SLOTS <= 0)
+        local slots = autoSlots and AUTO_TRY or SLOTS
+
+        local hydraList, repTarget, swapList, offList
+        local function rebuild()
+            hydraList = buildHydraList(petsFolder, slots)
+            local keep = math.max(0, slots - #hydraList)
+            repTarget = buildRepList(petsFolder, slots)
+            offList = {}
+            if not FULL_SWAP and not autoSlots then
+                for i = 1, math.min(keep, #repTarget) do table.insert(offList, repTarget[i]) end
+            end
+            swapList = {}
+            for _, pet in ipairs(offList) do table.insert(swapList, pet) end
+            for _, h in ipairs(hydraList) do table.insert(swapList, h) end
+        end
+        rebuild()
+
+        if #hydraList == 0 then
+            fastStatus = "Pack required: no Titanium Hydra found. Use Auto Rebirth instead."
+            warn("[Tazen hub] " .. fastStatus)
+            return
+        end
+
+        fastStatus = "Starting: cleaning pets..."
+        unequipAllPets(petsFolder)
+        if not isRunning() then return end
+        setEquipped(repTarget, true)
+
+        local cycle = 0
+        local rebirthResult = "-"
+        local prevFire = nil
+        local rebirthAt = os.clock() + HYDRA_LEAD
+
+        while isRunning() do
+            cycle = cycle + 1
+
+            local repOffLead = math.max(REP_OFF_LEAD, HYDRA_LEAD)
+            if repOffLead > HYDRA_LEAD + 0.001 then
+                waitUntil(rebirthAt - repOffLead)
+                if not isRunning() then break end
+                setEquipped(offList, true)
+            end
+
+            waitUntil(rebirthAt - HYDRA_LEAD)
+            if not isRunning() then break end
+            setEquipped(swapList, true, true)
+
+            waitUntil(rebirthAt)
+            if not isRunning() then break end
+            local tFire = os.clock()
+            task.spawn(function()
+                local okR, res = pcall(function()
+                    return rebirthRemote:InvokeServer("rebirthRequest")
+                end)
+                rebirthResult = okR and res or ("error: " .. tostring(res))
+            end)
+
+            waitUntil(tFire + HYDRA_TAIL)
+            setEquipped(offList, true)
+            waitUntil(tFire + REP_ON_DELAY)
+            setEquipped(repTarget, true)
+
+            local interval = prevFire and (tFire - prevFire) or 0
+            prevFire = tFire
+            fastStatus = string.format("Cycle %d | Rebirth: %s | Slots %d | Rep %d | Hydras %d | %.2fs",
+                cycle, tostring(rebirthResult), slots, #repTarget, #hydraList, interval)
+
+            if cycle % LIST_REFRESH_EVERY == 0 then
+                petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
+                rebuild()
+            end
+
+            rebirthAt = tFire + REBIRTH_COOLDOWN + REBIRTH_MARGIN
+        end
+    end)
+
+    if not okT then
+        fastStatus = "ERROR: " .. tostring(errT)
+        warn("[Tazen hub] " .. fastStatus)
+    end
+end
+
+-- ===================== AUTO REBIRTH =====================
 local function autoRebirthLoop(myId)
     local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
     local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
@@ -349,15 +716,10 @@ local function autoRebirthLoop(myId)
     end
 
     local tries = 0
-    lastRebirthAttemptTime = tick()
     while autoRunId == myId do
         local okC, errC = pcall(function()
             if canRebirth() then
                 tries = tries + 1
-                local nowTick = tick()
-                lastRealCycleTime = nowTick - lastRebirthAttemptTime
-                lastRebirthAttemptTime = nowTick
-
                 local okR, res = pcall(function()
                     return rebirthRemote:InvokeServer("rebirthRequest")
                 end)
@@ -375,7 +737,7 @@ local function autoRebirthLoop(myId)
     end
 end
 
--- ===================== FAST STRENGTH LOOP (SUPER FAST REP AVEC DELTA-TIME) =====================
+-- ===================== FAST STRENGTH (REP) =====================
 local function fastRepLoop(myId)
     local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
     if not rEvents then warn("[Tazen hub] rEvents not found") return end
@@ -443,10 +805,10 @@ local function autoEggLoop(myId)
     end
 end
 
--- ===================== CALCULATEUR TEMPS RÉEL (INSTANTANÉ) & CHRONO =====================
+-- ===================== CALCULATOR & CHRONOS =====================
 local tracker = { strGain = 0, rebGain = 0 }
-local lastStrVal = 0
-local lastRebVal = 0
+local samples = {}
+local WINDOW = 20
 
 local function bindStat(statName, altName, key)
     task.spawn(function()
@@ -454,25 +816,11 @@ local function bindStat(statName, altName, key)
         if not ls then warn("[Tazen hub] leaderstats not found") return end
         local stat = ls:WaitForChild(statName, 10) or (altName and ls:FindFirstChild(altName))
         if not stat then warn("[Tazen hub] stat not found: " .. statName) return end
-        
-        if key == "strGain" then lastStrVal = tonumber(stat.Value) or 0 end
-        if key == "rebGain" then lastRebVal = tonumber(stat.Value) or 0 end
-
+        local last = tonumber(stat.Value) or 0
         connect(stat.Changed, function(v)
-            v = tonumber(v) or 0
-            if key == "strGain" then
-                local diff = v - lastStrVal
-                if diff > 0 then
-                    tracker.strGain = tracker.strGain + diff
-                end
-                lastStrVal = v
-            elseif key == "rebGain" then
-                local diff = v - lastRebVal
-                if diff > 0 then
-                    tracker.rebGain = tracker.rebGain + diff
-                end
-                lastRebVal = v
-            end
+            v = tonumber(v) or last
+            if v > last then tracker[key] = tracker[key] + (v - last) end
+            last = v
         end)
     end)
 end
@@ -496,8 +844,16 @@ local function fmt(n)
     return string.format("%.2f%s", n, SUFFIX[i])
 end
 
+local function pushSample()
+    local now = tick()
+    table.insert(samples, { t = now, str = tracker.strGain, reb = tracker.rebGain, rep = repTotal })
+    while #samples > 2 and now - samples[1].t > WINDOW do
+        table.remove(samples, 1)
+    end
+end
+
 local function projections(rate)
-    return { fmt(rate * 60), fmt(rate * 3600), fmt(rate * 86400), fmt(rate * 604800) }
+    return { fmt(rate), fmt(rate * 60), fmt(rate * 3600), fmt(rate * 86400), fmt(rate * 604800) }
 end
 
 -- ===================== MISC ANTI LAG =====================
@@ -798,10 +1154,8 @@ local pagesHolder = new("Frame", {
 }, main)
 local tabs = {}
 local tabCount = 0
-local currentSelectedTab = ""
 
 local function selectTab(name)
-    currentSelectedTab = name
     for tabName, t in pairs(tabs) do
         local on = (tabName == name)
         t.page.Visible = on
@@ -812,7 +1166,7 @@ end
 
 local function createTab(name)
     tabCount = tabCount + 1
-    local tabW = math.floor((W - 12 - 4 * 4) / 5)
+    local tabW = math.floor((W - 12 - 5 * 4) / 6)
     local button = new("TextButton", {
         Size = UDim2.fromOffset(tabW, 28),
         BackgroundColor3 = T.Element,
@@ -967,6 +1321,8 @@ local function addButton(page, name, callback)
     return b
 end
 
+local repSliderUpdate = nil
+
 local function addSlider(page, name, categoryKey, settingKey, min, max, default, callback)
     local configData = loadCategoryConfig(categoryKey)
     local initialVal = default
@@ -1063,76 +1419,6 @@ local function addSlider(page, name, categoryKey, settingKey, min, max, default,
     end)
 
     return setValue
-end
-
-local function addStatBlockWithSessionTimer(page, title, rowNames)
-    local h = 30 + (#rowNames + 1) * 22 + 6
-    local f = new("Frame", {
-        Size = UDim2.new(1, 0, 0, h),
-        BackgroundColor3 = T.Element,
-        BackgroundTransparency = 0.2,
-        BorderSizePixel = 0,
-    }, page)
-    corner(f, 8)
-    stroke(f, T.Stroke, 1)
-    textLabel({
-        Size = UDim2.new(1, -20, 0, 24),
-        Position = UDim2.new(0, 12, 0, 4),
-        Text = title,
-        Font = Enum.Font.GothamBold,
-        TextSize = 13,
-        TextColor3 = T.Accent,
-    }, f)
-
-    local values = {}
-    for i, name in ipairs(rowNames) do
-        local y = 28 + (i - 1) * 22
-        textLabel({
-            Size = UDim2.new(0.5, -12, 0, 20),
-            Position = UDim2.new(0, 12, 0, y),
-            Text = name,
-            TextSize = 13,
-            TextColor3 = T.SubText,
-        }, f)
-        values[i] = textLabel({
-            Size = UDim2.new(0.5, -12, 0, 20),
-            Position = UDim2.new(0.5, 0, 0, y),
-            Text = "0",
-            TextSize = 13,
-            Font = Enum.Font.GothamBold,
-            TextXAlignment = Enum.TextXAlignment.Right,
-        }, f)
-    end
-
-    local sessionTimerIndex = #rowNames + 1
-    local yTimer = 28 + (sessionTimerIndex - 1) * 22
-    textLabel({
-        Size = UDim2.new(0.5, -12, 0, 20),
-        Position = UDim2.new(0, 12, 0, yTimer),
-        Text = "⏱️ Session Timer",
-        TextSize = 13,
-        TextColor3 = T.SubText,
-    }, f)
-    local sessionTimerVal = textLabel({
-        Size = UDim2.new(0.5, -12, 0, 20),
-        Position = UDim2.new(0.5, 0, 0, yTimer),
-        Text = "00:00:00",
-        TextSize = 13,
-        Font = Enum.Font.GothamBold,
-        TextXAlignment = Enum.TextXAlignment.Right,
-        TextColor3 = T.Accent,
-    }, f)
-
-    return {
-        Set = function(_, list, sessionText)
-            for i, v in ipairs(list) do
-                if values[i] then values[i].Text = tostring(v) end
-            end
-            if sessionTimerVal and sessionText then
-                sessionTimerVal.Text = sessionText
-            end
-        end,
-    }
 end
 
 local function addStatBlock(page, title, rowNames)
@@ -1238,16 +1524,17 @@ local TAB_FAST = E.bolt .. " Fast"
 local TAB_AUTO = E.cycle .. " Auto"
 local TAB_STR = E.muscle .. " Strength"
 local TAB_BOSS = E.skull .. " Boss"
+local TAB_KILL = E.sword .. " Killing"
 local TAB_MISC = E.toolbox .. " Misc"
 
 local fastPage = createTab(TAB_FAST)
 local autoPage = createTab(TAB_AUTO)
 local strPage = createTab(TAB_STR)
 local bossPage = createTab(TAB_BOSS)
+local killPage = createTab(TAB_KILL)
 local miscPage = createTab(TAB_MISC)
 
-local fastToggle, autoToggle, repToggle, bossToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle, autoExecToggle
-local fastConfigToggle, autoConfigToggle, strengthConfigToggle, bossConfigToggle
+local fastToggle, autoToggle, repToggle, bossToggle, killAllToggle, killTargetToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle, autoExecToggle
 
 local function notifyState(title, v)
     notify(title, v and (E.ok .. " Enabled") or (E.no .. " Disabled"))
@@ -1256,6 +1543,7 @@ end
 local function resetStats()
     tracker.strGain = 0
     tracker.rebGain = 0
+    samples = {}
     notify(E.broom .. " Calculator", E.ok .. " Stats reset")
 end
 
@@ -1270,12 +1558,19 @@ local function resetBossStats()
     notify(E.broom .. " Boss Counter", E.ok .. " Compteur réinitialisé")
 end
 
+local function enableAutoFastRep()
+    if repSliderUpdate then repSliderUpdate(659) end
+    if repToggle and not repToggle.Value then
+        repToggle:Set(true)
+    end
+end
+
 local REB_ROWS = {
-    E.clock .. " Per minute", E.hourglass .. " Per hour",
+    E.bolt .. " Per second", E.clock .. " Per minute", E.hourglass .. " Per hour",
     E.sun .. " Per day", E.calendar .. " Per week", E.trophy .. " Total gained",
 }
 local STR_ROWS = {
-    E.clock .. " Per minute", E.hourglass .. " Per hour",
+    E.bolt .. " Per second", E.clock .. " Per minute", E.hourglass .. " Per hour",
     E.sun .. " Per day", E.calendar .. " Per week", E.trophy .. " Total gained",
     E.target .. " Strength per rep (avg)",
 }
@@ -1286,40 +1581,40 @@ local BOSS_ROWS = {
 -- Fast Rebirth
 addSection(fastPage, E.fire .. " Fast Rebirth (Pack)")
 addLabel(fastPage, "\u{26A0}\u{FE0F} You need pack for fast rebirth", 34)
+addLabel(fastPage, "\u{26A0}\u{FE0F} Use a 659 rep speed for no delay", 34)
 fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", "FastRebirth", "Enabled", false, function(v)
     fastRunId = fastRunId + 1
     if v then
         autoRunId = autoRunId + 1
         if autoToggle then autoToggle:Set(false) end
+        enableAutoFastRep()
         fastStatus = "Starting..."
-        sessionActive = true
-        sessionStartTime = tick()
-        lastRebirthAttemptTime = tick()
         notifyState(E.bolt .. " Fast rebirth", true)
         task.spawn(fastRebirthLoop, fastRunId)
     else
-        sessionActive = false
         notifyState(E.bolt .. " Fast rebirth", false)
     end
 end)
-fastConfigToggle = addToggle(fastPage, E.wrench .. " Save Config (Fast Rebirth)", "FastRebirth", "SaveConfigEnabled", true, function(v)
+addButton(fastPage, E.wrench .. " Save Config (Fast Rebirth)", function()
     local cfg = { Enabled = fastToggle.Value }
-    if v then saveCategoryConfig("FastRebirth", cfg) end
-    notify("Config", v and (E.ok .. " Fast Rebirth sauvegarde auto activée") or (E.no .. " Sauvegarde auto désactivée"))
+    saveCategoryConfig("FastRebirth", cfg)
+    notify("Config", E.ok .. " Fast Rebirth sauvegardé !")
 end)
 local fastStatusLabel = addLabel(fastPage, E.clip .. " " .. fastStatus, 60)
 addSection(fastPage, E.chart .. " Rebirth calculator")
-local fastRebBlock = addStatBlockWithSessionTimer(fastPage, E.loop .. " REBIRTHS (Instant Real-Time)", REB_ROWS)
+local fastRebBlock = addStatBlock(fastPage, E.loop .. " REBIRTHS (measured over 20 s)", REB_ROWS)
 addButton(fastPage, E.broom .. " Reset stats", resetStats)
 
 -- Auto Rebirth
 addSection(autoPage, E.cycle .. " Auto Rebirth (No Pack)")
 addLabel(autoPage, "\u{26A0}\u{FE0F} This tab can be used by everyone", 34)
+addLabel(autoPage, "\u{26A0}\u{FE0F} Use a 659 rep speed for no delay", 34)
 autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", "AutoRebirth", "Enabled", false, function(v)
     autoRunId = autoRunId + 1
     if v then
         fastRunId = fastRunId + 1
         if fastToggle then fastToggle:Set(false) end
+        enableAutoFastRep()
         autoStatus = "Starting..."
         notifyState(E.cycle .. " Auto rebirth", true)
         task.spawn(autoRebirthLoop, autoRunId)
@@ -1327,14 +1622,14 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", "AutoRebirth", "Ena
         notifyState(E.cycle .. " Auto rebirth", false)
     end
 end)
-autoConfigToggle = addToggle(autoPage, E.wrench .. " Save Config (Auto Rebirth)", "AutoRebirth", "SaveConfigEnabled", true, function(v)
+addButton(autoPage, E.wrench .. " Save Config (Auto Rebirth)", function()
     local cfg = { Enabled = autoToggle.Value }
-    if v then saveCategoryConfig("AutoRebirth", cfg) end
-    notify("Config", v and (E.ok .. " Auto Rebirth sauvegarde auto activée") or (E.no .. " Sauvegarde auto désactivée"))
+    saveCategoryConfig("AutoRebirth", cfg)
+    notify("Config", E.ok .. " Auto Rebirth sauvegardé !")
 end)
 local autoStatusLabel = addLabel(autoPage, E.clip .. " " .. autoStatus, 40)
 addSection(autoPage, E.chart .. " Rebirth calculator")
-local autoRebBlock = addStatBlock(autoPage, E.loop .. " REBIRTHS (Instant Real-Time)", REB_ROWS)
+local autoRebBlock = addStatBlock(autoPage, E.loop .. " REBIRTHS (measured over 20 s)", REB_ROWS)
 addButton(autoPage, E.broom .. " Reset stats", resetStats)
 
 -- Fast Strength
@@ -1348,15 +1643,15 @@ repToggle = addToggle(strPage, E.muscle .. " Fast strength", "Strength", "Enable
         notifyState(E.muscle .. " Fast strength", false)
     end
 end)
-addSlider(strPage, E.wrench .. " Reps per second", "Strength", "Rate", 0, 659, repRate, function(v) repRate = v end)
-strengthConfigToggle = addToggle(strPage, E.wrench .. " Save Config (Strength)", "Strength", "SaveConfigEnabled", true, function(v)
+repSliderUpdate = addSlider(strPage, E.wrench .. " Reps per second", "Strength", "Rate", 659, 3000, repRate, function(v) repRate = v end)
+addButton(strPage, E.wrench .. " Save Config (Strength)", function()
     local cfg = { Enabled = repToggle.Value, Rate = repRate }
-    if v then saveCategoryConfig("Strength", cfg) end
-    notify("Config", v and (E.ok .. " Strength sauvegarde auto activée") or (E.no .. " Sauvegarde auto désactivée"))
+    saveCategoryConfig("Strength", cfg)
+    notify("Config", E.ok .. " Strength sauvegardé !")
 end)
 local repLabel = addLabel(strPage, E.antenna .. " Real reps/s: --", 34)
 addSection(strPage, E.up .. " Strength calculator")
-local strBlock = addStatBlock(strPage, E.muscle .. " STRENGTH (Instant Real-Time)", STR_ROWS)
+local strBlock = addStatBlock(strPage, E.muscle .. " STRENGTH (measured over 20 s)", STR_ROWS)
 addButton(strPage, E.broom .. " Reset stats", resetStats)
 
 -- Boss Tab
@@ -1370,16 +1665,144 @@ bossToggle = addToggle(bossPage, E.target .. " Activer Auto Boss + Weight", "Bos
         notifyState(E.target .. " Auto Farm Boss", false)
     end
 end)
-bossConfigToggle = addToggle(bossPage, E.wrench .. " Save Config (Boss)", "Boss", "SaveConfigEnabled", true, function(v)
+addButton(bossPage, E.wrench .. " Save Config (Boss)", function()
     local cfg = { Enabled = bossToggle.Value }
-    if v then saveCategoryConfig("Boss", cfg) end
-    notify("Config", v and (E.ok .. " Boss sauvegarde auto activée") or (E.no .. " Sauvegarde auto désactivée"))
+    saveCategoryConfig("Boss", cfg)
+    notify("Config", E.ok .. " Boss sauvegardé !")
 end)
 local bossStatusLabel = addLabel(bossPage, E.clip .. " " .. bossStatus, 40)
 
 addSection(bossPage, E.chart .. " Compteur de Boss Tués")
 local bossBlock = addStatBlock(bossPage, E.skull .. " BOSS KILLS", BOSS_ROWS)
 addButton(bossPage, E.broom .. " Réinitialiser compteur boss", resetBossStats)
+
+-- ===================== KILLING TAB =====================
+addSection(killPage, E.sword .. " Module de Combat / Killing")
+
+killAllToggle = addToggle(killPage, E.sword .. " Auto Kill All Players", "Killing", "AutoKillAll", false, function(v)
+    killRunId = killRunId + 1
+    if v then
+        if killTargetToggle and killTargetToggle.Value then killTargetToggle:Set(false) end
+        notifyState("Auto Kill All", true)
+        task.spawn(autoKillAllLoop, killRunId)
+    else
+        notifyState("Auto Kill All", false)
+    end
+end)
+
+killTargetToggle = addToggle(killPage, E.target .. " Kill Target Players Only", "Killing", "KillTarget", false, function(v)
+    killRunId = killRunId + 1
+    if v then
+        if killAllToggle and killAllToggle.Value then killAllToggle:Set(false) end
+        notifyState("Kill Target Only", true)
+        task.spawn(killTargetPlayerLoop, killRunId)
+    else
+        notifyState("Kill Target Only", false)
+    end
+end)
+
+addButton(killPage, E.wrench .. " Save Config (Killing)", function()
+    local cfg = { AutoKillAll = killAllToggle.Value, KillTarget = killTargetToggle.Value }
+    saveCategoryConfig("Killing", cfg)
+    notify("Config", E.ok .. " Killing sauvegardé !")
+end)
+
+local killStatusLabel = addLabel(killPage, E.clip .. " " .. killStatus, 40)
+
+addSection(killPage, E.shield .. " Système Whitelist & Amis")
+
+addButton(killPage, E.heart .. " Auto Whitelist Friends", function()
+    local count = 0
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr:IsFriendsWith(LocalPlayer.UserId) then
+            whitelistPlayers[plr.Name] = true
+            count = count + 1
+        end
+    end
+    notify("Whitelist", E.ok .. " " .. count .. " ami(s) ajouté(s) à la whitelist !")
+end)
+
+addLabel(killPage, "Astuce : Utilise les boutons Safe et Target ci-dessous pour gérer chaque joueur en direct.", 45)
+
+addSection(killPage, E.crosshairs .. " Gestion des Joueurs Connectés")
+
+local playerListContainer = new("ScrollingFrame", {
+    Size = UDim2.new(1, 0, 0, 160),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 3,
+    ScrollBarImageColor3 = T.Accent,
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+}, killPage)
+new("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, playerListContainer)
+
+local function refreshPlayerListUI()
+    for _, c in ipairs(playerListContainer:GetChildren()) do
+        if c:IsA("Frame") then c:Destroy() end
+    end
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            local row = new("Frame", {
+                Size = UDim2.new(1, -6, 0, 36),
+                BackgroundColor3 = T.Topbar,
+                BorderSizePixel = 0,
+            }, playerListContainer)
+            corner(row, 6)
+            
+            textLabel({
+                Size = UDim2.new(0.38, 0, 1, 0),
+                Position = UDim2.new(0, 8, 0, 0),
+                Text = plr.Name,
+                TextSize = 12,
+                TextColor3 = T.Text,
+            }, row)
+
+            local wBtn = new("TextButton", {
+                Size = UDim2.fromOffset(65, 24),
+                Position = UDim2.new(0.40, 0, 0.5, -12),
+                BackgroundColor3 = whitelistPlayers[plr.Name] and T.Accent or T.Off,
+                Text = "Safe",
+                Font = Enum.Font.GothamBold,
+                TextSize = 10,
+                TextColor3 = T.Text,
+                BorderSizePixel = 0,
+            }, row)
+            corner(wBtn, 4)
+
+            wBtn.Activated:Connect(function()
+                whitelistPlayers[plr.Name] = not whitelistPlayers[plr.Name]
+                wBtn.BackgroundColor3 = whitelistPlayers[plr.Name] and T.Accent or T.Off
+                local stateStr = whitelistPlayers[plr.Name] and " protégé." or " retiré de la whitelist."
+                notify("Whitelist", plr.Name .. stateStr)
+            end)
+
+            local tBtn = new("TextButton", {
+                Size = UDim2.fromOffset(65, 24),
+                Position = UDim2.new(0.70, 0, 0.5, -12),
+                BackgroundColor3 = targetPlayers[plr.Name] and Color3.fromRGB(220, 50, 50) or T.Off,
+                Text = "Target",
+                Font = Enum.Font.GothamBold,
+                TextSize = 10,
+                TextColor3 = T.Text,
+                BorderSizePixel = 0,
+            }, row)
+            corner(tBtn, 4)
+
+            tBtn.Activated:Connect(function()
+                targetPlayers[plr.Name] = not targetPlayers[plr.Name]
+                tBtn.BackgroundColor3 = targetPlayers[plr.Name] and Color3.fromRGB(220, 50, 50) or T.Off
+                local stateStr = targetPlayers[plr.Name] and " ciblé en Priority Target !" or " retiré des targets."
+                notify("Target", plr.Name .. stateStr)
+            end)
+        end
+    end
+end
+
+connect(Players.PlayerAdded, refreshPlayerListUI)
+connect(Players.PlayerRemoving, refreshPlayerListUI)
+task.spawn(refreshPlayerListUI)
 
 -- Misc Tab
 addSection(miscPage, E.toolbox .. " Utilities")
@@ -1430,7 +1853,7 @@ autoEggToggle = addToggle(miscPage, E.egg .. " Auto eat protein egg", "Misc", "A
     end
 end)
 
-addToggle(miscPage, E.wrench .. " Save Config (Misc)", "Misc", "SaveConfigEnabled", true, function(v)
+addButton(miscPage, E.wrench .. " Save Config (Misc)", function()
     local cfg = {
         AutoExecute = autoExecToggle.Value,
         AntiAFK = antiAfkToggle.Value,
@@ -1438,8 +1861,8 @@ addToggle(miscPage, E.wrench .. " Save Config (Misc)", "Misc", "SaveConfigEnable
         AutoWheel = autoWheelToggle.Value,
         AutoEgg = autoEggToggle.Value
     }
-    if v then saveCategoryConfig("Misc", cfg) end
-    notify("Config", v and (E.ok .. " Misc sauvegarde auto activée") or (E.no .. " Sauvegarde auto désactivée"))
+    saveCategoryConfig("Misc", cfg)
+    notify("Config", E.ok .. " Misc sauvegardé !")
 end)
 
 local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 34)
@@ -1448,21 +1871,21 @@ addCredit(miscPage, E.sparkles .. " Made by TZ_THR, Thank you for using my scrip
 
 selectTab(TAB_FAST)
 
--- ===================== UPDATE LOOP (CALCULS EN TEMPS RÉEL) =====================
+-- ===================== UPDATE =====================
 task.spawn(function()
-    local lastTime = tick()
     while alive do
-        task.wait(0.2)
+        task.wait(1)
 
-        local now = tick()
-        local dt = now - lastTime
-        lastTime = now
-
-        repLabel:SetText(E.antenna .. (repToggle.Value and (" Real reps/s: " .. math.floor(repCounter / dt)) or " Real reps/s: --"))
+        repLabel:SetText(E.antenna .. (repToggle.Value and (" Real reps/s: " .. repCounter) or " Real reps/s: --"))
         repCounter = 0
 
         fpsLabel:SetText(E.game .. " FPS: " .. fpsFrames)
         fpsFrames = 0
+
+        fastStatusLabel:SetText(E.clip .. " " .. fastStatus)
+        autoStatusLabel:SetText(E.clip .. " " .. autoStatus)
+        bossStatusLabel:SetText(E.clip .. " " .. bossStatus)
+        killStatusLabel:SetText(E.clip .. " " .. killStatus)
 
         bossBlock:Set({
             bossKills.Common,
@@ -1474,35 +1897,29 @@ task.spawn(function()
             bossKills.Total
         })
 
-        local sessionDurationStr = "00:00:00"
-        if sessionActive and currentSelectedTab == TAB_FAST and fastToggle and fastToggle.Value then
-            local diff = tick() - sessionStartTime
-            local h = math.floor(diff / 3600)
-            local m = math.floor((diff % 3600) / 60)
-            local s = math.floor(diff % 60)
-            sessionDurationStr = string.format("%02d:%02d:%02d", h, m, s)
-        end
+        pushSample()
+        local a, b = samples[1], samples[#samples]
+        if a and b and b.t - a.t >= 3 then
+            local dt = b.t - a.t
+            local strRate = (b.str - a.str) / dt
+            local rebRate = (b.reb - a.reb) / dt
+            local dRep = b.rep - a.rep
 
-        if currentSelectedTab == TAB_FAST and fastToggle and fastToggle.Value then
-            fastStatusLabel:SetText(string.format("⏱️ Temps cycle réel : %.1fs", lastRealCycleTime))
+            local sList = projections(strRate)
+            table.insert(sList, fmt(tracker.strGain))
+            table.insert(sList, dRep > 0 and fmt((b.str - a.str) / dRep) or "--")
+            strBlock:Set(sList)
+
+            local rList = projections(rebRate)
+            table.insert(rList, fmt(tracker.rebGain))
+            fastRebBlock:Set(rList)
+            autoRebBlock:Set(rList)
         else
-            fastStatusLabel:SetText(E.clip .. " " .. fastStatus)
+            strBlock:Set({ "measuring...", "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.strGain), "--" })
+            local pending = { "measuring...", "measuring...", "measuring...", "measuring...", "measuring...", fmt(tracker.rebGain) }
+            fastRebBlock:Set(pending)
+            autoRebBlock:Set(pending)
         end
-
-        local sessionElapsed = math.max(1, tick() - sessionStartTime)
-        local currentStrRate = tracker.strGain / sessionElapsed
-        local currentRebRate = tracker.rebGain / sessionElapsed
-
-        local sList = projections(currentStrRate)
-        table.insert(sList, fmt(tracker.strGain))
-        table.insert(sList, repTotal > 0 and fmt(tracker.strGain / repTotal) or "--")
-        strBlock:Set(sList)
-
-        local rList = projections(currentRebRate)
-        table.insert(rList, fmt(tracker.rebGain))
-        
-        fastRebBlock:Set(rList, sessionDurationStr)
-        autoRebBlock:Set(rList)
     end
 end)
 
@@ -1525,6 +1942,7 @@ closeBtn.Activated:Connect(function()
     wheelRunId = wheelRunId + 1
     eggRunId = eggRunId + 1
     bossRunId = bossRunId + 1
+    killRunId = killRunId + 1
     setAntiAfk(false)
     if antiLagToggle and antiLagToggle.Value then antiLagStop() end
     for _, c in ipairs(connections) do pcall(function() c:Disconnect() end) end
