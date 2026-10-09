@@ -39,6 +39,15 @@ local function saveCategoryConfig(categoryName, data)
     end)
 end
 
+-- ===================== TELEPORT QUEUE ON TELEPORT =====================
+local QueuedScriptUrl = 'loadstring(game:HttpGet("raw.githubusercontent.com/TazenHub/by-TZ_THR/refs/heads/main/Tazen-hub.lua"))()'
+pcall(function()
+    local qs = syn and syn.queue_on_teleport or queue_on_teleport or (fluxus and fluxus.queue_on_teleport)
+    if qs and loadCategoryConfig("Killing")["AutoExec"] then
+        qs(QueuedScriptUrl)
+    end
+end)
+
 -- ===================== SETTINGS =====================
 local REBIRTH_COOLDOWN = 6
 
@@ -166,6 +175,11 @@ end
 local function serverHop()
     killStatus = "Changing server..."
     pcall(function()
+        local qs = syn and syn.queue_on_teleport or queue_on_teleport or (fluxus and fluxus.queue_on_teleport)
+        if qs and loadCategoryConfig("Killing")["AutoExec"] then
+            qs(QueuedScriptUrl)
+        end
+
         local servers = {}
         local req = game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100")
         local data = HttpService:JSONDecode(req)
@@ -1342,7 +1356,7 @@ local killPage = createTab(TAB_KILL, 65)
 local miscPage = createTab(TAB_MISC, 55)
 local infoPage = createTab(TAB_INFO, 55)
 
-local fastToggle, autoToggle, repToggle, killAllToggle, killTargetToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle, autoWhitelistToggle, autoSaveConfigToggle
+local fastToggle, autoToggle, repToggle, killAllToggle, killTargetToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle, autoWhitelistToggle, autoSaveConfigToggle, autoExecToggle
 
 local function notifyState(title, v)
     notify(title, v and (E.ok .. " Enabled") or (E.no .. " Disabled"))
@@ -1440,13 +1454,17 @@ killTargetToggle = addKillingToggle(killPage, E.target .. " Kill Target Players 
     end
 end)
 
+autoExecToggle = addKillingToggle(killPage, E.loop .. " Auto Execution on Server Hop", "Killing", "AutoExec", false, function(v)
+    notifyState("Auto Execution", v)
+end)
+
 autoSaveConfigToggle = addKillingToggle(killPage, E.wrench .. " Auto Save Config", "Killing", "AutoSaveConfig", false, function(v)
     if v then
-        local cfg = { AutoKillAll = killAllToggle.Value, KillTarget = killTargetToggle.Value, AutoSaveConfig = true }
+        local cfg = { AutoKillAll = killAllToggle.Value, KillTarget = killTargetToggle.Value, AutoExec = autoExecToggle.Value, AutoSaveConfig = true }
         saveCategoryConfig("Killing", cfg)
         notify("Config", E.ok .. " Killing settings auto-saved!")
     else
-        local cfg = { AutoKillAll = killAllToggle.Value, KillTarget = killTargetToggle.Value, AutoSaveConfig = false }
+        local cfg = { AutoKillAll = killAllToggle.Value, KillTarget = killTargetToggle.Value, AutoExec = autoExecToggle.Value, AutoSaveConfig = false }
         saveCategoryConfig("Killing", cfg)
         notify("Config", E.no .. " Auto-save disabled")
     end
@@ -1689,7 +1707,7 @@ copyDiscordBtn.Activated:Connect(function()
             setclipboard("https://discord.gg/y779ZnRGnd")
             notify("Discord", E.ok .. " Discord link copied to clipboard!")
         else
-            notify("Discord", E.no .. " Clipboard not supported by executor")
+            notify("Discord", E.no | " Clipboard not supported by executor")
         end
     end)
 end)
