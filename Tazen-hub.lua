@@ -940,7 +940,7 @@ local gui = new("ScreenGui", {
 
 local cam = workspace.CurrentCamera
 local vp = cam and cam.ViewportSize or Vector2.new(900, 600)
-local W = math.min(540, vp.X - 30)
+local W = math.min(560, vp.X - 30)
 local H = math.min(390, vp.Y - 30)
 
 local main = new("Frame", {
@@ -1050,14 +1050,14 @@ local function selectTab(name)
     end
 end
 
-local function createTab(name)
+local function createTab(name, width)
     tabCount = tabCount + 1
     local button = new("TextButton", {
-        Size = UDim2.fromOffset(80, 20),
+        Size = UDim2.fromOffset(width or 95, 20),
         BackgroundColor3 = T.Element,
         Text = name,
         Font = Enum.Font.GothamBold,
-        TextSize = 11,
+        TextSize = 10,
         TextColor3 = T.Text,
         BorderSizePixel = 0,
         LayoutOrder = tabCount,
@@ -1349,17 +1349,17 @@ local function notify(title, text)
     end)
 end
 
-local TAB_FAST = E.bolt .. " Fast"
-local TAB_AUTO = E.cycle .. " Auto"
-local TAB_STR = E.muscle .. " Strength"
+local TAB_FAST = E.bolt .. " Fast Rebirth"
+local TAB_AUTO = E.cycle .. " Auto Rebirth"
+local TAB_STR = E.muscle .. " Fast Strength"
 local TAB_KILL = E.sword .. " Killing"
 local TAB_MISC = E.toolbox .. " Misc"
 
-local fastPage = createTab(TAB_FAST)
-local autoPage = createTab(TAB_AUTO)
-local strPage = createTab(TAB_STR)
-local killPage = createTab(TAB_KILL)
-local miscPage = createTab(TAB_MISC)
+local fastPage = createTab(TAB_FAST, 102)
+local autoPage = createTab(TAB_AUTO, 102)
+local strPage = createTab(TAB_STR, 106)
+local killPage = createTab(TAB_KILL, 75)
+local miscPage = createTab(TAB_MISC, 65)
 
 local fastToggle, autoToggle, repToggle, killAllToggle, killTargetToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle, autoWhitelistToggle, autoSaveConfigToggle
 
