@@ -52,7 +52,7 @@ local E = {
     party = "\u{1F389}", game = "\u{1F3AE}", crown = "\u{1F451}", egg = "\u{1F95A}",
     wheel = "\u{1F3A1}", skull = "\u{1F480}", rainbow = "\u{1F308}", chest = "\u{1F381}",
     sword = "\u{2694}\u{FE0F}", shield = "\u{1F6E1}\u{FE0F}", crosshairs = "\u{1F3AF}",
-    shieldAlt = "\u{1F6E1}", info = "\u{2139}\u{FE0F}", link = "\u{1F517}", image = "\u{1F5BC}\u{FE0F}"
+    shieldAlt = "\u{1F6E1}", info = "\u{2139}\u{FE0F}", link = "\u{1F517}"
 }
 
 local repSpeedPetPriorities = {
@@ -888,13 +888,13 @@ connect(RunService.Heartbeat, function() fpsFrames = fpsFrames + 1 end)
 
 -- ===================== LIBRARY GUI THEME (ROSE, BLACK, WHITE) =====================
 local T = {
-    Background = Color3.fromRGB(15, 15, 15),     -- Noir pur bibliothèque
-    Topbar = Color3.fromRGB(235, 100, 150),     -- Rose vibrant inspiré du logo TZ
-    Element = Color3.fromRGB(28, 28, 28),       -- Élément gris très foncé/noir
-    Stroke = Color3.fromRGB(255, 130, 180),      -- Bordure rose lumineuse
-    Accent = Color3.fromRGB(240, 110, 160),     -- Rose personnalisé demandé
-    Text = Color3.new(1, 1, 1),                 -- Blanc pur
-    SubText = Color3.fromRGB(200, 200, 200),    -- Blanc cassé / Gris clair
+    Background = Color3.fromRGB(15, 15, 15),
+    Topbar = Color3.fromRGB(235, 100, 150),
+    Element = Color3.fromRGB(28, 28, 28),
+    Stroke = Color3.fromRGB(255, 130, 180),
+    Accent = Color3.fromRGB(240, 110, 160),
+    Text = Color3.new(1, 1, 1),
+    SubText = Color3.fromRGB(200, 200, 200),
     Off = Color3.fromRGB(50, 50, 50),
 }
 
@@ -954,7 +954,6 @@ local main = new("Frame", {
 corner(main, 6)
 stroke(main, T.Accent, 1.5)
 
--- Barre de titre fine en rose (hauteur 26 pixels)
 local topbar = new("Frame", {
     Name = "Topbar",
     Size = UDim2.new(1, 0, 0, 26),
@@ -1111,25 +1110,6 @@ local function addLabel(page, text, height)
         TextWrapped = true,
     }, f)
     return { SetText = function(_, t) l.Text = t end }
-end
-
-local function addImage(page, assetId, height)
-    local f = new("Frame", {
-        Size = UDim2.new(1, 0, 0, height or 90),
-        BackgroundColor3 = T.Element,
-        BorderSizePixel = 0,
-    }, page)
-    corner(f, 4)
-    stroke(f, T.Accent, 1)
-
-    local img = new("ImageLabel", {
-        Size = UDim2.new(1, -16, 1, -16),
-        Position = UDim2.new(0, 8, 0, 8),
-        BackgroundTransparency = 1,
-        Image = assetId,
-        ScaleType = Enum.ScaleType.Fit,
-    }, f)
-    return img
 end
 
 local function addToggle(page, name, defaultState, callback)
@@ -1684,10 +1664,7 @@ end)
 eggLabel = addLabel(miscPage, E.egg .. " Eaten: 0 | Boost: -- | Last: --", 32)
 local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 32)
 
--- Infos Tab (Intégration de l'ID d'image valide)
-addSection(infoPage, E.image .. " Hub Logo / Banner")
-addImage(infoPage, "rbxassetid://133336178270901", 100)
-
+-- Infos Tab (Clean text version without image asset dependencies)
 addSection(infoPage, E.sparkles .. " Credits & Info")
 addLabel(infoPage, "Roblox Main : TZ_THR\nRoblox Alt : TZ_THRV2", 40)
 
