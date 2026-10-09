@@ -888,13 +888,13 @@ connect(RunService.Heartbeat, function() fpsFrames = fpsFrames + 1 end)
 
 -- ===================== LIBRARY GUI THEME (ROSE, BLACK, WHITE) =====================
 local T = {
-    Background = Color3.fromRGB(15, 15, 15),
-    Topbar = Color3.fromRGB(130, 20, 40),
-    Element = Color3.fromRGB(28, 28, 28),
-    Stroke = Color3.fromRGB(60, 60, 60),
-    Accent = Color3.fromRGB(240, 110, 160),
-    Text = Color3.new(1, 1, 1),
-    SubText = Color3.fromRGB(200, 200, 200),
+    Background = Color3.fromRGB(15, 15, 15),     -- Noir pur bibliothèque
+    Topbar = Color3.fromRGB(22, 22, 22),        -- Noir/Gris très sombre pour la barre de titre
+    Element = Color3.fromRGB(28, 28, 28),       -- Élément gris très foncé/noir
+    Stroke = Color3.fromRGB(70, 45, 60),         -- Bordure subtile rosée/foncée
+    Accent = Color3.fromRGB(240, 110, 160),     -- Rose personnalisé demandé
+    Text = Color3.new(1, 1, 1),                 -- Blanc pur
+    SubText = Color3.fromRGB(200, 200, 200),    -- Blanc cassé / Gris clair
     Off = Color3.fromRGB(50, 50, 50),
 }
 
@@ -963,11 +963,20 @@ local topbar = new("Frame", {
 }, main)
 
 textLabel({
-    Size = UDim2.new(1, -100, 1, 0),
-    Position = UDim2.new(0, 10, 0, 0),
-    Text = "S Silence | Fast Farming - Good Night!",
-    Font = Enum.Font.GothamBold,
-    TextSize = 13,
+    Size = UDim2.new(1, -110, 0, 20),
+    Position = UDim2.new(0, 10, 0, 4),
+    Text = E.sparkles .. " Tazen hub V1",
+    Font = Enum.Font.GothamBlack,
+    TextSize = 15,
+    TextColor3 = T.Text,
+}, topbar)
+
+textLabel({
+    Size = UDim2.new(1, -110, 0, 12),
+    Position = UDim2.new(0, 10, 0, 22),
+    Text = E.heart .. " by TZ_THR  |  press K to hide",
+    TextSize = 10,
+    TextColor3 = T.Accent,
 }, topbar)
 
 local function topButton(text, xOffset)
