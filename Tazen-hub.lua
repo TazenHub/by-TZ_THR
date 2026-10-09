@@ -84,7 +84,6 @@ local killRunId = 0
 local repRate = 659
 local repTotal = 0
 
-local RebirthTracker = {} -- défini plus bas (compteur fiable basé sur la stat Rebirths)
 local killStatus = "Waiting..."
 
 
@@ -510,11 +509,9 @@ local function fastRebirthLoop(myId)
             local tFire = os.clock()
             task.spawn(function()
                 pcall(function()
-                    RebirthTracker.onFire()
                     local okR, res = pcall(function()
                         return rebirthRemote:InvokeServer("rebirthRequest")
                     end)
-                    if okR then RebirthTracker.onRemote(res) end
                 end)
             end)
 
@@ -541,11 +538,9 @@ local function autoRebirthLoop(myId)
     while autoRunId == myId do
         pcall(function()
             if canRebirth() then
-                RebirthTracker.onFire()
                 local okR, res = pcall(function()
                     return rebirthRemote:InvokeServer("rebirthRequest")
                 end)
-                if okR then RebirthTracker.onRemote(res) end
             end
         end)
         task.wait(REBIRTH_COOLDOWN)
@@ -712,10 +707,8 @@ do
         rebirths = {
             names = { "Rebirths", "Rebirth" },
             active = function() return fastStartTime or autoStartTime end,
-            window = 60,                    -- les renaissances arrivent par à-coups : fenêtre plus large
-            maxRate = 1 / REBIRTH_COOLDOWN, -- impossible d'aller plus vite que le cooldown
-            minGain = 2,                    -- pas de prédiction avant 2 renaissances
-            custom = true,                  -- détection multi-signaux (voir rebirthPoll)
+            window = 60,    -- les renaissances arrivent par à-coups : fenêtre plus large
+            minEvents = 2,  -- pas de prédiction avant 2 renaissances détectées
         },
     }
     StatTracker.stats = stats
@@ -727,13 +720,14 @@ do
         st.history = {}
         st.lastT = nil
         st.gap = nil
-        st.sRead, st.sLast, st.reqT, st.lastReg = nil, nil, nil, nil
+        st.events = 0
     end
     for _, st in pairs(stats) do resetOne(st) end
 
     -- Ajoute un gain détecté et mémorise le temps écoulé depuis le gain précédent
     local function gain(st, n, now)
         st.gained = st.gained + n
+        st.events = st.events + 1
         if st.lastT then st.gap = now - st.lastT end
         st.lastT = now
     end
@@ -762,7 +756,7 @@ do
     function StatTracker.reset(key)
         if key then
             resetOne(stats[key])
-            pcall(stats[key].custom or pollOne, stats[key]) -- baseline immédiate : on ne rate pas le 1er gain
+            pcall(pollOne, stats[key]) -- baseline immédiate : on ne rate pas le 1er gain
         else
             for _, st in pairs(stats) do resetOne(st) end
         end
@@ -779,7 +773,7 @@ do
 
     -- Gains par seconde : rythme récent si dispo, sinon moyenne de session
     function StatTracker.rate(st, now, startT)
-        if st.minGain and st.gained < st.minGain then return 0 end
+        if st.minEvents and st.events < st.minEvents then return 0 end
         local elapsed = math.max(1, now - startT)
         local h = st.history
         local r = st.gained / elapsed
@@ -787,7 +781,6 @@ do
             local dt = now - h[1].t
             if dt >= 5 then r = math.max(0, (st.gained - h[1].g) / dt) end
         end
-        if st.maxRate then r = math.min(r, st.maxRate) end
         return r
     end
 
@@ -816,70 +809,6 @@ do
         return g and string.format("%.2fs", g) or "--"
     end
 
-    -- ===== Détection des renaissances : 3 signaux indépendants, dédoublonnés =====
-    --  1) la stat "Rebirths" augmente
-    --  2) la Strength chute juste après l'envoi d'une demande de renaissance (le jeu remet la force à 0)
-    --  3) le serveur répond true
-    -- Une même renaissance ne peut être comptée qu'une fois (délai mini 3 s, le cooldown est de 6 s).
-    local function registerRebirth(st, n, now)
-        if st.lastReg and now - st.lastReg < 3 then return end
-        st.lastReg = now
-        gain(st, n, now)
-    end
-
-    local function rebirthPoll()
-        local st = stats.rebirths
-        local now = tick()
-
-        -- Signal 1 : stat Rebirths
-        if not st.read then
-            st.read = findSource(st.names)
-            st.last = nil
-        end
-        if st.read then
-            local ok, cur = pcall(st.read)
-            if ok and cur then
-                if st.last and cur > st.last then
-                    registerRebirth(st, math.max(1, math.floor(cur - st.last + 0.5)), now)
-                end
-                st.last = cur
-            else
-                st.read, st.last = nil, nil
-            end
-        end
-
-        -- Signal 2 : chute de Strength après une demande de renaissance
-        if not st.sRead then
-            st.sRead = findSource(stats.strength.names)
-            st.sLast = nil
-        end
-        if st.sRead then
-            local ok, cur = pcall(st.sRead)
-            if ok and cur then
-                if st.sLast and st.reqT and now - st.reqT < 4 and cur < st.sLast * 0.9 then
-                    registerRebirth(st, 1, now)
-                    st.reqT = nil -- une demande = une renaissance
-                end
-                st.sLast = cur
-            else
-                st.sRead, st.sLast = nil, nil
-            end
-        end
-    end
-
-    -- Appelé juste avant l'envoi de la demande de renaissance
-    function RebirthTracker.onFire()
-        stats.rebirths.reqT = tick()
-    end
-
-    -- Signal 3 : réponse du serveur
-    function RebirthTracker.onRemote(res)
-        if res == true then registerRebirth(stats.rebirths, 1, tick()) end
-    end
-
-    -- Poll spécial pour les renaissances (appelé par la boucle de détection)
-    stats.rebirths.custom = rebirthPoll
-
     -- Boucle de détection : chaque stat n'est lue/comptée que si son module est actif
     task.spawn(function()
         local lastRecord = 0
@@ -890,7 +819,7 @@ do
             if doRecord then lastRecord = now end
             for _, st in pairs(stats) do
                 if st.active() then
-                    pcall(st.custom or pollOne, st)
+                    pcall(pollOne, st)
                     if doRecord then pcall(record, st, now) end
                 end
             end
