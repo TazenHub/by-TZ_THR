@@ -639,9 +639,9 @@ local function formatNumber(val)
     return tostring(math.floor(val))
 end
 
--- ===================== STAT TRACKER (Strength / Durability) =====================
--- Détecte les gains réels du joueur (uniquement quand Fast strength est actif)
--- puis prédit les gains futurs à partir du rythme observé.
+-- ===================== STAT TRACKER (Strength / Durability / Rebirths) =====================
+-- Même moteur pour les 3 stats : on lit la stat du joueur, on cumule uniquement les hausses
+-- pendant que le module concerné est actif, puis on prédit avec le rythme observé.
 local StatTracker = {}
 do
     local SUFFIX = {
@@ -665,8 +665,7 @@ do
         return nil
     end
 
-    -- Cherche la stat dans leaderstats, puis directement sur le joueur (Durability y est souvent),
-    -- puis dans quelques dossiers courants, puis dans les attributs.
+    -- Cherche la stat dans leaderstats, puis sur le joueur, puis dans quelques dossiers, puis en attribut.
     local function findSource(names)
         local containers = {}
         local candidates = {
@@ -687,81 +686,111 @@ do
                     return function()
                         if not inst.Parent then return nil end
                         return parse(inst.Value)
-                    end, ((c == LocalPlayer) and "Player" or c.Name) .. "." .. name
+                    end
                 end
             end
         end
         for _, name in ipairs(names) do
             if LocalPlayer:GetAttribute(name) ~= nil then
-                return function() return parse(LocalPlayer:GetAttribute(name)) end, "Attribut." .. name
+                return function() return parse(LocalPlayer:GetAttribute(name)) end
             end
         end
         return nil
     end
 
-    StatTracker.findSource = findSource
-
     local stats = {
-        strength   = { names = { "Strength", "Muscle" } },
-        durability = { names = { "Durability" } },
+        strength = {
+            names = { "Strength", "Muscle" },
+            active = function() return repStartTime end,
+        },
+        durability = {
+            names = { "Durability" },
+            active = function() return repStartTime end,
+        },
+        rebirths = {
+            names = { "Rebirths", "Rebirth" },
+            active = function() return fastStartTime or autoStartTime end,
+            window = 60,                    -- les renaissances arrivent par à-coups : fenêtre plus large
+            maxRate = 1 / REBIRTH_COOLDOWN, -- impossible d'aller plus vite que le cooldown
+            minGain = 2,                    -- pas de prédiction avant 2 renaissances
+        },
     }
     StatTracker.stats = stats
 
-    function StatTracker.reset()
-        for _, st in pairs(stats) do
-            st.read = nil
-            st.last = nil
-            st.gained = 0
-            st.history = {}
-        end
+    local function resetOne(st)
+        st.read = nil
+        st.last = nil
+        st.gained = 0
+        st.history = {}
+        st.lastT = nil
+        st.gap = nil
+        st.srvTrue, st.moved, st.viaSrv = 0, false, false
     end
-    StatTracker.reset()
+    for _, st in pairs(stats) do resetOne(st) end
 
-    -- Lit les stats et cumule uniquement les hausses (les baisses = rebirth/reset, on ignore)
-    function StatTracker.poll()
-        for _, st in pairs(stats) do
-            if not st.read then
-                st.read = findSource(st.names)
+    -- Ajoute un gain détecté et mémorise le temps écoulé depuis le gain précédent
+    local function gain(st, n, now)
+        st.gained = st.gained + n
+        if st.lastT then st.gap = now - st.lastT end
+        st.lastT = now
+    end
+
+    -- Lit la stat et cumule uniquement les hausses (les baisses = reset/rebirth, ignorées)
+    local function pollOne(st)
+        if not st.read then
+            st.read = findSource(st.names)
+            st.last = nil
+        end
+        if st.read then
+            local ok, cur = pcall(st.read)
+            if ok and cur then
+                if st.last and cur > st.last then
+                    if st.viaSrv then
+                        st.viaSrv = false -- déjà compté via le serveur, on repasse sur la stat
+                    else
+                        gain(st, cur - st.last, tick())
+                    end
+                    st.moved = true
+                end
+                st.last = cur
+            else
+                st.read = nil -- source perdue : on la recherchera au prochain tour
                 st.last = nil
             end
-            if st.read then
-                local ok, cur = pcall(st.read)
-                if ok and cur then
-                    if st.last and cur > st.last then
-                        st.gained = st.gained + (cur - st.last)
-                    end
-                    st.last = cur
-                else
-                    st.read = nil -- source perdue : on la recherchera au prochain tour
-                    st.last = nil
-                end
-            end
+        end
+    end
+
+    -- reset("rebirths") remet une stat à zéro ; reset() les remet toutes à zéro
+    function StatTracker.reset(key)
+        if key then
+            resetOne(stats[key])
+            pcall(pollOne, stats[key]) -- baseline immédiate : on ne rate pas le 1er gain
+        else
+            for _, st in pairs(stats) do resetOne(st) end
         end
     end
 
     -- Enregistre un point par seconde pour calculer le rythme récent
-    function StatTracker.record(now)
-        for _, st in pairs(stats) do
-            local h = st.history
-            h[#h + 1] = { t = now, g = st.gained }
-            while #h > 2 and now - h[2].t >= WINDOW do
-                table.remove(h, 1)
-            end
+    local function record(st, now)
+        local h, w = st.history, st.window or WINDOW
+        h[#h + 1] = { t = now, g = st.gained }
+        while #h > 2 and now - h[2].t >= w do
+            table.remove(h, 1)
         end
     end
 
-    -- Gains par seconde : rythme des 30 dernières secondes si dispo, sinon moyenne de session
+    -- Gains par seconde : rythme récent si dispo, sinon moyenne de session
     function StatTracker.rate(st, now, startT)
+        if st.minGain and st.gained < st.minGain then return 0 end
         local elapsed = math.max(1, now - startT)
         local h = st.history
-        if elapsed > WINDOW and #h >= 2 then
-            local old = h[1]
-            local dt = now - old.t
-            if dt >= 5 then
-                return math.max(0, (st.gained - old.g) / dt)
-            end
+        local r = st.gained / elapsed
+        if elapsed > (st.window or WINDOW) and #h >= 2 then
+            local dt = now - h[1].t
+            if dt >= 5 then r = math.max(0, (st.gained - h[1].g) / dt) end
         end
-        return st.gained / elapsed
+        if st.maxRate then r = math.min(r, st.maxRate) end
+        return r
     end
 
     function StatTracker.text(icon, label, st, now, startT)
@@ -775,116 +804,50 @@ do
             formatNumber(r * 604800), formatNumber(r * 2592000))
     end
 
-    -- Boucle de détection : tourne en continu mais ne compte que si Fast strength est actif
+    -- Affichage renaissances : total + projections (pas de "par seconde", inutile avec 6 s de cooldown)
+    function StatTracker.rebirthText(icon, now, startT)
+        local st = stats.rebirths
+        local r = StatTracker.rate(st, now, startT)
+        local function p(x) return formatNumber(math.floor(x + 0.5)) end
+        return string.format("%s Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
+            icon, formatNumber(st.gained), p(r * 60), p(r * 3600), p(r * 86400), p(r * 604800), p(r * 2592000))
+    end
+
+    function StatTracker.rebirthGap()
+        local g = stats.rebirths.gap
+        return g and string.format("%.2fs", g) or "--"
+    end
+
+    -- Secours silencieux : si la stat Rebirths n'existe pas ou ne bouge jamais alors que le serveur
+    -- confirme des renaissances (réponse true), on compte avec les confirmations du serveur.
+    function RebirthTracker.onRemote(res)
+        local st = stats.rebirths
+        if res ~= true then return end
+        st.srvTrue = st.srvTrue + 1
+        if st.moved then return end
+        if (not st.read) or st.srvTrue >= 3 then
+            if not st.viaSrv then
+                st.viaSrv = true
+                st.gained = math.max(st.gained, st.srvTrue - 1) -- rattrape les premières confirmations
+            end
+            gain(st, 1, tick())
+        end
+    end
+
+    -- Boucle de détection : chaque stat n'est lue/comptée que si son module est actif
     task.spawn(function()
         local lastRecord = 0
         while alive do
             task.wait(0.2)
-            if repStartTime then
-                pcall(StatTracker.poll)
-                local now = tick()
-                if now - lastRecord >= 1 then
-                    lastRecord = now
-                    pcall(StatTracker.record, now)
+            local now = tick()
+            local doRecord = now - lastRecord >= 1
+            if doRecord then lastRecord = now end
+            for _, st in pairs(stats) do
+                if st.active() then
+                    pcall(pollOne, st)
+                    if doRecord then pcall(record, st, now) end
                 end
             end
-        end
-    end)
-end
-
--- ===================== REBIRTH TRACKER =====================
--- Deux signaux sont surveillés :
---  1) la stat "Rebirths" du joueur (méthode préférée, la plus fiable)
---  2) les réponses "true" du serveur à la demande de renaissance
--- Si la stat n'existe pas ou ne bouge pas alors que le serveur confirme des renaissances,
--- on bascule automatiquement sur le signal serveur pour que le compteur ne reste jamais bloqué.
-do
-    local T = RebirthTracker
-
-    local function clear()
-        T.count, T.startT, T.firstT, T.lastT, T.gap = 0, tick(), nil, nil, nil
-        T.read, T.last, T.desc = nil, nil, nil
-        T.statMoved, T.mode = false, "stat"
-        T.srvTrue, T.srvTotal = 0, 0
-    end
-    clear()
-
-    local function register(now, n)
-        if T.lastT then T.gap = now - T.lastT end
-        T.count = T.count + n
-        T.firstT = T.firstT or now
-        T.lastT = now
-    end
-
-    function T.poll()
-        if not T.read then
-            T.read, T.desc = StatTracker.findSource({ "Rebirths", "Rebirth" })
-            T.last = nil
-        end
-        if T.read then
-            local ok, cur = pcall(T.read)
-            if ok and cur then
-                if T.last and cur > T.last then
-                    local n = math.max(1, math.floor(cur - T.last + 0.5))
-                    if T.mode == "srv" then
-                        -- déjà compté via le serveur : la stat bouge enfin, on repasse sur elle
-                        T.mode = "stat"
-                    else
-                        register(tick(), n)
-                    end
-                    T.statMoved = true
-                end
-                T.last = cur
-            else
-                T.read, T.last = nil, nil
-            end
-        end
-    end
-
-    function T.reset()
-        clear()
-        pcall(T.poll) -- baseline immédiate pour ne pas rater la 1re renaissance
-    end
-
-    -- Appelé à chaque réponse du serveur à "rebirthRequest"
-    function T.onRemote(res)
-        T.srvTotal = T.srvTotal + 1
-        if res ~= true then return end
-        T.srvTrue = T.srvTrue + 1
-        if T.statMoved then return end -- la stat fait déjà le travail
-        if (not T.read) or T.srvTrue >= 3 then
-            if T.mode ~= "srv" then
-                T.mode = "srv"
-                T.count = math.max(T.count, T.srvTrue - 1) -- rattrape les premières confirmations
-            end
-            register(tick(), 1)
-        end
-    end
-
-    function T.lastText()
-        return T.gap and string.format("%.2fs", T.gap) or "--"
-    end
-
-    -- Rythme observé entre la 1re et la dernière renaissance, plafonné par le cooldown
-    function T.rate(now)
-        if T.count < 2 or not T.firstT then return 0 end
-        local r = (T.count - 1) / math.max(1, now - T.firstT)
-        return math.min(r, 1 / REBIRTH_COOLDOWN)
-    end
-
-    function T.text(icon, now)
-        local r = T.rate(now)
-        local function p(x) return formatNumber(math.floor(x + 0.5)) end
-        local src = (T.mode == "srv") and "serveur" or (T.desc or "stat introuvable")
-        return string.format("%s Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s\n[source: %s | serveur ok: %d/%d]",
-            icon, formatNumber(T.count), p(r * 60), p(r * 3600), p(r * 86400), p(r * 604800), p(r * 2592000),
-            src, T.srvTrue, T.srvTotal)
-    end
-
-    task.spawn(function()
-        while alive do
-            task.wait(0.2)
-            if fastStartTime or autoStartTime then pcall(T.poll) end
         end
     end)
 end
@@ -1519,7 +1482,7 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", false, function(v)
     fastRunId = fastRunId + 1
     if v then
         fastStartTime = tick()
-        RebirthTracker.reset()
+        StatTracker.reset("rebirths")
         autoRunId = autoRunId + 1
         if autoToggle then autoToggle:Set(false) end
         enableAutoFastRep()
@@ -1540,7 +1503,7 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", false, function(v)
     autoRunId = autoRunId + 1
     if v then
         autoStartTime = tick()
-        RebirthTracker.reset()
+        StatTracker.reset("rebirths")
         fastRunId = fastRunId + 1
         if fastToggle then fastToggle:Set(false) end
         enableAutoFastRep()
@@ -1561,7 +1524,8 @@ repToggle = addToggle(strPage, E.muscle .. " Fast strength", false, function(v)
     if v then
         repStartTime = tick()
         repTotal = 0
-        StatTracker.reset()
+        StatTracker.reset("strength")
+        StatTracker.reset("durability")
         notify(E.muscle .. " Fast strength", E.target .. " " .. repRate .. " reps/s targeted")
         task.spawn(fastRepLoop, repRunId)
     else
@@ -1744,12 +1708,12 @@ task.spawn(function()
             fpsFrames = 0
             killStatusLabel:SetText(E.clip .. " " .. killStatus)
 
-            -- Calculateur Renaissances (basé sur les renaissances réellement détectées)
+            -- Calculateur Renaissances (même moteur que Strength / Durability)
             local rbNow = tick()
             if fastStartTime then
                 fastTimerLabel:SetText(string.format("%s Session Time: %s | Dernière renaissance : %s",
-                    E.clock, formatSeconds(rbNow - fastStartTime), RebirthTracker.lastText()))
-                fastCalcLabel:SetText(RebirthTracker.text(E.chart, rbNow))
+                    E.clock, formatSeconds(rbNow - fastStartTime), StatTracker.rebirthGap()))
+                fastCalcLabel:SetText(StatTracker.rebirthText(E.chart, rbNow, fastStartTime))
             else
                 fastTimerLabel:SetText(E.clock .. " Session Time: 0s | Dernière renaissance : --")
                 fastCalcLabel:SetText(E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
@@ -1757,8 +1721,8 @@ task.spawn(function()
 
             if autoStartTime then
                 autoTimerLabel:SetText(string.format("%s Session Time: %s | Dernière renaissance : %s",
-                    E.clock, formatSeconds(rbNow - autoStartTime), RebirthTracker.lastText()))
-                autoCalcLabel:SetText(RebirthTracker.text(E.chart, rbNow))
+                    E.clock, formatSeconds(rbNow - autoStartTime), StatTracker.rebirthGap()))
+                autoCalcLabel:SetText(StatTracker.rebirthText(E.chart, rbNow, autoStartTime))
             else
                 autoTimerLabel:SetText(E.clock .. " Session Time: 0s | Dernière renaissance : --")
                 autoCalcLabel:SetText(E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
