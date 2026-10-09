@@ -888,13 +888,13 @@ connect(RunService.Heartbeat, function() fpsFrames = fpsFrames + 1 end)
 
 -- ===================== LIBRARY GUI THEME (ROSE, BLACK, WHITE) =====================
 local T = {
-    Background = Color3.fromRGB(15, 15, 15),     -- Noir pur bibliothèque
-    Topbar = Color3.fromRGB(130, 20, 40),       -- Rouge foncé inspiré du modèle
-    Element = Color3.fromRGB(28, 28, 28),       -- Élément gris très foncé/noir
-    Stroke = Color3.fromRGB(60, 60, 60),         -- Bordure subtile
-    Accent = Color3.fromRGB(240, 110, 160),     -- Rose personnalisé demandé
-    Text = Color3.new(1, 1, 1),                 -- Blanc pur
-    SubText = Color3.fromRGB(200, 200, 200),    -- Gris clair / Blanc cassé
+    Background = Color3.fromRGB(15, 15, 15),
+    Topbar = Color3.fromRGB(130, 20, 40),
+    Element = Color3.fromRGB(28, 28, 28),
+    Stroke = Color3.fromRGB(60, 60, 60),
+    Accent = Color3.fromRGB(240, 110, 160),
+    Text = Color3.new(1, 1, 1),
+    SubText = Color3.fromRGB(200, 200, 200),
     Off = Color3.fromRGB(50, 50, 50),
 }
 
@@ -1309,7 +1309,7 @@ local function addCredit(page, text)
         Position = UDim2.new(0, 8, 0, 0),
         Text = text,
         Font = Enum.Font.GothamBold,
-        TextSize: 12,
+        TextSize = 12,
         TextColor3 = T.Text,
         TextWrapped = true,
         TextXAlignment = Enum.TextXAlignment.Center,
@@ -1763,5 +1763,5 @@ end)
 
 end)
 if not ok then
-    warn("[Tazen hub] Error: " + tostring(err))
+    warn("[Tazen hub] Error: " .. tostring(err))
 end
