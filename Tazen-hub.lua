@@ -1,6 +1,6 @@
 -- Tazen hub V1 by TZ_THR (standalone: Rayfield-style UI, no HttpGet needed)
 
-local ok, err = pcall(function()
+local success, err = pcall(function()
 
 if game.PlaceId ~= 3623096087 then
     warn("[Tazen hub] Wrong PlaceId: " .. tostring(game.PlaceId))
@@ -20,12 +20,12 @@ local LocalPlayer = Players.LocalPlayer
 local CONFIG_FILE_PREFIX = "TazenHub_Config_"
 
 local function loadCategoryConfig(categoryName)
-    local success, result = pcall(function()
+    local ok, result = pcall(function()
         if readfile and isfile and isfile(CONFIG_FILE_PREFIX .. categoryName .. ".json") then
             return HttpService:JSONDecode(readfile(CONFIG_FILE_PREFIX .. categoryName .. ".json"))
         end
     end)
-    if success and type(result) == "table" then
+    if ok and type(result) == "table" then
         return result
     end
     return {}
@@ -52,16 +52,16 @@ end)
 local REBIRTH_COOLDOWN = 6
 
 local E = {
-    bolt = "\u{26A1}", cycle = "\u{1F504}", muscle = "\u{1F4AA}", toolbox = "\u{1F9F0}",
-    sleep = "\u{1F634}", rocket = "\u{1F680}", sparkles = "\u{2728}", heart = "\u{1F496}",
-    ok = "\u{2705}", no = "\u{274C}", chart = "\u{1F4CA}", up = "\u{1F4C8}", broom = "\u{1F9F9}",
-    clock = "\u{1F550}", hourglass = "\u{23F3}", sun = "\u{1F31E}", calendar = "\u{1F4C5}",
-    trophy = "\u{1F3C6}", target = "\u{1F3AF}", wrench = "\u{1F527}", clip = "\u{1F4CB}",
-    bulb = "\u{1F4A1}", fire = "\u{1F525}", loop = "\u{1F501}", antenna = "\u{1F4E1}",
-    party = "\u{1F389}", game = "\u{1F3AE}", crown = "\u{1F451}", egg = "\u{1F95A}",
-    wheel = "\u{1F3A1}", skull = "\u{1F480}", rainbow = "\u{1F308}", chest = "\u{1F381}",
-    sword = "\u{2694}\u{FE0F}", shield = "\u{1F6E1}\u{FE0F}", crosshairs = "\u{1F3AF}",
-    shieldAlt = "\u{1F6E1}", info = "\u{2139}\u{FE0F}", link = "\u{1F517}"
+    bolt = "⚡", cycle = "🔄", muscle = "💪", toolbox = "🧰",
+    sleep = "😴", rocket = "🚀", sparkles = "✨", heart = "💕",
+    ok = "✅", no = "❌", chart = "📊", up = "📈", broom = "🧹",
+    clock = "🕒", hourglass = "⏳", sun = "🌞", calendar = "📅",
+    trophy = "🏆", target = "🎯", wrench = "🔧", clip = "📋",
+    bulb = "💡", fire = "🔥", loop = "🔁", antenna = "📡",
+    party = "🎉", game = "🎮", crown = "👑", egg = "🥚",
+    wheel = "🎡", skull = "💀", rainbow = "🌈", chest = "🎁",
+    sword = "⚔️", shield = "🛡️", crosshairs = "🎯",
+    shieldAlt = "🛡️", info = "ℹ️", link = "🔗"
 }
 
 local repSpeedPetPriorities = {
@@ -74,8 +74,8 @@ local repSpeedPetPriorities = {
 local alive = true
 local connections = {}
 local function connect(signal, fn)
-    local success, c = pcall(function() return signal:Connect(fn) end)
-    if success and c then
+    local ok, c = pcall(function() return signal:Connect(fn) end)
+    if ok and c then
         table.insert(connections, c)
         return c
     end
@@ -454,16 +454,16 @@ local function fastRebirthLoop(myId)
                 if not want[pet] and pet.Parent then table.insert(outList, pet) end
             end
             local newEquipped = {}
+            local function fire(kind, pet)
+                pcall(function() equipPetEvent:FireServer(kind, pet) end)
+                if not burst then task.wait() end
+            end
+
             for _, pet in ipairs(wanted) do
                 if pet.Parent then
                     if not have[pet] then table.insert(inList, pet) end
                     table.insert(newEquipped, pet)
                 end
-            end
-
-            local function fire(kind, pet)
-                pcall(function() equipPetEvent:FireServer(kind, pet) end)
-                if not burst then task.wait() end
             end
 
             local firstN = equipFirst and math.min(#inList, #outList) or #outList
@@ -1377,7 +1377,7 @@ end
 
 -- Fast Rebirth
 addSection(fastPage, E.fire .. " Fast Rebirth (Pack)")
-addLabel(fastPage, "\u{26A0}\u{FE0F} You need pack for fast rebirth", 32)
+addLabel(fastPage, "⚠️ You need pack for fast rebirth", 32)
 fastToggle = addToggle(fastPage, E.bolt .. " Fast Rebirth", false, function(v)
     fastRunId = fastRunId + 1
     if v then
@@ -1398,7 +1398,7 @@ local fastCalcLabel = addLabel(fastPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1
 
 -- Auto Rebirth
 addSection(autoPage, E.cycle .. " Auto Rebirth (No Pack)")
-addLabel(autoPage, "\u{26A0}\u{FE0F} This tab can be used by everyone", 32)
+addLabel(autoPage, "⚠️ This tab can be used by everyone", 32)
 autoToggle = addToggle(autoPage, E.cycle .. " Auto Rebirth", false, function(v)
     autoRunId = autoRunId + 1
     if v then
@@ -1805,6 +1805,7 @@ connect(UserInputService.InputBegan, function(input, processed)
 end)
 
 end)
-if not ok then
-    warn("[Tazen hub] Error: " .. tostring(err))
+
+if not success then
+    warn("[Tazen hub Error] : " .. tostring(err))
 end
