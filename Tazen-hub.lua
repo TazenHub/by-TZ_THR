@@ -165,17 +165,23 @@ local function equipFists()
     end)
 end
 
--- Fonction pour détecter si un joueur est dans une Safe Zone
+-- Fonction de détection des zones Non-PVP / Safe Zone
 local function isInSafeZone(character)
     if not character then return true end
     
-    if character:GetAttribute("InSafeZone") == true or character:GetAttribute("SafeZone") == true or character:GetAttribute("Shield") == true then
+    -- 1. Vérification des attributs globaux de non-PVP ou de zone sécurisée sur le personnage
+    if character:GetAttribute("InSafeZone") == true 
+        or character:GetAttribute("SafeZone") == true 
+        or character:GetAttribute("Shield") == true 
+        or character:GetAttribute("NonPvp") == true 
+        or character:GetAttribute("Protected") == true then
         return true
     end
     
+    -- 2. Recherche d'objets de bouclier ou d'effets visuels/valeurs non-PVP dans le modèle du joueur
     for _, child in ipairs(character:GetChildren()) do
         local nameLower = child.Name:lower()
-        if nameLower:find("safe") or nameLower:find("shield") or nameLower:find("protection") or nameLower:find("bubble") then
+        if nameLower:find("safe") or nameLower:find("shield") or nameLower:find("protection") or nameLower:find("bubble") or nameLower:find("nonpvp") then
             if child:IsA("BoolValue") and child.Value == true then
                 return true
             elseif child:IsA("BasePart") or child:IsA("Model") then
