@@ -51,7 +51,8 @@ local E = {
     bulb = "\u{1F4A1}", fire = "\u{1F525}", loop = "\u{1F501}", antenna = "\u{1F4E1}",
     party = "\u{1F389}", game = "\u{1F3AE}", crown = "\u{1F451}", egg = "\u{1F95A}",
     wheel = "\u{1F3A1}", skull = "\u{1F480}", rainbow = "\u{1F308}", chest = "\u{1F381}",
-    sword = "\u{2694}\u{FE0F}", shield = "\u{1F6E1}\u{FE0F}", crosshairs = "\u{1F3AF}"
+    sword = "\u{2694}\u{FE0F}", shield = "\u{1F6E1}\u{FE0F}", crosshairs = "\u{1F3AF}",
+    shieldAlt = "\u{1F6E1}"
 }
 
 local IMAGE_ASSET = "rbxassetid://91265185075125"
@@ -93,6 +94,11 @@ local lastRebirthTick = nil
 local fastStartTime = nil
 local autoStartTime = nil
 local repStartTime = nil
+
+local strengthGainedTotal = 0
+local durabilityGainedTotal = 0
+local lastStrengthVal = 0
+local lastDurabilityVal = 0
 
 local whitelistPlayers = {}
 local targetPlayers = {}
@@ -582,7 +588,7 @@ local function fastRepLoop(myId)
             carry = carry + repRate * dt
             local n = math.floor(carry)
             carry = carry - n
-            if n > 200 then n = 200 end
+            -- Suppression de toute limite arbitraire par frame pour laisser tout passer
 
             for _ = 1, n do
                 pcall(muscleEvent.FireServer, muscleEvent, "rep")
@@ -639,7 +645,8 @@ local function formatSeconds(totalSeconds)
 end
 
 local function formatNumber(val)
-    if val >= 1e12 then return string.format("%.2fT", val / 1e12)
+    if val >= 1e15 then return string.format("%.2fQ", val / 1e15)
+    elseif val >= 1e12 then return string.format("%.2fT", val / 1e12)
     elseif val >= 1e9 then return string.format("%.2fB", val / 1e9)
     elseif val >= 1e6 then return string.format("%.2fM", val / 1e6)
     elseif val >= 1e3 then return string.format("%.2fk", val / 1e3)
@@ -1314,13 +1321,15 @@ end)
 local autoTimerLabel = addLabel(autoPage, E.clock .. " Session Time: 0s | Rebirth/s: 0.0", 36)
 local autoCalcLabel = addLabel(autoPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0", 55)
 
--- Fast Strength
+-- Fast Strength & Durability
 addSection(strPage, E.muscle .. " Fast Strength")
 repToggle = addToggle(strPage, E.muscle .. " Fast strength", false, function(v)
     repRunId = repRunId + 1
     if v then
         repStartTime = tick()
         repTotal = 0
+        strengthGainedTotal = 0
+        durabilityGainedTotal = 0
         notify(E.muscle .. " Fast strength", E.target .. " " .. repRate .. " reps/s targeted")
         task.spawn(fastRepLoop, repRunId)
     else
@@ -1330,7 +1339,10 @@ repToggle = addToggle(strPage, E.muscle .. " Fast strength", false, function(v)
 end)
 repSliderUpdate = addSlider(strPage, E.wrench .. " Reps per second", 0, 1050, repRate, function(v) repRate = v end)
 local repTimerLabel = addLabel(strPage, E.clock .. " Session Time: 0s | Moy. Reps/s: 0", 36)
-local repCalcLabel = addLabel(strPage, E.chart .. " 0/s | Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0", 65)
+local repCalcLabel = addLabel(strPage, E.muscle .. " Strength Gain Predictor\nTot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0", 65)
+
+addSection(strPage, E.shieldAlt .. " Durability Predictor")
+local durabilityCalcLabel = addLabel(strPage, E.chart .. " Durab. Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0", 55)
 
 -- Killing Tab
 addSection(killPage, E.sword .. " Module de Combat / Killing")
@@ -1493,7 +1505,7 @@ addCredit(miscPage, E.sparkles .. " Made by TZ_THR, Have fun " .. E.party)
 
 selectTab(TAB_FAST)
 
--- ===================== UPDATE & PLAYER-GAIN-BASED PREDICTOR =====================
+-- ===================== CALCULATEUR ET DÉTECTION AUTOMATIQUE DES STATS =====================
 task.spawn(function()
     while alive do
         task.wait(1)
@@ -1502,18 +1514,38 @@ task.spawn(function()
             fpsFrames = 0
             killStatusLabel:SetText(E.clip .. " " .. killStatus)
 
-            -- Calculateur Fast Rebirth basé sur les gains réels du joueur par seconde
+            local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+            if leaderstats then
+                local s = leaderstats:FindFirstChild("Strength") or leaderstats:FindFirstChild("Muscle")
+                local d = leaderstats:FindFirstChild("Durability")
+
+                if s and s.Value then
+                    local curS = tonumber(s.Value) or 0
+                    if lastStrengthVal > 0 and curS > lastStrengthVal and repStartTime then
+                        strengthGainedTotal = strengthGainedTotal + (curS - lastStrengthVal)
+                    end
+                    lastStrengthVal = curS
+                end
+
+                if d and d.Value then
+                    local curD = tonumber(d.Value) or 0
+                    if lastDurabilityVal > 0 and curD > lastDurabilityVal and repStartTime then
+                        durabilityGainedTotal = durabilityGainedTotal + (curD - lastDurabilityVal)
+                    end
+                    lastDurabilityVal = curD
+                end
+            end
+
             if fastStartTime then
                 local elapsed = math.max(1, tick() - fastStartTime)
                 fastTimerLabel:SetText(string.format("%s Session Time: %s | Dernière renaissance : %s", E.clock, formatSeconds(elapsed), fastRebirthTimerText))
                 
-                -- Vitesse réelle basée sur les gains accumulés / temps écoulé
-                local realRate = fastRebirthCount / elapsed
-                local m1 = realRate * 60
-                local h1 = realRate * 3600
-                local d1 = realRate * 86400
-                local w1 = realRate * 604800
-                local mo1 = realRate * 2592000
+                local gainRate = fastRebirthCount / elapsed
+                local m1 = gainRate * 60
+                local h1 = gainRate * 3600
+                local d1 = gainRate * 86400
+                local w1 = gainRate * 604800
+                local mo1 = gainRate * 2592000
 
                 fastCalcLabel:SetText(string.format("%s Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
                     E.chart, formatNumber(fastRebirthCount), formatNumber(m1), formatNumber(h1), formatNumber(d1), formatNumber(w1), formatNumber(mo1)))
@@ -1522,17 +1554,16 @@ task.spawn(function()
                 fastCalcLabel:SetText(E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
             end
 
-            -- Calculateur Auto Rebirth basé sur les gains réels du joueur
             if autoStartTime then
                 local elapsed = math.max(1, tick() - autoStartTime)
-                local realRate = autoRebirthCount / elapsed
-                autoTimerLabel:SetText(string.format("%s Session Time: %s | Rebirth/s: %.2f", E.clock, formatSeconds(elapsed), realRate))
+                local gainRate = autoRebirthCount / elapsed
+                autoTimerLabel:SetText(string.format("%s Session Time: %s | Rebirth/s: %.2f", E.clock, formatSeconds(elapsed), gainRate))
                 
-                local m1 = realRate * 60
-                local h1 = realRate * 3600
-                local d1 = realRate * 86400
-                local w1 = realRate * 604800
-                local mo1 = realRate * 2592000
+                local m1 = gainRate * 60
+                local h1 = gainRate * 3600
+                local d1 = gainRate * 86400
+                local w1 = gainRate * 604800
+                local mo1 = gainRate * 2592000
 
                 autoCalcLabel:SetText(string.format("%s Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
                     E.chart, formatNumber(autoRebirthCount), formatNumber(m1), formatNumber(h1), formatNumber(d1), formatNumber(w1), formatNumber(mo1)))
@@ -1541,24 +1572,24 @@ task.spawn(function()
                 autoCalcLabel:SetText(E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
             end
 
-            -- Calculateur Fast Strength basé sur les gains réels de reps du joueur
             if repStartTime then
                 local elapsed = math.max(1, tick() - repStartTime)
                 local avgReps = math.floor(repTotal / elapsed)
                 repTimerLabel:SetText(string.format("%s Session Time: %s | Moy. Reps/s: %d", E.clock, formatSeconds(elapsed), avgReps))
                 
-                local realRate = repTotal / elapsed
-                local m1 = realRate * 60
-                local h1 = realRate * 3600
-                local d1 = realRate * 86400
-                local w1 = realRate * 604800
-                local mo1 = realRate * 2592000
+                local sRate = strengthGainedTotal / elapsed
+                local sm1, sh1, sd1, sw1, smo1 = sRate * 60, sRate * 3600, sRate * 86400, sRate * 604800, sRate * 2592000
+                repCalcLabel:SetText(string.format("%s Str. Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
+                    E.muscle, formatNumber(strengthGainedTotal), formatNumber(sm1), formatNumber(sh1), formatNumber(sd1), formatNumber(sw1), formatNumber(smo1)))
 
-                repCalcLabel:SetText(string.format("%s %d/s | Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
-                    E.chart, repRate, formatNumber(repTotal), formatNumber(m1), formatNumber(h1), formatNumber(d1), formatNumber(w1), formatNumber(mo1)))
+                local dRate = durabilityGainedTotal / elapsed
+                local dm1, dh1, dd1, dw1, dmo1 = dRate * 60, dRate * 3600, dRate * 86400, dRate * 604800, dRate * 2592000
+                durabilityCalcLabel:SetText(string.format("%s Dur. Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
+                    E.shieldAlt, formatNumber(durabilityGainedTotal), formatNumber(dm1), formatNumber(dh1), formatNumber(dd1), formatNumber(dw1), formatNumber(dmo1)))
             else
                 repTimerLabel:SetText(E.clock .. " Session Time: 0s | Moy. Reps/s: 0")
-                repCalcLabel:SetText(E.chart .. " 0/s | Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
+                repCalcLabel:SetText(E.muscle .. " Str. Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
+                durabilityCalcLabel:SetText(E.shieldAlt .. " Dur. Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
             end
         end)
     end
