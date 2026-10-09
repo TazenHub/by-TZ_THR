@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR (Custom Logo Watermark Theme - Adjusted)
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -925,7 +925,7 @@ local function stroke(o, color, th) return new("UIStroke", { Color = color, Thic
 local function textLabel(props, parent)
     local p = {
         BackgroundTransparency = 1,
-        Font = Enum.Font.GothamMedium,
+        Font = Enum.Font.GothamBold,
         TextSize = 14,
         TextColor3 = T.Text,
         TextStrokeColor3 = Color3.new(0, 0, 0),
@@ -965,82 +965,89 @@ stroke(main, T.Stroke, 1.8)
 -- ===================== LOGO EN FOND (WATERMARK) =====================
 local watermark = new("Frame", {
     Name = "LogoWatermark",
-    Size = UDim2.fromOffset(340, 280),
-    Position = UDim2.new(0.5, -170, 0.5, -140),
+    Size = UDim2.fromOffset(360, 300),
+    Position = UDim2.new(0.5, -180, 0.5, -150),
     BackgroundTransparency = 1,
     ZIndex = 4,
 }, main)
 
--- Grand T Blanc en arrière-plan (plus grand)
+-- Grand T Blanc en arrière-plan (plus grand et centré)
 new("TextLabel", {
-    Size = UDim2.fromOffset(170, 190),
-    Position = UDim2.new(0.08, 0, 0, 0),
+    Size = UDim2.fromOffset(180, 200),
+    Position = UDim2.new(0.12, 0, 0, 0),
     BackgroundTransparency = 1,
     Font = Enum.Font.GothamBold,
-    TextSize = 180,
+    TextSize = 210,
     TextColor3 = Color3.fromRGB(255, 255, 255),
-    TextTransparency = 0.86,
+    TextTransparency = 0.84,
     Text = "T",
     ZIndex = 4,
 }, watermark)
 
--- Grand Z Rose en arrière-plan (plus grand)
+-- Grand Z Rose en arrière-plan (plus grand et bien positionné)
 new("TextLabel", {
-    Size = UDim2.fromOffset(170, 190),
+    Size = UDim2.fromOffset(180, 200),
     Position = UDim2.new(0.40, 0, 0.12, 0),
     BackgroundTransparency = 1,
     Font = Enum.Font.GothamBold,
-    TextSize = 180,
+    TextSize = 210,
     TextColor3 = T.Accent,
-    TextTransparency = 0.86,
+    TextTransparency = 0.84,
     Text = "Z",
     ZIndex = 4,
 }, watermark)
 
--- Lettrage TAZEN en bas du logo (plus grand, rapproché et compact)
+-- Lettrage TAZEN compact et unifié sous le grand logo
 local tazenBrandBox = new("Frame", {
-    Size = UDim2.fromOffset(180, 40),
-    Position = UDim2.new(0.5, -90, 0.72, 0),
+    Size = UDim2.fromOffset(200, 45),
+    Position = UDim2.new(0.5, -100, 0.74, 0),
     BackgroundTransparency = 1,
     ZIndex = 4,
 }, watermark)
 
+-- Layout pour coller parfaitement les lettres entre elles sans espaces vides
+new("UIListLayout", {
+    FillDirection = Enum.FillDirection.Horizontal,
+    SortOrder = Enum.SortOrder.LayoutOrder,
+    Padding = UDim.new(0, 0),
+}, tazenBrandBox)
+
 -- T (Blanc)
 new("TextLabel", {
-    Size = UDim2.fromOffset(26, 40),
-    Position = UDim2.new(0, 0, 0, 0),
+    Size = UDim2.fromOffset(32, 45),
     BackgroundTransparency = 1,
     Font = Enum.Font.GothamBold,
-    TextSize = 26,
+    TextSize = 34,
     TextColor3 = Color3.fromRGB(255, 255, 255),
-    TextTransparency = 0.86,
+    TextTransparency = 0.84,
     Text = "T",
+    LayoutOrder = 1,
     ZIndex = 4,
 }, tazenBrandBox)
 
--- A / Λ (Rose, collé au T)
+-- Λ (Rose, collé au T)
 new("TextLabel", {
-    Size = UDim2.fromOffset(26, 40),
-    Position = UDim2.new(0, 22, 0, 0),
+    Size = UDim2.fromOffset(32, 45),
     BackgroundTransparency = 1,
     Font = Enum.Font.GothamBold,
-    TextSize = 26,
+    TextSize = 34,
     TextColor3 = T.Accent,
-    TextTransparency = 0.86,
+    TextTransparency = 0.84,
     Text = "Λ",
+    LayoutOrder = 2,
     ZIndex = 4,
 }, tazenBrandBox)
 
 -- ZEN (Blanc, collé au Λ)
 new("TextLabel", {
-    Size = UDim2.fromOffset(120, 40),
-    Position = UDim2.new(0, 45, 0, 0),
+    Size = UDim2.fromOffset(110, 45),
     BackgroundTransparency = 1,
     Font = Enum.Font.GothamBold,
-    TextSize = 26,
+    TextSize = 34,
     TextColor3 = Color3.fromRGB(255, 255, 255),
-    TextTransparency = 0.86,
+    TextTransparency = 0.84,
     Text = "ZEN",
+    LayoutOrder = 3,
     ZIndex = 4,
 }, tazenBrandBox)
 -- =====================================================================
