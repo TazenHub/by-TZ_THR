@@ -1698,93 +1698,111 @@ local function findEggTool()
     return fallback
 end
 
--- Un Protein Egg dure 30 min : on en mange UN, puis on attend la fin de l'effet.
+-- Un Protein Egg donne "x2 Strength" pendant ~30 min : on en mange un, puis on attend la fin de l'effet.
 local EGG_DURATION = 30 * 60 + 3
 local eggNextAt = 0
 local eggStatus = "--"
 
--- Compte à rebours visibles à l'écran (ex: "29:58" ou "00:29:58") -> {label = secondes}
-local function visibleTimers()
-    local res = {}
+-- Lit un temps du style "26m 39s", "1h 02m 10s" ou "45s" (jamais "02:00:01", ce sont d'autres chronos)
+local function parseBoostTime(txt)
+    local h, m, sec = txt:match("(%d+)h%s*(%d+)m%s*(%d+)s")
+    if h then return tonumber(h) * 3600 + tonumber(m) * 60 + tonumber(sec) end
+    m, sec = txt:match("(%d+)m%s*(%d+)s")
+    if m then return tonumber(m) * 60 + tonumber(sec) end
+    sec = txt:match("^%s*(%d+)s%s*$")
+    if sec then return tonumber(sec) end
+    return nil
+end
+
+-- Boost "x2 Strength" affiché en bas à gauche : retourne les secondes restantes,
+-- -1 si le boost est affiché sans chrono lisible, nil s'il n'y a pas de boost
+local function eggBoostLeft()
     local pg = LocalPlayer:FindFirstChild("PlayerGui")
-    if not pg then return res end
+    if not pg then return nil end
     for _, d in ipairs(pg:GetDescendants()) do
-        if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Visible and not d:IsDescendantOf(gui) then
-            local h, m, sec = d.Text:match("^%s*(%d+):(%d+):(%d+)%s*$")
-            local secs
-            if h then
-                secs = tonumber(h) * 3600 + tonumber(m) * 60 + tonumber(sec)
-            else
-                local m2, s2 = d.Text:match("^%s*(%d+):(%d+)%s*$")
-                if m2 then secs = tonumber(m2) * 60 + tonumber(s2) end
+        if d:IsA("TextLabel") and d.Visible and not d:IsDescendantOf(gui) then
+            local low = d.Text:lower()
+            if low:find("x2", 1, true) and low:find("strength", 1, true) then
+                local own = parseBoostTime(d.Text)
+                if own then return own end
+                local root = d.Parent
+                for _ = 1, 3 do
+                    if not root then break end
+                    for _, c in ipairs(root:GetDescendants()) do
+                        if c ~= d and c:IsA("TextLabel") and c.Visible then
+                            local t = parseBoostTime(c.Text)
+                            if t then return t end
+                        end
+                    end
+                    root = root.Parent
+                end
+                return -1
             end
-            if secs then res[d] = secs end
         end
     end
-    return res
+    return nil
 end
 
--- Un compte à rebours de ~30 min qui vient d'apparaître = l'effet de l'oeuf est actif
-local function eggTimerStarted(before)
-    for label, secs in pairs(visibleTimers()) do
-        if secs >= 1500 and secs <= 1800 then
-            local old = before[label]
-            if not (old and old >= 1500 and old <= 1800) then return true end
-        end
-    end
-    return false
-end
-
--- Confirmation : le nombre d'oeufs baisse OU un timer de 30 min apparaît
-local function waitEggConfirm(beforeCount, beforeTimers, timeout)
+-- Confirmation : le boost apparaît OU le nombre d'oeufs baisse
+local function waitEggConfirm(beforeCount, timeout)
     local t0 = tick()
     while tick() - t0 < timeout do
         task.wait(0.25)
-        if eggTotal() < beforeCount then return true end
-        if eggTimerStarted(beforeTimers) then return true end
+        local left = eggBoostLeft()
+        if left then return "boost", left end
+        if eggTotal() < beforeCount then return "count", nil end
     end
-    return false
+    return nil
 end
 
--- Retourne "none" (pas d'oeuf), "eaten" (consommation confirmée) ou "unconfirmed" (utilisé, non confirmé)
+-- Retourne "none" (pas d'oeuf), ou "eaten" / "unconfirmed" + les secondes de boost lues
 local function eatEgg()
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     local tool = findEggTool()
-    if not (hum and tool) then return "none" end
-    local beforeCount = eggTotal()
-    local beforeTimers = visibleTimers()
+    if not tool then return "none" end
+    local rEvents = ReplicatedStorage:FindFirstChild("rEvents")
+    local ev = findMuscleEvent(rEvents or ReplicatedStorage)
+    if not ev then return "unconfirmed" end
+    local before = eggTotal()
 
-    if tool.Parent ~= char then
+    -- Appel exact du jeu : muscleEvent:FireServer("proteinEgg", <l'objet Protein Egg>)
+    pcall(function() ev:FireServer("proteinEgg", tool) end)
+    local how, left = waitEggConfirm(before, 3)
+
+    if not how and hum then
+        -- certains cas demandent l'objet équipé
         pcall(function() hum:EquipTool(tool) end)
-        task.wait(0.2)
+        task.wait(0.3)
+        pcall(function() ev:FireServer("proteinEgg", tool) end)
+        how, left = waitEggConfirm(before, 3)
+        if not how then pcall(function() hum:UnequipTools() end) end
     end
-    pcall(function() tool:Activate() end)
-    for _, d in ipairs(tool:GetDescendants()) do
-        if d:IsA("RemoteEvent") then pcall(function() d:FireServer() end) end
-    end
-    local confirmed = waitEggConfirm(beforeCount, beforeTimers, 3)
 
-    if not confirmed then pcall(function() hum:UnequipTools() end) end
-    return confirmed and "eaten" or "unconfirmed"
+    return how and "eaten" or "unconfirmed", left
 end
 
 local function updateEggLabel()
     if not eggLabel then return end
-    local nextTxt = "maintenant"
     local left = eggNextAt - tick()
-    if left > 0 then nextTxt = formatSeconds(left) end
-    eggLabel:SetText(string.format("%s Mangés: %d | Restants: %s | Prochain: %s | Dernier: %s",
-        E.egg, eggEaten, formatNumber(eggTotal()), nextTxt, eggStatus))
+    local boostTxt = (left > 0) and formatSeconds(left) or "inactif"
+    eggLabel:SetText(string.format("%s Mangés: %d | Restants: %s | Boost: %s | Dernier: %s",
+        E.egg, eggEaten, formatNumber(eggTotal()), boostTxt, eggStatus))
 end
 
 local function autoEggLoop(myId)
-    local noEgg = 0
+    local noEgg, fails = 0, 0
     eggNextAt = 0
     eggStatus = "--"
     while eggRunId == myId and alive do
-        if tick() >= eggNextAt then
-            local ok, res = pcall(eatEgg)
+        -- synchronise le prochain oeuf sur la fin réelle du boost affiché à l'écran
+        local left = eggBoostLeft()
+        if left then
+            eggNextAt = tick() + ((left >= 0) and (left + 1) or 10)
+        end
+
+        if (not left) and tick() >= eggNextAt then
+            local ok, res, secs = pcall(eatEgg)
             if (not ok) or res == "none" then
                 noEgg = noEgg + 1
                 eggStatus = "aucun egg"
@@ -1794,13 +1812,24 @@ local function autoEggLoop(myId)
                     if autoEggToggle then autoEggToggle:Set(false) end
                     return
                 end
-            else
-                -- un seul essai par cycle de 30 min : on ne gaspille pas d'oeufs
-                noEgg = 0
+            elseif res == "eaten" then
+                noEgg, fails = 0, 0
                 eggEaten = eggEaten + 1
-                eggNextAt = tick() + EGG_DURATION
-                eggStatus = (res == "eaten") and "confirmé" or "non confirmé"
-                notify(E.egg .. " Protein Egg", "Mangé (" .. eggStatus .. ") - prochain dans 30 min")
+                eggStatus = "confirmé"
+                eggNextAt = tick() + ((secs and secs > 0) and (secs + 1) or EGG_DURATION)
+                notify(E.egg .. " Protein Egg", "Consommation confirmée (x2 Strength actif)")
+            else
+                -- ni boost ni baisse du nombre d'oeufs : rien n'a été consommé, on peut réessayer
+                noEgg = 0
+                fails = fails + 1
+                eggStatus = "non confirmé"
+                eggNextAt = tick() + 5
+                if fails >= 3 then
+                    pcall(updateEggLabel)
+                    notify(E.egg .. " Protein Egg", "Consommation non confirmée (3 essais)")
+                    if autoEggToggle then autoEggToggle:Set(false) end
+                    return
+                end
             end
         end
         pcall(updateEggLabel)
@@ -1819,7 +1848,7 @@ autoEggToggle = addToggle(miscPage, E.egg .. " Auto eat protein egg", false, fun
     end
 end)
 
-eggLabel = addLabel(miscPage, E.egg .. " Mangés: 0 | Restants: -- | Prochain: -- | Dernier: --", 34)
+eggLabel = addLabel(miscPage, E.egg .. " Mangés: 0 | Restants: -- | Boost: -- | Dernier: --", 34)
 
 local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 34)
 addSection(miscPage, E.heart .. " Credits")
