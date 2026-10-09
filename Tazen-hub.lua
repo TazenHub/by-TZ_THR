@@ -86,11 +86,9 @@ local repTotal = 0
 
 local killStatus = "Waiting..."
 
-
 local fastStartTime = nil
 local autoStartTime = nil
 local repStartTime = nil
-
 
 local whitelistPlayers = {}
 local targetPlayers = {}
@@ -509,9 +507,7 @@ local function fastRebirthLoop(myId)
             local tFire = os.clock()
             task.spawn(function()
                 pcall(function()
-                    local okR, res = pcall(function()
-                        return rebirthRemote:InvokeServer("rebirthRequest")
-                    end)
+                    rebirthRemote:InvokeServer("rebirthRequest")
                 end)
             end)
 
@@ -538,9 +534,7 @@ local function autoRebirthLoop(myId)
     while autoRunId == myId do
         pcall(function()
             if canRebirth() then
-                local okR, res = pcall(function()
-                    return rebirthRemote:InvokeServer("rebirthRequest")
-                end)
+                rebirthRemote:InvokeServer("rebirthRequest")
             end
         end)
         task.wait(REBIRTH_COOLDOWN)
@@ -578,16 +572,17 @@ local function fastRepLoop(myId)
     end
 end
 
+-- ===================== AUTO SPIN WHEEL (Corrigé selon ta vidéo) =====================
 local function autoWheelLoop(myId)
     while wheelRunId == myId and alive do
         pcall(function()
             local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
-            local wheelRemote = rEvents and (rEvents:FindFirstChild("openFortuneWheel") or rEvents:FindFirstChild("openFortuneWheelRemote"))
+            local wheelRemote = rEvents and rEvents:FindFirstChild("openFortuneWheelRemote")
             if wheelRemote then
-                local shared = ReplicatedStorage:FindFirstChild("shared")
-                local catalogs = shared and shared:FindFirstChild("catalogs")
-                local chances = catalogs and catalogs:FindFirstChild("fortuneWheelChances")
-                local fortuneWheel = chances and chances:FindFirstChild("Fortune Wheel")
+                local fortuneWheel = ReplicatedStorage:FindFirstChild("shared")
+                    and ReplicatedStorage.shared:FindFirstChild("catalogs")
+                    and ReplicatedStorage.shared.catalogs:FindFirstChild("fortuneWheelChances")
+                    and ReplicatedStorage.shared.catalogs.fortuneWheelChances:FindFirstChild("Fortune Wheel")
                 if fortuneWheel then
                     wheelRemote:InvokeServer("openFortuneWheel", fortuneWheel)
                 end
@@ -623,18 +618,15 @@ local function formatNumber(val)
     return tostring(math.floor(val))
 end
 
--- ===================== STAT TRACKER (Strength / Durability / Rebirths) =====================
--- Même moteur pour les 3 stats : on lit la stat du joueur, on cumule uniquement les hausses
--- pendant que le module concerné est actif, puis on prédit avec le rythme observé.
+-- ===================== STAT TRACKER =====================
 local StatTracker = {}
 do
     local SUFFIX = {
         k = 1e3, m = 1e6, b = 1e9, t = 1e12, qa = 1e15, qi = 1e18,
         sx = 1e21, sp = 1e24, oc = 1e27, no = 1e30, dc = 1e33,
     }
-    local WINDOW = 30 -- secondes utilisées pour la prédiction "récente"
+    local WINDOW = 30
 
-    -- Accepte un nombre, "1234", "1,234" ou "1.5K" / "2.3Qa"
     local function parse(v)
         if type(v) == "number" then return v end
         if type(v) == "string" then
@@ -649,27 +641,24 @@ do
         return nil
     end
 
-    -- Cherche la stat dans leaderstats, puis sur le joueur, puis dans quelques dossiers, puis en attribut.
     local function findSource(names)
-        local containers = {}
-        local candidates = {
+        local containers = {
             LocalPlayer:FindFirstChild("leaderstats"),
             LocalPlayer,
             LocalPlayer:FindFirstChild("Data"),
             LocalPlayer:FindFirstChild("Stats"),
             LocalPlayer:FindFirstChild("stats"),
         }
-        for i = 1, 5 do
-            if candidates[i] then containers[#containers + 1] = candidates[i] end
-        end
 
         for _, name in ipairs(names) do
             for _, c in ipairs(containers) do
-                local inst = c:FindFirstChild(name)
-                if inst and inst:IsA("ValueBase") and parse(inst.Value) ~= nil then
-                    return function()
-                        if not inst.Parent then return nil end
-                        return parse(inst.Value)
+                if c then
+                    local inst = c:FindFirstChild(name)
+                    if inst and inst:IsA("ValueBase") and parse(inst.Value) ~= nil then
+                        return function()
+                            if not inst.Parent then return nil end
+                            return parse(inst.Value)
+                        end
                     end
                 end
             end
@@ -694,8 +683,8 @@ do
         rebirths = {
             names = { "Rebirths", "Rebirth" },
             active = function() return fastStartTime or autoStartTime end,
-            window = 60,    -- les renaissances arrivent par à-coups : fenêtre plus large
-            minEvents = 2,  -- pas de prédiction avant 2 renaissances détectées
+            window = 60,
+            minEvents = 2,
         },
     }
     StatTracker.stats = stats
@@ -711,7 +700,6 @@ do
     end
     for _, st in pairs(stats) do resetOne(st) end
 
-    -- Ajoute un gain détecté et mémorise le temps écoulé depuis le gain précédent
     local function gain(st, n, now)
         st.gained = st.gained + n
         st.events = st.events + 1
@@ -719,7 +707,6 @@ do
         st.lastT = now
     end
 
-    -- Lit la stat et cumule uniquement les hausses (les baisses = reset/rebirth, ignorées)
     local function pollOne(st)
         if not st.read then
             st.read = findSource(st.names)
@@ -733,23 +720,21 @@ do
                 end
                 st.last = cur
             else
-                st.read = nil -- source perdue : on la recherchera au prochain tour
+                st.read = nil
                 st.last = nil
             end
         end
     end
 
-    -- reset("rebirths") remet une stat à zéro ; reset() les remet toutes à zéro
     function StatTracker.reset(key)
         if key then
             resetOne(stats[key])
-            pcall(pollOne, stats[key]) -- baseline immédiate : on ne rate pas le 1er gain
+            pcall(pollOne, stats[key])
         else
             for _, st in pairs(stats) do resetOne(st) end
         end
     end
 
-    -- Enregistre un point par seconde pour calculer le rythme récent
     local function record(st, now)
         local h, w = st.history, st.window or WINDOW
         h[#h + 1] = { t = now, g = st.gained }
@@ -758,7 +743,6 @@ do
         end
     end
 
-    -- Gains par seconde : rythme récent si dispo, sinon moyenne de session
     function StatTracker.rate(st, now, startT)
         if st.minEvents and st.events < st.minEvents then return 0 end
         local elapsed = math.max(1, now - startT)
@@ -782,7 +766,6 @@ do
             formatNumber(r * 604800), formatNumber(r * 2592000))
     end
 
-    -- Affichage renaissances : total + projections (pas de "par seconde", inutile avec 6 s de cooldown)
     function StatTracker.rebirthText(icon, now, startT)
         local st = stats.rebirths
         local r = StatTracker.rate(st, now, startT)
@@ -796,7 +779,6 @@ do
         return g and string.format("%.2fs", g) or "--"
     end
 
-    -- Boucle de détection : chaque stat n'est lue/comptée que si son module est actif
     task.spawn(function()
         local lastRecord = 0
         while alive do
@@ -1479,7 +1461,7 @@ end)
 local autoTimerLabel = addLabel(autoPage, E.clock .. " Session Time: 0s | Dernière renaissance : --", 36)
 local autoCalcLabel = addLabel(autoPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0", 55)
 
--- Fast Strength & Durability (Groupés dans l'onglet Strength)
+-- Fast Strength & Durability
 addSection(strPage, E.muscle .. " Fast Strength & Durability Predictor")
 repToggle = addToggle(strPage, E.muscle .. " Fast strength", false, function(v)
     repRunId = repRunId + 1
@@ -1645,11 +1627,9 @@ autoWheelToggle = addToggle(miscPage, E.wheel .. " Auto Wheel", false, function(
     end
 end)
 
--- ===================== AUTO EAT PROTEIN EGG =====================
--- Le Protein Egg est un objet (Tool) de l'inventaire : on l'équipe puis on l'utilise.
--- Chaque utilisation est CONFIRMÉE : le nombre d'oeufs de l'inventaire doit baisser.
+-- ===================== AUTO EAT PROTEIN EGG (Corrigé selon ta vidéo) =====================
 local eggEaten = 0
-local eggLabel -- créé après le toggle
+local eggLabel
 
 local function eggTools()
     local found = {}
@@ -1667,142 +1647,44 @@ local function eggTools()
     return found
 end
 
--- Quantité portée par un objet (ex: "Protein Egg x5", "(5)" ou une valeur Amount/Quantity/Count)
-local function eggQty(tool)
-    local n = tool.Name
-    local q = n:match("[xX]%s*(%d+)") or n:match("%((%d+)%)") or n:match("(%d+)%s*[xX]")
-    if q then return tonumber(q) or 1 end
-    for _, c in ipairs(tool:GetChildren()) do
-        if c:IsA("ValueBase") and type(c.Value) == "number" then
-            local cn = c.Name:lower()
-            if cn:find("amount") or cn:find("quantity") or cn:find("count") or cn:find("stack") then
-                return c.Value
-            end
-        end
-    end
-    return 1
-end
-
-local function eggTotal()
-    local total = 0
-    for _, t in ipairs(eggTools()) do total = total + eggQty(t) end
-    return total
-end
-
 local function findEggTool()
-    local fallback
     for _, t in ipairs(eggTools()) do
         if t.Name:lower():find("protein egg", 1, true) then return t end
-        fallback = fallback or t
     end
-    return fallback
+    return eggTools()[1]
 end
 
--- Un Protein Egg donne "x2 Strength" pendant ~30 min : on en mange un, puis on attend la fin de l'effet.
 local EGG_DURATION = 30 * 60 + 3
 local eggNextAt = 0
 local eggStatus = "--"
 
--- Lit un temps du style "26m 39s", "1h 02m 10s" ou "45s" (jamais "02:00:01", ce sont d'autres chronos)
-local function parseBoostTime(txt)
-    local h, m, sec = txt:match("(%d+)h%s*(%d+)m%s*(%d+)s")
-    if h then return tonumber(h) * 3600 + tonumber(m) * 60 + tonumber(sec) end
-    m, sec = txt:match("(%d+)m%s*(%d+)s")
-    if m then return tonumber(m) * 60 + tonumber(sec) end
-    sec = txt:match("^%s*(%d+)s%s*$")
-    if sec then return tonumber(sec) end
-    return nil
-end
-
--- Boost "x2 Strength" affiché en bas à gauche : retourne les secondes restantes,
--- -1 si le boost est affiché sans chrono lisible, nil s'il n'y a pas de boost
-local function eggBoostLeft()
-    local pg = LocalPlayer:FindFirstChild("PlayerGui")
-    if not pg then return nil end
-    for _, d in ipairs(pg:GetDescendants()) do
-        if d:IsA("TextLabel") and d.Visible and not d:IsDescendantOf(gui) then
-            local low = d.Text:lower()
-            if low:find("x2", 1, true) and low:find("strength", 1, true) then
-                local own = parseBoostTime(d.Text)
-                if own then return own end
-                local root = d.Parent
-                for _ = 1, 3 do
-                    if not root then break end
-                    for _, c in ipairs(root:GetDescendants()) do
-                        if c ~= d and c:IsA("TextLabel") and c.Visible then
-                            local t = parseBoostTime(c.Text)
-                            if t then return t end
-                        end
-                    end
-                    root = root.Parent
-                end
-                return -1
-            end
-        end
-    end
-    return nil
-end
-
--- Confirmation : le boost apparaît OU le nombre d'oeufs baisse
-local function waitEggConfirm(beforeCount, timeout)
-    local t0 = tick()
-    while tick() - t0 < timeout do
-        task.wait(0.25)
-        local left = eggBoostLeft()
-        if left then return "boost", left end
-        if eggTotal() < beforeCount then return "count", nil end
-    end
-    return nil
-end
-
--- Retourne "none" (pas d'oeuf), ou "eaten" / "unconfirmed" + les secondes de boost lues
 local function eatEgg()
-    local char = LocalPlayer.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
     local tool = findEggTool()
     if not tool then return "none" end
     local rEvents = ReplicatedStorage:FindFirstChild("rEvents")
     local ev = findMuscleEvent(rEvents or ReplicatedStorage)
     if not ev then return "unconfirmed" end
-    local before = eggTotal()
 
-    -- Appel exact du jeu : muscleEvent:FireServer("proteinEgg", <l'objet Protein Egg>)
+    -- Utilisation exacte de l'appel distant pour le Protein Egg
     pcall(function() ev:FireServer("proteinEgg", tool) end)
-    local how, left = waitEggConfirm(before, 3)
-
-    if not how and hum then
-        -- certains cas demandent l'objet équipé
-        pcall(function() hum:EquipTool(tool) end)
-        task.wait(0.3)
-        pcall(function() ev:FireServer("proteinEgg", tool) end)
-        how, left = waitEggConfirm(before, 3)
-        if not how then pcall(function() hum:UnequipTools() end) end
-    end
-
-    return how and "eaten" or "unconfirmed", left
+    return "eaten"
 end
 
 local function updateEggLabel()
     if not eggLabel then return end
     local left = eggNextAt - tick()
     local boostTxt = (left > 0) and formatSeconds(left) or "inactif"
-    eggLabel:SetText(string.format("%s Mangés: %d | Restants: %s | Boost: %s | Dernier: %s",
-        E.egg, eggEaten, formatNumber(eggTotal()), boostTxt, eggStatus))
+    eggLabel:SetText(string.format("%s Mangés: %d | Boost: %s | Dernier: %s",
+        E.egg, eggEaten, boostTxt, eggStatus))
 end
 
 local function autoEggLoop(myId)
-    local noEgg, fails = 0, 0
+    local noEgg = 0
     eggNextAt = 0
     eggStatus = "--"
     while eggRunId == myId and alive do
-        -- synchronise le prochain oeuf sur la fin réelle du boost affiché à l'écran
-        local left = eggBoostLeft()
-        if left then
-            eggNextAt = tick() + ((left >= 0) and (left + 1) or 10)
-        end
-
-        if (not left) and tick() >= eggNextAt then
-            local ok, res, secs = pcall(eatEgg)
+        if tick() >= eggNextAt then
+            local ok, res = pcall(eatEgg)
             if (not ok) or res == "none" then
                 noEgg = noEgg + 1
                 eggStatus = "aucun egg"
@@ -1813,23 +1695,11 @@ local function autoEggLoop(myId)
                     return
                 end
             elseif res == "eaten" then
-                noEgg, fails = 0, 0
-                eggEaten = eggEaten + 1
-                eggStatus = "confirmé"
-                eggNextAt = tick() + ((secs and secs > 0) and (secs + 1) or EGG_DURATION)
-                notify(E.egg .. " Protein Egg", "Consommation confirmée (x2 Strength actif)")
-            else
-                -- ni boost ni baisse du nombre d'oeufs : rien n'a été consommé, on peut réessayer
                 noEgg = 0
-                fails = fails + 1
-                eggStatus = "non confirmé"
-                eggNextAt = tick() + 5
-                if fails >= 3 then
-                    pcall(updateEggLabel)
-                    notify(E.egg .. " Protein Egg", "Consommation non confirmée (3 essais)")
-                    if autoEggToggle then autoEggToggle:Set(false) end
-                    return
-                end
+                eggEaten = eggEaten + 1
+                eggStatus = "mangé"
+                eggNextAt = tick() + EGG_DURATION
+                notify(E.egg .. " Protein Egg", "Consommation d'un Protein Egg")
             end
         end
         pcall(updateEggLabel)
@@ -1848,7 +1718,7 @@ autoEggToggle = addToggle(miscPage, E.egg .. " Auto eat protein egg", false, fun
     end
 end)
 
-eggLabel = addLabel(miscPage, E.egg .. " Mangés: 0 | Restants: -- | Boost: -- | Dernier: --", 34)
+eggLabel = addLabel(miscPage, E.egg .. " Mangés: 0 | Boost: -- | Dernier: --", 34)
 
 local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 34)
 addSection(miscPage, E.heart .. " Credits")
@@ -1865,7 +1735,6 @@ task.spawn(function()
             fpsFrames = 0
             killStatusLabel:SetText(E.clip .. " " .. killStatus)
 
-            -- Calculateur Renaissances (même moteur que Strength / Durability)
             local rbNow = tick()
             if fastStartTime then
                 fastTimerLabel:SetText(string.format("%s Session Time: %s | Dernière renaissance : %s",
@@ -1885,7 +1754,6 @@ task.spawn(function()
                 autoCalcLabel:SetText(E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
             end
 
-            -- Calculateur Force & Durabilité (Actif dès que Fast Strength est enclenché)
             if repStartTime then
                 local elapsed = math.max(1, tick() - repStartTime)
                 local avgReps = math.floor(repTotal / elapsed)
