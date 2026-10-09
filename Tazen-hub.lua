@@ -52,7 +52,7 @@ local E = {
     party = "\u{1F389}", game = "\u{1F3AE}", crown = "\u{1F451}", egg = "\u{1F95A}",
     wheel = "\u{1F3A1}", skull = "\u{1F480}", rainbow = "\u{1F308}", chest = "\u{1F381}",
     sword = "\u{2694}\u{FE0F}", shield = "\u{1F6E1}\u{FE0F}", crosshairs = "\u{1F3AF}",
-    shieldAlt = "\u{1F6E1}", info = "\u{2139}\u{FE0F}", link = "\u{1F517}"
+    shieldAlt = "\u{1F6E1}", info = "\u{2139}\u{FE0F}", link = "\u{1F517}", image = "\u{1F5BC}\u{FE0F}"
 }
 
 local repSpeedPetPriorities = {
@@ -1113,6 +1113,25 @@ local function addLabel(page, text, height)
     return { SetText = function(_, t) l.Text = t end }
 end
 
+local function addImage(page, assetId, height)
+    local f = new("Frame", {
+        Size = UDim2.new(1, 0, 0, height or 90),
+        BackgroundColor3 = T.Element,
+        BorderSizePixel = 0,
+    }, page)
+    corner(f, 4)
+    stroke(f, T.Accent, 1)
+
+    local img = new("ImageLabel", {
+        Size = UDim2.new(1, -16, 1, -16),
+        Position = UDim2.new(0, 8, 0, 8),
+        BackgroundTransparency = 1,
+        Image = assetId,
+        ScaleType = Enum.ScaleType.Fit,
+    }, f)
+    return img
+end
+
 local function addToggle(page, name, defaultState, callback)
     local initialState = defaultState
     local f = new("Frame", {
@@ -1665,7 +1684,11 @@ end)
 eggLabel = addLabel(miscPage, E.egg .. " Eaten: 0 | Boost: -- | Last: --", 32)
 local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 32)
 
--- Infos Tab (Crédits, Réseaux & Bouton Discord)
+-- Infos Tab (Ajout d'une image/logo et des crédits)
+addSection(infoPage, E.image .. " Hub Logo / Banner")
+-- Remplace "rbxassetid://0" par ton propre ID d'image Roblox ci-dessous !
+addImage(infoPage, "rbxassetid://0", 100)
+
 addSection(infoPage, E.sparkles .. " Credits & Info")
 addLabel(infoPage, "Roblox Main : TZ_THR\nRoblox Alt : TZ_THRV2", 40)
 
@@ -1730,12 +1753,13 @@ task.spawn(function()
                 local avgReps = math.floor(repTotal / elapsed)
                 repTimerLabel:SetText(string.format("%s Session Time: %s | Avg Reps/s: %d", E.clock, formatSeconds(elapsed), avgReps))
                 
+                $0
                 local now = tick()
                 repCalcLabel:SetText(StatTracker.text(E.muscle, "Strength", StatTracker.stats.strength, now, repStartTime))
                 durabilityCalcLabel:SetText(StatTracker.text(E.shieldAlt, "Durability", StatTracker.stats.durability, now, repStartTime))
             else
                 repTimerLabel:SetText(E.clock .. " Session Time: 0s | Avg Reps/s: 0")
-                repCalcLabel:SetText(E.muscle .. " Strength Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0")
+                repCalcLabel:SetTest(E.muscle .. " Strength Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0")
                 durabilityCalcLabel:SetText(E.shieldAlt .. " Durability Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0")
             end
         end)
