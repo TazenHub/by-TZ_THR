@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR (standalone: Rayfield-style UI, no HttpGet needed)
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -894,16 +894,16 @@ end
 local fpsFrames = 0
 connect(RunService.Heartbeat, function() fpsFrames = fpsFrames + 1 end)
 
--- ===================== LIBRARY GUI THEME (ROSE, BLACK, WHITE) =====================
+-- ===================== TAZEN BRAND GUI THEME =====================
 local T = {
-    Background = Color3.fromRGB(15, 15, 15),
-    Topbar = Color3.fromRGB(235, 100, 150),
-    Element = Color3.fromRGB(28, 28, 28),
-    Stroke = Color3.fromRGB(255, 130, 180),
-    Accent = Color3.fromRGB(240, 110, 160),
-    Text = Color3.new(1, 1, 1),
-    SubText = Color3.fromRGB(200, 200, 200),
-    Off = Color3.fromRGB(50, 50, 50),
+    Background = Color3.fromRGB(12, 12, 12),
+    Topbar = Color3.fromRGB(18, 18, 18),
+    Element = Color3.fromRGB(24, 24, 24),
+    Stroke = Color3.fromRGB(230, 100, 150),       -- Rose métallique du logo
+    Accent = Color3.fromRGB(235, 105, 155),       -- Rose vif UI
+    Text = Color3.fromRGB(255, 255, 255),         -- Blanc T text
+    SubText = Color3.fromRGB(190, 190, 190),
+    Off = Color3.fromRGB(45, 45, 45),
 }
 
 local function getGuiParent()
@@ -959,44 +959,95 @@ local main = new("Frame", {
     BorderSizePixel = 0,
     ClipsDescendants = true,
 }, gui)
-corner(main, 6)
-stroke(main, T.Accent, 1.5)
+corner(main, 8)
+stroke(main, T.Stroke, 1.8)
 
+-- TOPBAR (Logo Inspired Design)
 local topbar = new("Frame", {
     Name = "Topbar",
-    Size = UDim2.new(1, 0, 0, 26),
+    Size = UDim2.new(1, 0, 0, 32),
     BackgroundColor3 = T.Topbar,
     BorderSizePixel = 0,
     ZIndex = 6,
 }, main)
 
-textLabel({
-    Size = UDim2.new(1, -70, 1, 0),
-    Position = UDim2.new(0, 8, 0, 0),
-    Text = "Tazen hub V1  |  by TZ_THR",
-    Font = Enum.Font.GothamBold,
-    TextSize = 11,
-    TextColor3 = Color3.new(1, 1, 1),
+-- Barre luminescente fine en bas du topbar rappelant le design du logo
+local topbarLine = new("Frame", {
+    Size = UDim2.new(1, 0, 0, 1),
+    Position = UDim2.new(0, 0, 1, -1),
+    BackgroundColor3 = T.Stroke,
+    BorderSizePixel = 0,
+    ZIndex = 7,
 }, topbar)
+
+-- Custom TAZEN Brand Title (White T, Pink Z styled look)
+local logoContainer = new("Frame", {
+    Size = UDim2.new(0, 160, 1, 0),
+    Position = UDim2.new(0, 10, 0, 0),
+    BackgroundTransparency = 1,
+    ZIndex = 8,
+}, topbar)
+
+-- Grand T Blanc
+textLabel({
+    Size = UDim2.new(0, 20, 1, 0),
+    Position = UDim2.new(0, 0, 0, 0),
+    Text = "T",
+    Font = Enum.Font.GothamBold,
+    TextSize = 14,
+    TextColor3 = Color3.new(1, 1, 1),
+}, logoContainer)
+
+-- Z Rose vif (rappelant le logo)
+textLabel({
+    Size = UDim2.new(0, 20, 1, 0),
+    Position = UDim2.new(0, 14, 0, 0),
+    Text = "Z",
+    Font = Enum.Font.GothamBold,
+    TextSize = 14,
+    TextColor3 = T.Accent,
+}, logoContainer)
+
+-- Lettrage TAZEN complet de la marque
+textLabel({
+    Size = UDim2.new(0, 100, 1, 0),
+    Position = UDim2.new(0, 32, 0, 0),
+    Text = "EN",
+    Font = Enum.Font.GothamBold,
+    TextSize = 12,
+    TextColor3 = Color3.fromRGB(220, 220, 220),
+}, logoContainer)
+
+-- Badge V1 subtil
+textLabel({
+    Size = UDim2.new(0, 50, 1, 0),
+    Position = UDim2.new(0, 60, 0, 0),
+    Text = "| V1",
+    Font = Enum.Font.GothamMedium,
+    TextSize = 11,
+    TextColor3 = T.SubText,
+}, logoContainer)
 
 local function topButton(text, xOffset)
     local b = new("TextButton", {
-        Size = UDim2.fromOffset(18, 18),
-        Position = UDim2.new(1, xOffset, 0, 4),
-        BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+        Size = UDim2.fromOffset(20, 20),
+        Position = UDim2.new(1, xOffset, 0, 6),
+        BackgroundColor3 = Color3.fromRGB(30, 30, 30),
         BackgroundTransparency = 0.3,
         Text = text,
         Font = Enum.Font.GothamBold,
-        TextSize = 10,
+        TextSize = 11,
         TextColor3 = T.Text,
         BorderSizePixel = 0,
+        ZIndex = 8,
     }, topbar)
-    corner(b, 4)
+    corner(b, 5)
+    stroke(b, T.Stroke, 1)
     return b
 end
 
-local closeBtn = topButton("X", -22)
-local minBtn = topButton("-", -44)
+local closeBtn = topButton("X", -26)
+local minBtn = topButton("-", -50)
 
 do
     local dragging, dragStart, startPos = false, nil, nil
@@ -1023,24 +1074,26 @@ end
 
 local tabBar = new("Frame", {
     Name = "TabBar",
-    Size = UDim2.new(1, -16, 0, 26),
-    Position = UDim2.new(0, 8, 0, 32),
-    BackgroundColor3 = Color3.fromRGB(20, 20, 20),
+    Size = UDim2.new(1, -16, 0, 28),
+    Position = UDim2.new(0, 8, 0, 38),
+    BackgroundColor3 = Color3.fromRGB(16, 16, 16),
     BorderSizePixel = 0,
     ZIndex = 6,
 }, main)
-corner(tabBar, 4)
+corner(tabBar, 5)
+stroke(tabBar, Color3.fromRGB(40, 40, 40), 1)
+
 new("UIListLayout", {
     FillDirection = Enum.FillDirection.Horizontal,
     Padding = UDim.new(0, 4),
     SortOrder = Enum.SortOrder.LayoutOrder,
 }, tabBar)
-new("UIPadding", { PaddingLeft = UDim.new(0, 4), PaddingTop = UDim.new(0, 3) }, tabBar)
+new("UIPadding", { PaddingLeft = UDim.new(0, 4), PaddingTop = UDim.new(0, 4) }, tabBar)
 
 local pagesHolder = new("Frame", {
     Name = "Pages",
-    Size = UDim2.new(1, 0, 1, -64),
-    Position = UDim2.new(0, 0, 0, 62),
+    Size = UDim2.new(1, 0, 1, -74),
+    Position = UDim2.new(0, 0, 0, 70),
     BackgroundTransparency = 1,
     ZIndex = 5,
 }, main)
@@ -1108,7 +1161,8 @@ local function addLabel(page, text, height)
         BackgroundColor3 = T.Element,
         BorderSizePixel = 0,
     }, page)
-    corner(f, 4)
+    corner(f, 5)
+    stroke(f, Color3.fromRGB(35, 35, 35), 1)
     local l = textLabel({
         Size = UDim2.new(1, -16, 1, 0),
         Position = UDim2.new(0, 8, 0, 0),
@@ -1127,7 +1181,8 @@ local function addToggle(page, name, defaultState, callback)
         BackgroundColor3 = T.Element,
         BorderSizePixel = 0,
     }, page)
-    corner(f, 4)
+    corner(f, 5)
+    stroke(f, Color3.fromRGB(35, 35, 35), 1)
 
     textLabel({
         Size = UDim2.new(1, -60, 1, 0),
@@ -1177,7 +1232,8 @@ local function addKillingToggle(page, name, categoryKey, settingKey, defaultStat
         BackgroundColor3 = T.Element,
         BorderSizePixel = 0,
     }, page)
-    corner(f, 4)
+    corner(f, 5)
+    stroke(f, Color3.fromRGB(35, 35, 35), 1)
 
     textLabel({
         Size = UDim2.new(1, -60, 1, 0),
@@ -1232,7 +1288,8 @@ local function addSlider(page, name, min, max, default, callback)
         BackgroundColor3 = T.Element,
         BorderSizePixel = 0,
     }, page)
-    corner(f, 4)
+    corner(f, 5)
+    stroke(f, Color3.fromRGB(35, 35, 35), 1)
 
     textLabel({ Size = UDim2.new(1, -80, 0, 20), Position = UDim2.new(0, 8, 0, 6), Text = name, TextSize = 12 }, f)
     local valueLabel = textLabel({
@@ -1315,7 +1372,7 @@ local function notify(title, text)
             BorderSizePixel = 0,
         }, gui)
         corner(n, 6)
-        stroke(n, T.Accent, 1)
+        stroke(n, T.Stroke, 1)
         textLabel({
             Size = UDim2.new(1, -12, 0, 18), Position = UDim2.new(0, 8, 0, 4),
             Text = title, Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = T.Accent,
@@ -1679,7 +1736,7 @@ end)
 eggLabel = addLabel(miscPage, E.egg .. " Eaten: 0 | Boost: -- | Last: --", 32)
 local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 32)
 
--- Infos Tab (Clean text version without image asset dependencies)
+-- Infos Tab
 addSection(infoPage, E.sparkles .. " Credits & Info")
 addLabel(infoPage, "Roblox Main : TZ_THR\nRoblox Alt : TZ_THRV2", 40)
 
@@ -1762,7 +1819,7 @@ minBtn.Activated:Connect(function()
     tabBar.Visible = not minimized
     pagesHolder.Visible = not minimized
     TweenService:Create(main, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
-        Size = UDim2.fromOffset(W, minimized and 26 or H),
+        Size = UDim2.fromOffset(W, minimized and 32 or H),
     }):Play()
 end)
 
