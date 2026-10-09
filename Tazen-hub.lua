@@ -52,7 +52,7 @@ local E = {
     party = "\u{1F389}", game = "\u{1F3AE}", crown = "\u{1F451}", egg = "\u{1F95A}",
     wheel = "\u{1F3A1}", skull = "\u{1F480}", rainbow = "\u{1F308}", chest = "\u{1F381}",
     sword = "\u{2694}\u{FE0F}", shield = "\u{1F6E1}\u{FE0F}", crosshairs = "\u{1F3AF}",
-    shieldAlt = "\u{1F6E1}", info = "\u{2139}\u{FE0F}", link = "\u{1F517}"
+    shieldAlt = "\u{1F6E1}", info = "\u{2139}\u{FE0F}", link = "\u{1F517}", image = "\u{1F5BC}\u{FE0F}"
 }
 
 local repSpeedPetPriorities = {
@@ -1113,6 +1113,25 @@ local function addLabel(page, text, height)
     return { SetText = function(_, t) l.Text = t end }
 end
 
+local function addImage(page, assetId, height)
+    local f = new("Frame", {
+        Size = UDim2.new(1, 0, 0, height or 90),
+        BackgroundColor3 = T.Element,
+        BorderSizePixel = 0,
+    }, page)
+    corner(f, 4)
+    stroke(f, T.Accent, 1)
+
+    local img = new("ImageLabel", {
+        Size = UDim2.new(1, -16, 1, -16),
+        Position = UDim2.new(0, 8, 0, 8),
+        BackgroundTransparency = 1,
+        Image = assetId,
+        ScaleType = Enum.ScaleType.Fit,
+    }, f)
+    return img
+end
+
 local function addToggle(page, name, defaultState, callback)
     local initialState = defaultState
     local f = new("Frame", {
@@ -1665,7 +1684,10 @@ end)
 eggLabel = addLabel(miscPage, E.egg .. " Eaten: 0 | Boost: -- | Last: --", 32)
 local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 32)
 
--- Infos Tab (Version stable sans bug d'image)
+-- Infos Tab (Intégration de l'ID d'image valide)
+addSection(infoPage, E.image .. " Hub Logo / Banner")
+addImage(infoPage, "rbxassetid://133336178270901", 100)
+
 addSection(infoPage, E.sparkles .. " Credits & Info")
 addLabel(infoPage, "Roblox Main : TZ_THR\nRoblox Alt : TZ_THRV2", 40)
 
