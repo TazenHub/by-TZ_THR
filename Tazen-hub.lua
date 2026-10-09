@@ -187,8 +187,6 @@ local function serverHop()
 end
 
 local function autoKillAllLoop(myId)
-    local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
-    local attackRemote = rEvents and (rEvents:FindFirstChild("attackEvent") or rEvents:FindFirstChild("muscleEvent"))
     lastKillTick = tick()
 
     while killRunId == myId and alive do
@@ -240,11 +238,14 @@ local function autoKillAllLoop(myId)
                         if hrp and pHrp then
                             hrp.CFrame = pHrp.CFrame * CFrame.new(0, 3, 2)
                         end
-                        if attackRemote then
-                            pcall(function() 
-                                attackRemote:FireServer("punch", targetPlayer.Character) 
+                        
+                        local currentTool = character:FindFirstChild("Fight") or character:FindFirstChild("Punch")
+                        if currentTool and currentTool:IsA("Tool") then
+                            pcall(function()
+                                currentTool:Activate()
                             end)
                         end
+
                         task.wait(0.1)
                     end
 
@@ -264,8 +265,6 @@ local function autoKillAllLoop(myId)
 end
 
 local function killTargetPlayerLoop(myId)
-    local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
-    local attackRemote = rEvents and (rEvents:FindFirstChild("attackEvent") or rEvents:FindFirstChild("muscleEvent"))
     lastKillTick = tick()
 
     while killRunId == myId and alive do
@@ -317,11 +316,14 @@ local function killTargetPlayerLoop(myId)
                         if hrp and pHrp then
                             hrp.CFrame = pHrp.CFrame * CFrame.new(0, 3, 2)
                         end
-                        if attackRemote then
-                            pcall(function() 
-                                attackRemote:FireServer("punch", targetPlayer.Character) 
+                        
+                        local currentTool = character:FindFirstChild("Fight") or character:FindFirstChild("Punch")
+                        if currentTool and currentTool:IsA("Tool") then
+                            pcall(function()
+                                currentTool:Activate()
                             end)
                         end
+
                         task.wait(0.1)
                     end
 
