@@ -597,19 +597,6 @@ local function autoWheelLoop(myId)
     end
 end
 
-local function autoEggLoop(myId)
-    while eggRunId == myId and alive do
-        pcall(function()
-            local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
-            local eggRemote = rEvents and (rEvents:FindFirstChild("useItemRemote") or rEvents:FindFirstChild("eatEggRemote") or rEvents:FindFirstChild("itemRemote"))
-            if eggRemote then
-                eggRemote:InvokeServer("Protein Egg")
-            end
-        end)
-        task.wait(1)
-    end
-end
-
 local function formatSeconds(totalSeconds)
     totalSeconds = math.floor(totalSeconds)
     local hours = math.floor(totalSeconds / 3600)
@@ -1657,6 +1644,94 @@ autoWheelToggle = addToggle(miscPage, E.wheel .. " Auto Wheel", false, function(
         notifyState(E.wheel .. " Auto Wheel", false)
     end
 end)
+
+-- ===================== AUTO EAT PROTEIN EGG =====================
+-- Le Protein Egg est un objet (Tool) de l'inventaire : on l'équipe puis on l'utilise,
+-- comme un clic du joueur. On ne devine plus de remote au hasard.
+local eggDelay = 1
+
+local function findEggTool()
+    local lists = {}
+    if LocalPlayer.Character then lists[#lists + 1] = LocalPlayer.Character end
+    local bp = LocalPlayer:FindFirstChild("Backpack")
+    if bp then lists[#lists + 1] = bp end
+    local fallback
+    for _, c in ipairs(lists) do
+        for _, t in ipairs(c:GetChildren()) do
+            if t:IsA("Tool") then
+                local n = t.Name:lower()
+                if n:find("protein egg", 1, true) then return t end
+                if not fallback and n:find("egg", 1, true) then fallback = t end
+            end
+        end
+    end
+    return fallback
+end
+
+-- Retourne "none" (pas d'oeuf), "eaten" (consommé) ou "stuck" (utilisé mais toujours là)
+local function eatEgg()
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local tool = findEggTool()
+    if not (hum and tool) then return "none" end
+
+    if tool.Parent ~= char then
+        pcall(function() hum:EquipTool(tool) end)
+        task.wait(0.2)
+    end
+    pcall(function() tool:Activate() end)
+    -- certains objets ont leur propre RemoteEvent
+    for _, d in ipairs(tool:GetDescendants()) do
+        if d:IsA("RemoteEvent") then pcall(function() d:FireServer() end) end
+    end
+    task.wait(0.4)
+
+    local consumed = (tool.Parent == nil) or not tool:IsDescendantOf(game)
+    if not consumed then
+        -- dernier recours : les remotes d'objets connus
+        local rEvents = ReplicatedStorage:FindFirstChild("rEvents")
+        local eggRemote = rEvents and (rEvents:FindFirstChild("useItemRemote") or rEvents:FindFirstChild("eatEggRemote") or rEvents:FindFirstChild("itemRemote"))
+        if eggRemote then
+            pcall(function()
+                if eggRemote:IsA("RemoteFunction") then eggRemote:InvokeServer(tool.Name) else eggRemote:FireServer(tool.Name) end
+            end)
+            task.wait(0.3)
+            consumed = (tool.Parent == nil) or not tool:IsDescendantOf(game)
+        end
+    end
+
+    pcall(function() hum:UnequipTools() end)
+    equipFists()
+    return consumed and "eaten" or "stuck"
+end
+
+local function autoEggLoop(myId)
+    local noEgg, stuck = 0, 0
+    while eggRunId == myId and alive do
+        local ok, res = pcall(eatEgg)
+        if ok and res == "eaten" then
+            noEgg, stuck = 0, 0
+        elseif ok and res == "stuck" then
+            stuck = stuck + 1
+            noEgg = 0
+            if stuck >= 3 then
+                notify(E.egg .. " Auto eat protein egg", "Egg utilisé mais pas consommé")
+                if autoEggToggle then autoEggToggle:Set(false) end
+                return
+            end
+        else
+            noEgg = noEgg + 1
+            if noEgg >= 3 then
+                notify(E.egg .. " Auto eat protein egg", "Aucun Protein Egg dans l'inventaire")
+                if autoEggToggle then autoEggToggle:Set(false) end
+                return
+            end
+        end
+        task.wait(math.max(0.5, eggDelay))
+    end
+end
+
+addSlider(miscPage, E.wrench .. " Egg delay (s)", 1, 60, 1, function(v) eggDelay = v end)
 
 autoEggToggle = addToggle(miscPage, E.egg .. " Auto eat protein egg", false, function(v)
     eggRunId = eggRunId + 1
