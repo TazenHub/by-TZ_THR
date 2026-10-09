@@ -1686,7 +1686,6 @@ local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 32)
 
 -- Infos Tab (Ajout d'une image/logo et des crédits)
 addSection(infoPage, E.image .. " Hub Logo / Banner")
--- Remplace "rbxassetid://0" par ton propre ID d'image Roblox ci-dessous !
 addImage(infoPage, "rbxassetid://0", 100)
 
 addSection(infoPage, E.sparkles .. " Credits & Info")
@@ -1753,13 +1752,12 @@ task.spawn(function()
                 local avgReps = math.floor(repTotal / elapsed)
                 repTimerLabel:SetText(string.format("%s Session Time: %s | Avg Reps/s: %d", E.clock, formatSeconds(elapsed), avgReps))
                 
-                $0
                 local now = tick()
                 repCalcLabel:SetText(StatTracker.text(E.muscle, "Strength", StatTracker.stats.strength, now, repStartTime))
                 durabilityCalcLabel:SetText(StatTracker.text(E.shieldAlt, "Durability", StatTracker.stats.durability, now, repStartTime))
             else
                 repTimerLabel:SetText(E.clock .. " Session Time: 0s | Avg Reps/s: 0")
-                repCalcLabel:SetTest(E.muscle .. " Strength Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0")
+                repCalcLabel:SetText(E.muscle .. " Strength Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0")
                 durabilityCalcLabel:SetText(E.shieldAlt .. " Durability Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0")
             end
         end)
