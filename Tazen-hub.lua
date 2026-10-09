@@ -1707,7 +1707,7 @@ copyDiscordBtn.Activated:Connect(function()
             setclipboard("https://discord.gg/y779ZnRGnd")
             notify("Discord", E.ok .. " Discord link copied to clipboard!")
         else
-            notify("Discord", E.no | " Clipboard not supported by executor")
+            notify("Discord", E.no .. " Clipboard not supported by executor")
         end
     end)
 end)
