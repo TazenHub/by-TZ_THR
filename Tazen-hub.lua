@@ -52,7 +52,7 @@ local E = {
     party = "\u{1F389}", game = "\u{1F3AE}", crown = "\u{1F451}", egg = "\u{1F95A}",
     wheel = "\u{1F3A1}", skull = "\u{1F480}", rainbow = "\u{1F308}", chest = "\u{1F381}",
     sword = "\u{2694}\u{FE0F}", shield = "\u{1F6E1}\u{FE0F}", crosshairs = "\u{1F3AF}",
-    shieldAlt = "\u{1F6E1}"
+    shieldAlt = "\u{1F6E1}", info = "\u{2139}\u{FE0F}", link = "\u{1F517}"
 }
 
 local repSpeedPetPriorities = {
@@ -940,7 +940,7 @@ local gui = new("ScreenGui", {
 
 local cam = workspace.CurrentCamera
 local vp = cam and cam.ViewportSize or Vector2.new(900, 600)
-local W = math.min(560, vp.X - 30)
+local W = math.min(580, vp.X - 30)
 local H = math.min(390, vp.Y - 30)
 
 local main = new("Frame", {
@@ -1053,7 +1053,7 @@ end
 local function createTab(name, width)
     tabCount = tabCount + 1
     local button = new("TextButton", {
-        Size = UDim2.fromOffset(width or 95, 20),
+        Size = UDim2.fromOffset(width or 85, 20),
         BackgroundColor3 = T.Element,
         Text = name,
         Font = Enum.Font.GothamBold,
@@ -1298,26 +1298,6 @@ local function addSlider(page, name, min, max, default, callback)
     return setValue
 end
 
-local function addCredit(page, text)
-    local f = new("Frame", {
-        Size = UDim2.new(1, 0, 0, 50),
-        BackgroundColor3 = T.Element,
-        BorderSizePixel = 0,
-    }, page)
-    corner(f, 4)
-    stroke(f, T.Accent, 1)
-    textLabel({
-        Size = UDim2.new(1, -16, 1, 0),
-        Position = UDim2.new(0, 8, 0, 0),
-        Text = text,
-        Font = Enum.Font.GothamBold,
-        TextSize = 12,
-        TextColor3 = T.Text,
-        TextWrapped = true,
-        TextXAlignment = Enum.TextXAlignment.Center,
-    }, f)
-end
-
 local function notify(title, text)
     if not alive then return end
     pcall(function()
@@ -1354,12 +1334,14 @@ local TAB_AUTO = E.cycle .. " Auto Rebirth"
 local TAB_STR = E.muscle .. " Fast Strength"
 local TAB_KILL = E.sword .. " Killing"
 local TAB_MISC = E.toolbox .. " Misc"
+local TAB_INFO = E.info .. " Infos"
 
-local fastPage = createTab(TAB_FAST, 102)
-local autoPage = createTab(TAB_AUTO, 102)
-local strPage = createTab(TAB_STR, 106)
-local killPage = createTab(TAB_KILL, 75)
-local miscPage = createTab(TAB_MISC, 65)
+local fastPage = createTab(TAB_FAST, 95)
+local autoPage = createTab(TAB_AUTO, 95)
+local strPage = createTab(TAB_STR, 95)
+local killPage = createTab(TAB_KILL, 65)
+local miscPage = createTab(TAB_MISC, 55)
+local infoPage = createTab(TAB_INFO, 55)
 
 local fastToggle, autoToggle, repToggle, killAllToggle, killTargetToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle, autoWhitelistToggle, autoSaveConfigToggle
 
@@ -1681,10 +1663,37 @@ autoEggToggle = addToggle(miscPage, E.egg .. " Auto Eat Protein Egg", false, fun
 end)
 
 eggLabel = addLabel(miscPage, E.egg .. " Eaten: 0 | Boost: -- | Last: --", 32)
-
 local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 32)
-addSection(miscPage, E.heart .. " Credits")
-addCredit(miscPage, E.sparkles .. " Made by TZ_THR, Have fun " .. E.party)
+
+-- Infos Tab (Crédits, Réseaux & Bouton Discord)
+addSection(infoPage, E.sparkles .. " Credits & Info")
+addLabel(infoPage, "Roblox Main : TZ_THR\nRoblox Alt : TZ_THRV2", 40)
+
+addSection(infoPage, E.antenna .. " Socials")
+addLabel(infoPage, "TikTok : tz_thr\nDiscord : tz_thr", 40)
+
+addSection(infoPage, E.link .. " Discord Server")
+local copyDiscordBtn = new("TextButton", {
+    Size = UDim2.new(1, 0, 0, 32),
+    BackgroundColor3 = T.Accent,
+    Text = E.link .. " Copy Discord Link",
+    Font = Enum.Font.GothamBold,
+    TextSize = 12,
+    TextColor3 = Color3.fromRGB(15, 15, 15),
+    BorderSizePixel = 0,
+}, infoPage)
+corner(copyDiscordBtn, 4)
+
+copyDiscordBtn.Activated:Connect(function()
+    pcall(function()
+        if setclipboard then
+            setclipboard("https://discord.gg/y779ZnRGnd")
+            notify("Discord", E.ok .. " Discord link copied to clipboard!")
+        else
+            notify("Discord", E.no .. " Clipboard not supported by executor")
+        end
+    end)
+end)
 
 selectTab(TAB_FAST)
 
