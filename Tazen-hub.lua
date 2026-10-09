@@ -165,6 +165,39 @@ local function equipFists()
     end)
 end
 
+-- Fonction pour détecter si un joueur est dans une Safe Zone
+local function isInSafeZone(character)
+    if not character then return true end
+    
+    -- Vérification des attributs ou effets de bulle/bouclier de safe zone courants
+    if character:GetAttribute("InSafeZone") == true or character:GetAttribute("SafeZone") == true or character:GetAttribute("Shield") == true then
+        return true
+    end
+    
+    for _, child in ipairs(character:GetChildren()) do
+        local nameLower = child.Name:lower()
+        if nameLower:find("safe") or nameLower:find("shield") or nameLower:find("protection") or nameLower:find("bubble") then
+            if child:IsA("BoolValue") and child.Value == true then
+                return true
+            elseif child:IsA("BasePart") or child:IsA("Model") then
+                -- Si l'objet de protection est actif/visible
+                if not child:IsA("BasePart") or child.Transparency < 1 then
+                    return true
+                end
+            end
+        end
+    end
+
+    -- Vérification par position si une zone Safe (comme le spawn ou boutique) a des coordonnées fixes (optionnel de sécurité)
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        -- Exemple de zone de spawn protégée standard dans Muscle Legends (Zone centrale approximative autour de 0,0,0 si applicable)
+        -- On peut aussi vérifier si le joueur possède un tag particulier dans le workspace
+    end
+
+    return false
+end
+
 local lastHopTry = 0
 local function serverHop()
     killStatus = "Changing server..."
@@ -206,7 +239,8 @@ local function autoKillAllLoop(myId)
                         local pChar = plr.Character
                         local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
                         local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
-                        if pHrp and pHum and pHum.Health > 0 then
+                        -- Ignorer si le joueur est dans une safe zone
+                        if pHrp and pHum and pHum.Health > 0 and not isInSafeZone(pChar) then
                             local dist = (hrp.Position - pHrp.Position).Magnitude
                             if dist < minDist then
                                 minDist = dist
@@ -235,7 +269,7 @@ local function autoKillAllLoop(myId)
                     end
 
                     while killRunId == myId and alive and targetPlayer.Parent and pHum and pHum.Health > 0 and wasAlive do
-                        if whitelistPlayers[targetPlayer.Name] then
+                        if whitelistPlayers[targetPlayer.Name] or isInSafeZone(pChar) then
                             break
                         end
 
@@ -289,7 +323,8 @@ local function killTargetPlayerLoop(myId)
                         local pChar = plr.Character
                         local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
                         local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
-                        if pHrp and pHum and pHum.Health > 0 then
+                        -- Ignorer si le joueur est dans une safe zone
+                        if pHrp and pHum and pHum.Health > 0 and not isInSafeZone(pChar) then
                             local dist = (hrp.Position - pHrp.Position).Magnitude
                             if dist < minDist then
                                 minDist = dist
@@ -318,7 +353,7 @@ local function killTargetPlayerLoop(myId)
                     end
 
                     while killRunId == myId and alive and targetPlayer.Parent and pHum and pHum.Health > 0 and wasAlive do
-                        if not targetPlayers[targetPlayer.Name] or whitelistPlayers[targetPlayer.Name] then
+                        if not targetPlayers[targetPlayer.Name] or whitelistPlayers[targetPlayer.Name] or isInSafeZone(pChar) then
                             break
                         end
 
@@ -550,8 +585,6 @@ local function fastRebirthLoop(myId)
                 rebuild()
             end
 
-            -- verdict du serveur (max 1.5 s) : refusé = cooldown pas tout à fait fini -> on réessaie vite
-            -- au lieu de perdre 6 s, et on agrandit un peu la marge ; accepté -> la marge redescend
             while isRunning() and not resultReady and os.clock() < tFire + 1.5 do
                 task.wait()
             end
@@ -1602,8 +1635,6 @@ autoSaveConfigToggle = addKillingToggle(killPage, E.wrench .. " Auto Save Config
     end
 end)
 
--- Après un server hop (auto-exec), les toggles reviennent sur ON depuis la config mais la boucle
--- n'était jamais relancée : on la relance ici.
 task.spawn(function()
     task.wait(2)
     if not alive then return end
@@ -1721,7 +1752,6 @@ local function addPlayerRow(plr)
     playerRows[plr] = { row = row, sync = sync }
 end
 
--- Ajoute/retire seulement les lignes nécessaires et met à jour les couleurs (très léger)
 local function refreshPlayerListUI()
     pcall(function()
         for plr in pairs(playerRows) do
@@ -1888,7 +1918,7 @@ copyDiscordBtn.Activated:Connect(function()
             setclipboard("https://discord.gg/y779ZnRGnd")
             notify("Discord", E.ok .. " Discord link copied to clipboard!")
         else
-            notify("Discord", E.no .. " Clipboard not supported by executor")
+            notify("Discord", E.no | " Clipboard not supported by executor")
         end
     end)
 end)
