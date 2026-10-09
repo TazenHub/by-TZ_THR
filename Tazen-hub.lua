@@ -965,7 +965,7 @@ local topbar = new("Frame", {
 textLabel({
     Size = UDim2.new(1, -70, 1, 0),
     Position = UDim2.new(0, 8, 0, 0),
-    Text = E.sparkles .. " Tazen hub V1  |  " .. E.heart .. " by TZ_THR",
+    Text = "Tazen hub V1  |  by TZ_THR",
     Font = Enum.Font.GothamBold,
     TextSize = 11,
     TextColor3 = Color3.new(1, 1, 1),
