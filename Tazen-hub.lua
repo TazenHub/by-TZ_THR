@@ -169,7 +169,6 @@ end
 local function isInSafeZone(character)
     if not character then return true end
     
-    -- Vérification des attributs ou effets de bulle/bouclier de safe zone courants
     if character:GetAttribute("InSafeZone") == true or character:GetAttribute("SafeZone") == true or character:GetAttribute("Shield") == true then
         return true
     end
@@ -180,19 +179,11 @@ local function isInSafeZone(character)
             if child:IsA("BoolValue") and child.Value == true then
                 return true
             elseif child:IsA("BasePart") or child:IsA("Model") then
-                -- Si l'objet de protection est actif/visible
                 if not child:IsA("BasePart") or child.Transparency < 1 then
                     return true
                 end
             end
         end
-    end
-
-    -- Vérification par position si une zone Safe (comme le spawn ou boutique) a des coordonnées fixes (optionnel de sécurité)
-    local hrp = character:FindFirstChild("HumanoidRootPart")
-    if hrp then
-        -- Exemple de zone de spawn protégée standard dans Muscle Legends (Zone centrale approximative autour de 0,0,0 si applicable)
-        -- On peut aussi vérifier si le joueur possède un tag particulier dans le workspace
     end
 
     return false
@@ -239,7 +230,6 @@ local function autoKillAllLoop(myId)
                         local pChar = plr.Character
                         local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
                         local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
-                        -- Ignorer si le joueur est dans une safe zone
                         if pHrp and pHum and pHum.Health > 0 and not isInSafeZone(pChar) then
                             local dist = (hrp.Position - pHrp.Position).Magnitude
                             if dist < minDist then
@@ -323,7 +313,6 @@ local function killTargetPlayerLoop(myId)
                         local pChar = plr.Character
                         local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
                         local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
-                        -- Ignorer si le joueur est dans une safe zone
                         if pHrp and pHum and pHum.Health > 0 and not isInSafeZone(pChar) then
                             local dist = (hrp.Position - pHrp.Position).Magnitude
                             if dist < minDist then
@@ -569,7 +558,7 @@ local function fastRebirthLoop(myId)
                 pcall(function()
                     rebirthRemote:InvokeServer("rebirthRequest")
                 end)
-                task.wait(0.25) -- laisse la stat Rebirths se répliquer
+                task.wait(0.25)
                 local after = rebirthCount()
                 if countBefore and after then rebirthOk = after > countBefore end
                 resultReady = true
@@ -1033,7 +1022,6 @@ local watermark = new("Frame", {
     ZIndex = 4,
 }, main)
 
--- Grand T Blanc en arrière-plan (plus grand et centré)
 new("TextLabel", {
     Size = UDim2.fromOffset(180, 200),
     Position = UDim2.new(0.12, 0, 0, 0),
@@ -1046,7 +1034,6 @@ new("TextLabel", {
     ZIndex = 4,
 }, watermark)
 
--- Grand Z Rose en arrière-plan (plus grand et bien positionné)
 new("TextLabel", {
     Size = UDim2.fromOffset(180, 200),
     Position = UDim2.new(0.40, 0, 0.12, 0),
@@ -1059,7 +1046,6 @@ new("TextLabel", {
     ZIndex = 4,
 }, watermark)
 
--- Lettrage TAZEN compact et unifié sous le grand logo
 local tazenBrandBox = new("Frame", {
     Size = UDim2.fromOffset(200, 45),
     Position = UDim2.new(0.5, -100, 0.74, 0),
@@ -1067,14 +1053,12 @@ local tazenBrandBox = new("Frame", {
     ZIndex = 4,
 }, watermark)
 
--- Layout pour coller parfaitement les lettres entre elles sans espaces vides
 new("UIListLayout", {
     FillDirection = Enum.FillDirection.Horizontal,
     SortOrder = Enum.SortOrder.LayoutOrder,
     Padding = UDim.new(0, 0),
 }, tazenBrandBox)
 
--- T (Blanc)
 new("TextLabel", {
     Size = UDim2.fromOffset(32, 45),
     BackgroundTransparency = 1,
@@ -1087,7 +1071,6 @@ new("TextLabel", {
     ZIndex = 4,
 }, tazenBrandBox)
 
--- Λ (Rose, collé au T)
 new("TextLabel", {
     Size = UDim2.fromOffset(32, 45),
     BackgroundTransparency = 1,
@@ -1100,7 +1083,6 @@ new("TextLabel", {
     ZIndex = 4,
 }, tazenBrandBox)
 
--- ZEN (Blanc, collé au Λ)
 new("TextLabel", {
     Size = UDim2.fromOffset(110, 45),
     BackgroundTransparency = 1,
@@ -1114,7 +1096,6 @@ new("TextLabel", {
 }, tazenBrandBox)
 -- =====================================================================
 
--- TOPBAR (Bande originale noire, propre et stylée)
 local topbar = new("Frame", {
     Name = "Topbar",
     Size = UDim2.new(1, 0, 0, 28),
@@ -1123,7 +1104,6 @@ local topbar = new("Frame", {
     ZIndex = 6,
 }, main)
 
--- Titre d'origine : Tazen hub V1 | by TZ_THR
 textLabel({
     Size = UDim2.new(1, -70, 1, 0),
     Position = UDim2.new(0, 10, 0, 0),
@@ -1918,7 +1898,7 @@ copyDiscordBtn.Activated:Connect(function()
             setclipboard("https://discord.gg/y779ZnRGnd")
             notify("Discord", E.ok .. " Discord link copied to clipboard!")
         else
-            notify("Discord", E.no | " Clipboard not supported by executor")
+            notify("Discord", E.no, " Clipboard not supported by executor")
         end
     end)
 end)
