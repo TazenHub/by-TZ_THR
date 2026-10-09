@@ -16,7 +16,7 @@ local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 
--- ===================== CONFIG & SAVE SYSTEM (KILLING ONLY) =====================
+-- ===================== CONFIG & SAVE SYSTEM =====================
 local CONFIG_FILE_PREFIX = "TazenHub_Config_"
 
 local function loadCategoryConfig(categoryName)
@@ -166,7 +166,7 @@ local function equipFists()
 end
 
 local function serverHop()
-    killStatus = "Changement de serveur..."
+    killStatus = "Changing server..."
     pcall(function()
         local servers = {}
         local req = game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100")
@@ -196,7 +196,7 @@ local function autoKillAllLoop(myId)
             local character = LocalPlayer.Character
             local hrp = character and character:FindFirstChild("HumanoidRootPart")
             if not hrp then
-                killStatus = "En attente du personnage..."
+                killStatus = "Waiting for character..."
                 task.wait(1)
             else
                 local targetPlayer = nil
@@ -248,7 +248,7 @@ local function autoKillAllLoop(myId)
 
                     if deathConn then deathConn:Disconnect() end
                 else
-                    killStatus = "Aucune cible dispo..."
+                    killStatus = "No target available..."
                     task.wait(0.5)
                 end
             end
@@ -271,7 +271,7 @@ local function killTargetPlayerLoop(myId)
             local character = LocalPlayer.Character
             local hrp = character and character:FindFirstChild("HumanoidRootPart")
             if not hrp then
-                killStatus = "En attente du personnage..."
+                killStatus = "Waiting for character..."
                 task.wait(1)
             else
                 local targetPlayer = nil
@@ -297,7 +297,7 @@ local function killTargetPlayerLoop(myId)
                     local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
                     local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
 
-                    killStatus = "Cible : " .. targetPlayer.Name
+                    killStatus = "Target : " .. targetPlayer.Name
                     equipFists()
 
                     local wasAlive = true
@@ -323,7 +323,7 @@ local function killTargetPlayerLoop(myId)
 
                     if deathConn then deathConn:Disconnect() end
                 else
-                    killStatus = "Aucune Target connectée..."
+                    killStatus = "No target connected..."
                     task.wait(0.5)
                 end
             end
@@ -572,7 +572,6 @@ local function fastRepLoop(myId)
     end
 end
 
--- ===================== AUTO SPIN WHEEL (Corrigé selon ta vidéo) =====================
 local function autoWheelLoop(myId)
     while wheelRunId == myId and alive do
         pcall(function()
@@ -757,10 +756,10 @@ do
 
     function StatTracker.text(icon, label, st, now, startT)
         if not st.read then
-            return string.format("%s %s : stat introuvable", icon, label)
+            return string.format("%s %s : stat not found", icon, label)
         end
         local r = StatTracker.rate(st, now, startT)
-        return string.format("%s %s Tot: %s (+%s/s) | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
+        return string.format("%s %s Tot: %s (+%s/s) | 1m: %s | 1h: %s | 1d: %s | 1w: %s | 1mo: %s",
             icon, label, formatNumber(st.gained), formatNumber(r),
             formatNumber(r * 60), formatNumber(r * 3600), formatNumber(r * 86400),
             formatNumber(r * 604800), formatNumber(r * 2592000))
@@ -770,7 +769,7 @@ do
         local st = stats.rebirths
         local r = StatTracker.rate(st, now, startT)
         local function p(x) return formatNumber(math.floor(x + 0.5)) end
-        return string.format("%s Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
+        return string.format("%s Tot: %s | 1m: %s | 1h: %s | 1d: %s | 1w: %s | 1mo: %s",
             icon, formatNumber(st.gained), p(r * 60), p(r * 3600), p(r * 86400), p(r * 604800), p(r * 2592000))
     end
 
@@ -1244,25 +1243,8 @@ local function addKillingToggle(page, name, categoryKey, settingKey, defaultStat
     return obj
 end
 
-local function addButton(page, name, callback)
-    local b = new("TextButton", {
-        Size = UDim2.new(1, 0, 0, 38),
-        BackgroundColor3 = T.Element,
-        BackgroundTransparency = 0.2,
-        Text = name,
-        Font = Enum.Font.GothamBold,
-        TextSize = 14,
-        TextColor3 = T.Text,
-        TextStrokeTransparency = 0.5,
-        BorderSizePixel = 0,
-    }, page)
-    corner(b, 8)
-    stroke(b, T.Accent, 1)
-    b.Activated:Connect(callback)
-    return b
-end
+local function repSliderUpdateFunc(...) end
 
-local repSliderUpdate = nil
 local function addSlider(page, name, min, max, default, callback)
     local initialVal = default
     local f = new("Frame", {
@@ -1408,21 +1390,21 @@ local strPage = createTab(TAB_STR)
 local killPage = createTab(TAB_KILL)
 local miscPage = createTab(TAB_MISC)
 
-local fastToggle, autoToggle, repToggle, killAllToggle, killTargetToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle
+local fastToggle, autoToggle, repToggle, killAllToggle, killTargetToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle, autoWhitelistToggle, autoSaveConfigToggle
 
 local function notifyState(title, v)
     notify(title, v and (E.ok .. " Enabled") or (E.no .. " Disabled"))
 end
 
 local function enableAutoFastRep()
-    if repSliderUpdate then repSliderUpdate(659) end
+    if repSliderUpdateFunc then repSliderUpdateFunc(659) end
     if repToggle and not repToggle.Value then repToggle:Set(true) end
 end
 
 -- Fast Rebirth
 addSection(fastPage, E.fire .. " Fast Rebirth (Pack)")
-addLabel(fastPage, "\u{26A0}\u{FE0F} You need pack for fast rebirth", 34)
-fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", false, function(v)
+addLabel(fastPage, "\u{26A0}\u{FE0F} You need gamepass for fast rebirth", 34)
+fastToggle = addToggle(fastPage, E.bolt .. " Fast Rebirth", false, function(v)
     fastRunId = fastRunId + 1
     if v then
         fastStartTime = tick()
@@ -1430,20 +1412,20 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", false, function(v)
         autoRunId = autoRunId + 1
         if autoToggle then autoToggle:Set(false) end
         enableAutoFastRep()
-        notifyState(E.bolt .. " Fast rebirth", true)
+        notifyState(E.bolt .. " Fast Rebirth", true)
         task.spawn(fastRebirthLoop, fastRunId)
     else
         fastStartTime = nil
-        notifyState(E.bolt .. " Fast rebirth", false)
+        notifyState(E.bolt .. " Fast Rebirth", false)
     end
 end)
-local fastTimerLabel = addLabel(fastPage, E.clock .. " Session Time: 0s | Dernière renaissance : --", 36)
-local fastCalcLabel = addLabel(fastPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0", 55)
+local fastTimerLabel = addLabel(fastPage, E.clock .. " Session Time: 0s | Last Rebirth : --", 36)
+local fastCalcLabel = addLabel(fastPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 55)
 
 -- Auto Rebirth
 addSection(autoPage, E.cycle .. " Auto Rebirth (No Pack)")
 addLabel(autoPage, "\u{26A0}\u{FE0F} This tab can be used by everyone", 34)
-autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", false, function(v)
+autoToggle = addToggle(autoPage, E.cycle .. " Auto Rebirth", false, function(v)
     autoRunId = autoRunId + 1
     if v then
         autoStartTime = tick()
@@ -1451,39 +1433,39 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", false, function(v)
         fastRunId = fastRunId + 1
         if fastToggle then fastToggle:Set(false) end
         enableAutoFastRep()
-        notifyState(E.cycle .. " Auto rebirth", true)
+        notifyState(E.cycle .. " Auto Rebirth", true)
         task.spawn(autoRebirthLoop, autoRunId)
     else
         autoStartTime = nil
-        notifyState(E.cycle .. " Auto rebirth", false)
+        notifyState(E.cycle .. " Auto Rebirth", false)
     end
 end)
-local autoTimerLabel = addLabel(autoPage, E.clock .. " Session Time: 0s | Dernière renaissance : --", 36)
-local autoCalcLabel = addLabel(autoPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0", 55)
+local autoTimerLabel = addLabel(autoPage, E.clock .. " Session Time: 0s | Last Rebirth : --", 36)
+local autoCalcLabel = addLabel(autoPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 55)
 
 -- Fast Strength & Durability
 addSection(strPage, E.muscle .. " Fast Strength & Durability Predictor")
-repToggle = addToggle(strPage, E.muscle .. " Fast strength", false, function(v)
+repToggle = addToggle(strPage, E.muscle .. " Fast Strength", false, function(v)
     repRunId = repRunId + 1
     if v then
         repStartTime = tick()
         repTotal = 0
         StatTracker.reset("strength")
         StatTracker.reset("durability")
-        notify(E.muscle .. " Fast strength", E.target .. " " .. repRate .. " reps/s targeted")
+        notify(E.muscle .. " Fast Strength", E.target .. " " .. repRate .. " reps/s targeted")
         task.spawn(fastRepLoop, repRunId)
     else
         repStartTime = nil
-        notifyState(E.muscle .. " Fast strength", false)
+        notifyState(E.muscle .. " Fast Strength", false)
     end
 end)
-repSliderUpdate = addSlider(strPage, E.wrench .. " Reps per second", 0, 1050, repRate, function(v) repRate = v end)
-local repTimerLabel = addLabel(strPage, E.clock .. " Session Time: 0s | Moy. Reps/s: 0", 36)
-local repCalcLabel = addLabel(strPage, E.muscle .. " Strength Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0", 55)
-local durabilityCalcLabel = addLabel(strPage, E.shieldAlt .. " Durability Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0", 55)
+repSliderUpdateFunc = addSlider(strPage, E.wrench .. " Reps per second", 0, 1050, repRate, function(v) repRate = v end)
+local repTimerLabel = addLabel(strPage, E.clock .. " Session Time: 0s | Avg Reps/s: 0", 36)
+local repCalcLabel = addLabel(strPage, E.muscle .. " Strength Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 55)
+local durabilityCalcLabel = addLabel(strPage, E.shieldAlt .. " Durability Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 55)
 
 -- Killing Tab
-addSection(killPage, E.sword .. " Module de Combat / Killing")
+addSection(killPage, E.sword .. " Combat Module / Killing")
 killAllToggle = addKillingToggle(killPage, E.sword .. " Auto Kill All Players", "Killing", "AutoKillAll", false, function(v)
     killRunId = killRunId + 1
     if v then
@@ -1506,27 +1488,37 @@ killTargetToggle = addKillingToggle(killPage, E.target .. " Kill Target Players 
     end
 end)
 
-addButton(killPage, E.wrench .. " Save Config (Killing)", function()
-    local cfg = { AutoKillAll = killAllToggle.Value, KillTarget = killTargetToggle.Value }
-    saveCategoryConfig("Killing", cfg)
-    notify("Config", E.ok .. " Killing sauvegardé !")
+autoSaveConfigToggle = addKillingToggle(killPage, E.wrench .. " Auto Save Config (Killing)", "Killing", "AutoSaveConfig", false, function(v)
+    if v then
+        local cfg = { AutoKillAll = killAllToggle.Value, KillTarget = killTargetToggle.Value, AutoSaveConfig = true }
+        saveCategoryConfig("Killing", cfg)
+        notify("Config", E.ok .. " Killing settings auto-saved!")
+    else
+        local cfg = { AutoKillAll = killAllToggle.Value, KillTarget = killTargetToggle.Value, AutoSaveConfig = false }
+        saveCategoryConfig("Killing", cfg)
+        notify("Config", E.no .. " Auto-save disabled")
+    end
 end)
 
 local killStatusLabel = addLabel(killPage, E.clip .. " " .. killStatus, 40)
 
-addSection(killPage, E.shield .. " Système Whitelist & Amis")
-addButton(killPage, E.heart .. " Auto Whitelist Friends", function()
-    local count = 0
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer and plr:IsFriendsWith(LocalPlayer.UserId) then
-            whitelistPlayers[plr.Name] = true
-            count = count + 1
+addSection(killPage, E.shield .. " Whitelist & Friends System")
+autoWhitelistToggle = addToggle(killPage, E.heart .. " Auto Whitelist Friends", false, function(v)
+    if v then
+        local count = 0
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer and plr:IsFriendsWith(LocalPlayer.UserId) then
+                whitelistPlayers[plr.Name] = true
+                count = count + 1
+            end
         end
+        notify("Whitelist", E.ok .. " " .. count .. " friend(s) whitelisted automatically!")
+    else
+        notify("Whitelist", E.no .. " Auto-whitelist turned off")
     end
-    notify("Whitelist", E.ok .. " " .. count .. " ami(s) ajouté(s) à la whitelist !")
 end)
 
-addSection(killPage, E.crosshairs .. " Gestion des Joueurs Connectés")
+addSection(killPage, E.crosshairs .. " Connected Players Management")
 local playerListContainer = new("ScrollingFrame", {
     Size = UDim2.new(1, 0, 0, 160),
     BackgroundTransparency = 1,
@@ -1576,7 +1568,7 @@ local function refreshPlayerListUI()
                 wBtn.Activated:Connect(function()
                     whitelistPlayers[plr.Name] = not whitelistPlayers[plr.Name]
                     wBtn.BackgroundColor3 = whitelistPlayers[plr.Name] and T.Accent or T.Off
-                    notify("Whitelist", plr.Name .. (whitelistPlayers[plr.Name] and " protégé." or " retiré."))
+                    notify("Whitelist", plr.Name .. (whitelistPlayers[plr.Name] and " protected." or " removed."))
                 end)
 
                 local tBtn = new("TextButton", {
@@ -1594,7 +1586,7 @@ local function refreshPlayerListUI()
                 tBtn.Activated:Connect(function()
                     targetPlayers[plr.Name] = not targetPlayers[plr.Name]
                     tBtn.BackgroundColor3 = targetPlayers[plr.Name] and Color3.fromRGB(220, 50, 50) or T.Off
-                    notify("Target", plr.Name .. (targetPlayers[plr.Name] and " ciblé !" or " retiré."))
+                    notify("Target", plr.Name .. (targetPlayers[plr.Name] and " targeted!" or " removed."))
                 end)
             end
         end
@@ -1627,7 +1619,7 @@ autoWheelToggle = addToggle(miscPage, E.wheel .. " Auto Wheel", false, function(
     end
 end)
 
--- ===================== AUTO EAT PROTEIN EGG (Corrigé selon ta vidéo) =====================
+-- ===================== AUTO EAT PROTEIN EGG =====================
 local eggEaten = 0
 local eggLabel
 
@@ -1665,7 +1657,6 @@ local function eatEgg()
     local ev = findMuscleEvent(rEvents or ReplicatedStorage)
     if not ev then return "unconfirmed" end
 
-    -- Utilisation exacte de l'appel distant pour le Protein Egg
     pcall(function() ev:FireServer("proteinEgg", tool) end)
     return "eaten"
 end
@@ -1673,8 +1664,8 @@ end
 local function updateEggLabel()
     if not eggLabel then return end
     local left = eggNextAt - tick()
-    local boostTxt = (left > 0) and formatSeconds(left) or "inactif"
-    eggLabel:SetText(string.format("%s Mangés: %d | Boost: %s | Dernier: %s",
+    local boostTxt = (left > 0) and formatSeconds(left) or "inactive"
+    eggLabel:SetText(string.format("%s Eaten: %d | Boost: %s | Last: %s",
         E.egg, eggEaten, boostTxt, eggStatus))
 end
 
@@ -1687,19 +1678,19 @@ local function autoEggLoop(myId)
             local ok, res = pcall(eatEgg)
             if (not ok) or res == "none" then
                 noEgg = noEgg + 1
-                eggStatus = "aucun egg"
+                eggStatus = "no egg"
                 if noEgg >= 3 then
                     pcall(updateEggLabel)
-                    notify(E.egg .. " Protein Egg", "Plus de Protein Egg dans l'inventaire")
+                    notify(E.egg .. " Protein Egg", "No Protein Egg left in inventory")
                     if autoEggToggle then autoEggToggle:Set(false) end
                     return
                 end
             elseif res == "eaten" then
                 noEgg = 0
                 eggEaten = eggEaten + 1
-                eggStatus = "mangé"
+                eggStatus = "eaten"
                 eggNextAt = tick() + EGG_DURATION
-                notify(E.egg .. " Protein Egg", "Consommation d'un Protein Egg")
+                notify(E.egg .. " Protein Egg", "Consumed a Protein Egg")
             end
         end
         pcall(updateEggLabel)
@@ -1707,18 +1698,18 @@ local function autoEggLoop(myId)
     end
 end
 
-autoEggToggle = addToggle(miscPage, E.egg .. " Auto eat protein egg", false, function(v)
+autoEggToggle = addToggle(miscPage, E.egg .. " Auto Eat Protein Egg", false, function(v)
     eggRunId = eggRunId + 1
     if v then
         eggEaten = 0
-        notifyState(E.egg .. " Auto eat protein egg", true)
+        notifyState(E.egg .. " Auto Eat Protein Egg", true)
         task.spawn(autoEggLoop, eggRunId)
     else
-        notifyState(E.egg .. " Auto eat protein egg", false)
+        notifyState(E.egg .. " Auto Eat Protein Egg", false)
     end
 end)
 
-eggLabel = addLabel(miscPage, E.egg .. " Mangés: 0 | Boost: -- | Dernier: --", 34)
+eggLabel = addLabel(miscPage, E.egg .. " Eaten: 0 | Boost: -- | Last: --", 34)
 
 local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 34)
 addSection(miscPage, E.heart .. " Credits")
@@ -1726,7 +1717,7 @@ addCredit(miscPage, E.sparkles .. " Made by TZ_THR, Have fun " .. E.party)
 
 selectTab(TAB_FAST)
 
--- ===================== CALCULATEUR ET DÉTECTION ROBUSTE DES STATS =====================
+-- ===================== STAT TRACKER =====================
 task.spawn(function()
     while alive do
         task.wait(1)
@@ -1737,35 +1728,35 @@ task.spawn(function()
 
             local rbNow = tick()
             if fastStartTime then
-                fastTimerLabel:SetText(string.format("%s Session Time: %s | Dernière renaissance : %s",
+                fastTimerLabel:SetText(string.format("%s Session Time: %s | Last Rebirth : %s",
                     E.clock, formatSeconds(rbNow - fastStartTime), StatTracker.rebirthGap()))
                 fastCalcLabel:SetText(StatTracker.rebirthText(E.chart, rbNow, fastStartTime))
             else
-                fastTimerLabel:SetText(E.clock .. " Session Time: 0s | Dernière renaissance : --")
-                fastCalcLabel:SetText(E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
+                fastTimerLabel:SetText(E.clock .. " Session Time: 0s | Last Rebirth : --")
+                fastCalcLabel:SetText(E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0")
             end
 
             if autoStartTime then
-                autoTimerLabel:SetText(string.format("%s Session Time: %s | Dernière renaissance : %s",
+                autoTimerLabel:SetText(string.format("%s Session Time: %s | Last Rebirth : %s",
                     E.clock, formatSeconds(rbNow - autoStartTime), StatTracker.rebirthGap()))
                 autoCalcLabel:SetText(StatTracker.rebirthText(E.chart, rbNow, autoStartTime))
             else
-                autoTimerLabel:SetText(E.clock .. " Session Time: 0s | Dernière renaissance : --")
-                autoCalcLabel:SetText(E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
+                autoTimerLabel:SetText(E.clock .. " Session Time: 0s | Last Rebirth : --")
+                autoCalcLabel:SetText(E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0")
             end
 
             if repStartTime then
                 local elapsed = math.max(1, tick() - repStartTime)
                 local avgReps = math.floor(repTotal / elapsed)
-                repTimerLabel:SetText(string.format("%s Session Time: %s | Moy. Reps/s: %d", E.clock, formatSeconds(elapsed), avgReps))
+                repTimerLabel:SetText(string.format("%s Session Time: %s | Avg Reps/s: %d", E.clock, formatSeconds(elapsed), avgReps))
                 
                 local now = tick()
                 repCalcLabel:SetText(StatTracker.text(E.muscle, "Strength", StatTracker.stats.strength, now, repStartTime))
                 durabilityCalcLabel:SetText(StatTracker.text(E.shieldAlt, "Durability", StatTracker.stats.durability, now, repStartTime))
             else
-                repTimerLabel:SetText(E.clock .. " Session Time: 0s | Moy. Reps/s: 0")
-                repCalcLabel:SetText(E.muscle .. " Strength Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
-                durabilityCalcLabel:SetText(E.shieldAlt .. " Durability Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
+                repTimerLabel:SetText(E.clock .. " Session Time: 0s | Avg Reps/s: 0")
+                repCalcLabel:SetText(E.muscle .. " Strength Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0")
+                durabilityCalcLabel:SetText(E.shieldAlt .. " Durability Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0")
             end
         end)
     end
