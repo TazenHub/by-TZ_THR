@@ -84,12 +84,9 @@ local killRunId = 0
 local repRate = 659
 local repTotal = 0
 
-local autoRebirthCount = 0
-local fastRebirthCount = 0
+local RebirthTracker = {} -- défini plus bas (compteur fiable basé sur la stat Rebirths)
 local killStatus = "Waiting..."
 
-local fastRebirthTimerText = "0.00s"
-local lastRebirthTick = nil
 
 local fastStartTime = nil
 local autoStartTime = nil
@@ -516,14 +513,7 @@ local function fastRebirthLoop(myId)
                     local okR, res = pcall(function()
                         return rebirthRemote:InvokeServer("rebirthRequest")
                     end)
-                    if okR and (type(res) == "boolean" and res == true or type(res) ~= "boolean") then
-                        fastRebirthCount = fastRebirthCount + 1
-                        if lastRebirthTick then
-                            local diff = tick() - lastRebirthTick
-                            fastRebirthTimerText = string.format("%.2fs", diff)
-                        end
-                        lastRebirthTick = tick()
-                    end
+                    if okR then RebirthTracker.onRemote(res) end
                 end)
             end)
 
@@ -553,9 +543,7 @@ local function autoRebirthLoop(myId)
                 local okR, res = pcall(function()
                     return rebirthRemote:InvokeServer("rebirthRequest")
                 end)
-                if okR then
-                    autoRebirthCount = autoRebirthCount + 1
-                end
+                if okR then RebirthTracker.onRemote(res) end
             end
         end)
         task.wait(REBIRTH_COOLDOWN)
@@ -711,6 +699,8 @@ do
         return nil
     end
 
+    StatTracker.findSource = findSource
+
     local stats = {
         strength   = { names = { "Strength", "Muscle" } },
         durability = { names = { "Durability" } },
@@ -798,6 +788,76 @@ do
                     pcall(StatTracker.record, now)
                 end
             end
+        end
+    end)
+end
+
+-- ===================== REBIRTH TRACKER =====================
+-- Compte uniquement les renaissances confirmées par la stat "Rebirths" du joueur
+-- (le retour du serveur n'est utilisé qu'en secours si la stat est introuvable).
+do
+    local T = RebirthTracker
+    T.count, T.startT, T.firstT, T.lastT, T.gap = 0, tick(), nil, nil, nil
+    T.read, T.last = nil, nil
+
+    local function register(now, n)
+        if T.lastT then T.gap = now - T.lastT end
+        T.count = T.count + n
+        T.firstT = T.firstT or now
+        T.lastT = now
+    end
+
+    function T.poll()
+        if not T.read then
+            T.read = StatTracker.findSource({ "Rebirths", "Rebirth" })
+            T.last = nil
+        end
+        if T.read then
+            local ok, cur = pcall(T.read)
+            if ok and cur then
+                if T.last and cur > T.last then register(tick(), math.floor(cur - T.last + 0.5)) end
+                T.last = cur
+            else
+                T.read, T.last = nil, nil
+            end
+        end
+    end
+
+    function T.reset()
+        T.count, T.startT, T.firstT, T.lastT, T.gap = 0, tick(), nil, nil, nil
+        T.read, T.last = nil, nil
+        pcall(T.poll) -- baseline immédiate pour ne pas rater la 1re renaissance
+    end
+
+    -- Secours : si la stat n'existe pas, on ne compte que les réponses "true" du serveur
+    function T.onRemote(res)
+        if not T.read and res == true then register(tick(), 1) end
+    end
+
+    function T.lastText()
+        return T.gap and string.format("%.2fs", T.gap) or "--"
+    end
+
+    -- Rythme observé entre la 1re et la dernière renaissance, plafonné par le cooldown
+    function T.rate(now)
+        if T.count < 2 or not T.firstT then return 0 end
+        local r = (T.count - 1) / math.max(1, now - T.firstT)
+        return math.min(r, 1 / REBIRTH_COOLDOWN)
+    end
+
+    function T.text(icon, now)
+        local r = T.rate(now)
+        local function p(x) return formatNumber(math.floor(x + 0.5)) end
+        local txt = string.format("%s Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
+            icon, formatNumber(T.count), p(r * 60), p(r * 3600), p(r * 86400), p(r * 604800), p(r * 2592000))
+        if not T.read then txt = txt .. " | source: serveur" end
+        return txt
+    end
+
+    task.spawn(function()
+        while alive do
+            task.wait(0.2)
+            if fastStartTime or autoStartTime then pcall(T.poll) end
         end
     end)
 end
@@ -1432,9 +1492,7 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", false, function(v)
     fastRunId = fastRunId + 1
     if v then
         fastStartTime = tick()
-        lastRebirthTick = tick()
-        fastRebirthTimerText = "0.00s"
-        fastRebirthCount = 0
+        RebirthTracker.reset()
         autoRunId = autoRunId + 1
         if autoToggle then autoToggle:Set(false) end
         enableAutoFastRep()
@@ -1442,11 +1500,10 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast rebirth", false, function(v)
         task.spawn(fastRebirthLoop, fastRunId)
     else
         fastStartTime = nil
-        lastRebirthTick = nil
         notifyState(E.bolt .. " Fast rebirth", false)
     end
 end)
-local fastTimerLabel = addLabel(fastPage, E.clock .. " Session Time: 0s | Dernière renaissance : 0.00s", 36)
+local fastTimerLabel = addLabel(fastPage, E.clock .. " Session Time: 0s | Dernière renaissance : --", 36)
 local fastCalcLabel = addLabel(fastPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0", 55)
 
 -- Auto Rebirth
@@ -1456,7 +1513,7 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", false, function(v)
     autoRunId = autoRunId + 1
     if v then
         autoStartTime = tick()
-        autoRebirthCount = 0
+        RebirthTracker.reset()
         fastRunId = fastRunId + 1
         if fastToggle then fastToggle:Set(false) end
         enableAutoFastRep()
@@ -1467,7 +1524,7 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto rebirth", false, function(v)
         notifyState(E.cycle .. " Auto rebirth", false)
     end
 end)
-local autoTimerLabel = addLabel(autoPage, E.clock .. " Session Time: 0s | Rebirth/s: 0.0", 36)
+local autoTimerLabel = addLabel(autoPage, E.clock .. " Session Time: 0s | Dernière renaissance : --", 36)
 local autoCalcLabel = addLabel(autoPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0", 55)
 
 -- Fast Strength & Durability (Groupés dans l'onglet Strength)
@@ -1660,41 +1717,23 @@ task.spawn(function()
             fpsFrames = 0
             killStatusLabel:SetText(E.clip .. " " .. killStatus)
 
-            -- Calculateur Renaissance Fast (Fiabilisé sur le temps réel de session)
+            -- Calculateur Renaissances (basé sur les renaissances réellement détectées)
+            local rbNow = tick()
             if fastStartTime then
-                local elapsed = math.max(1, tick() - fastStartTime)
-                fastTimerLabel:SetText(string.format("%s Session Time: %s | Dernière renaissance : %s", E.clock, formatSeconds(elapsed), fastRebirthTimerText))
-                
-                local gainRate = fastRebirthCount / elapsed
-                local m1 = gainRate * 60
-                local h1 = gainRate * 3600
-                local d1 = gainRate * 86400
-                local w1 = gainRate * 604800
-                local mo1 = gainRate * 2592000
-
-                fastCalcLabel:SetText(string.format("%s Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
-                    E.chart, formatNumber(fastRebirthCount), formatNumber(m1), formatNumber(h1), formatNumber(d1), formatNumber(w1), formatNumber(mo1)))
+                fastTimerLabel:SetText(string.format("%s Session Time: %s | Dernière renaissance : %s",
+                    E.clock, formatSeconds(rbNow - fastStartTime), RebirthTracker.lastText()))
+                fastCalcLabel:SetText(RebirthTracker.text(E.chart, rbNow))
             else
-                fastTimerLabel:SetText(E.clock .. " Session Time: 0s | Dernière renaissance : 0.00s")
+                fastTimerLabel:SetText(E.clock .. " Session Time: 0s | Dernière renaissance : --")
                 fastCalcLabel:SetText(E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
             end
 
-            -- Calculateur Auto Rebirth
             if autoStartTime then
-                local elapsed = math.max(1, tick() - autoStartTime)
-                local gainRate = autoRebirthCount / elapsed
-                autoTimerLabel:SetText(string.format("%s Session Time: %s | Rebirth/s: %.2f", E.clock, formatSeconds(elapsed), gainRate))
-                
-                local m1 = gainRate * 60
-                local h1 = gainRate * 3600
-                local d1 = gainRate * 86400
-                local w1 = gainRate * 604800
-                local mo1 = gainRate * 2592000
-
-                autoCalcLabel:SetText(string.format("%s Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
-                    E.chart, formatNumber(autoRebirthCount), formatNumber(m1), formatNumber(h1), formatNumber(d1), formatNumber(w1), formatNumber(mo1)))
+                autoTimerLabel:SetText(string.format("%s Session Time: %s | Dernière renaissance : %s",
+                    E.clock, formatSeconds(rbNow - autoStartTime), RebirthTracker.lastText()))
+                autoCalcLabel:SetText(RebirthTracker.text(E.chart, rbNow))
             else
-                autoTimerLabel:SetText(E.clock .. " Session Time: 0s | Rebirth/s: 0.0")
+                autoTimerLabel:SetText(E.clock .. " Session Time: 0s | Dernière renaissance : --")
                 autoCalcLabel:SetText(E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
             end
 
