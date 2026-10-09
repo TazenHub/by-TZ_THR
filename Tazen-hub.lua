@@ -95,10 +95,6 @@ local fastStartTime = nil
 local autoStartTime = nil
 local repStartTime = nil
 
-local strengthGainedTotal = 0
-local durabilityGainedTotal = 0
-local lastStrengthVal = 0
-local lastDurabilityVal = 0
 
 local whitelistPlayers = {}
 local targetPlayers = {}
@@ -643,13 +639,167 @@ local function formatSeconds(totalSeconds)
     end
 end
 
+local FORMAT_UNITS = {
+    {1e33, "Dc"}, {1e30, "No"}, {1e27, "Oc"}, {1e24, "Sp"}, {1e21, "Sx"},
+    {1e18, "Qi"}, {1e15, "Qa"}, {1e12, "T"}, {1e9, "B"}, {1e6, "M"}, {1e3, "k"},
+}
 local function formatNumber(val)
-    if val >= 1e15 then return string.format("%.2fQ", val / 1e15)
-    elseif val >= 1e12 then return string.format("%.2fT", val / 1e12)
-    elseif val >= 1e9 then return string.format("%.2fB", val / 1e9)
-    elseif val >= 1e6 then return string.format("%.2fM", val / 1e6)
-    elseif val >= 1e3 then return string.format("%.2fk", val / 1e3)
-    else return tostring(math.floor(val)) end
+    if type(val) ~= "number" or val ~= val then return "0" end
+    for _, u in ipairs(FORMAT_UNITS) do
+        if val >= u[1] then return string.format("%.2f%s", val / u[1], u[2]) end
+    end
+    return tostring(math.floor(val))
+end
+
+-- ===================== STAT TRACKER (Strength / Durability) =====================
+-- Détecte les gains réels du joueur (uniquement quand Fast strength est actif)
+-- puis prédit les gains futurs à partir du rythme observé.
+local StatTracker = {}
+do
+    local SUFFIX = {
+        k = 1e3, m = 1e6, b = 1e9, t = 1e12, qa = 1e15, qi = 1e18,
+        sx = 1e21, sp = 1e24, oc = 1e27, no = 1e30, dc = 1e33,
+    }
+    local WINDOW = 30 -- secondes utilisées pour la prédiction "récente"
+
+    -- Accepte un nombre, "1234", "1,234" ou "1.5K" / "2.3Qa"
+    local function parse(v)
+        if type(v) == "number" then return v end
+        if type(v) == "string" then
+            local s = v:lower():gsub("[,%s]", "")
+            local num, suf = s:match("^([%d%.]+)(%a*)$")
+            num = tonumber(num)
+            if not num then return nil end
+            if suf == "" then return num end
+            local mult = SUFFIX[suf]
+            return mult and (num * mult) or nil
+        end
+        return nil
+    end
+
+    -- Cherche la stat dans leaderstats, puis directement sur le joueur (Durability y est souvent),
+    -- puis dans quelques dossiers courants, puis dans les attributs.
+    local function findSource(names)
+        local containers = {}
+        local candidates = {
+            LocalPlayer:FindFirstChild("leaderstats"),
+            LocalPlayer,
+            LocalPlayer:FindFirstChild("Data"),
+            LocalPlayer:FindFirstChild("Stats"),
+            LocalPlayer:FindFirstChild("stats"),
+        }
+        for i = 1, 5 do
+            if candidates[i] then containers[#containers + 1] = candidates[i] end
+        end
+
+        for _, name in ipairs(names) do
+            for _, c in ipairs(containers) do
+                local inst = c:FindFirstChild(name)
+                if inst and inst:IsA("ValueBase") and parse(inst.Value) ~= nil then
+                    return function()
+                        if not inst.Parent then return nil end
+                        return parse(inst.Value)
+                    end
+                end
+            end
+        end
+        for _, name in ipairs(names) do
+            if LocalPlayer:GetAttribute(name) ~= nil then
+                return function() return parse(LocalPlayer:GetAttribute(name)) end
+            end
+        end
+        return nil
+    end
+
+    local stats = {
+        strength   = { names = { "Strength", "Muscle" } },
+        durability = { names = { "Durability" } },
+    }
+    StatTracker.stats = stats
+
+    function StatTracker.reset()
+        for _, st in pairs(stats) do
+            st.read = nil
+            st.last = nil
+            st.gained = 0
+            st.history = {}
+        end
+    end
+    StatTracker.reset()
+
+    -- Lit les stats et cumule uniquement les hausses (les baisses = rebirth/reset, on ignore)
+    function StatTracker.poll()
+        for _, st in pairs(stats) do
+            if not st.read then
+                st.read = findSource(st.names)
+                st.last = nil
+            end
+            if st.read then
+                local ok, cur = pcall(st.read)
+                if ok and cur then
+                    if st.last and cur > st.last then
+                        st.gained = st.gained + (cur - st.last)
+                    end
+                    st.last = cur
+                else
+                    st.read = nil -- source perdue : on la recherchera au prochain tour
+                    st.last = nil
+                end
+            end
+        end
+    end
+
+    -- Enregistre un point par seconde pour calculer le rythme récent
+    function StatTracker.record(now)
+        for _, st in pairs(stats) do
+            local h = st.history
+            h[#h + 1] = { t = now, g = st.gained }
+            while #h > 2 and now - h[2].t >= WINDOW do
+                table.remove(h, 1)
+            end
+        end
+    end
+
+    -- Gains par seconde : rythme des 30 dernières secondes si dispo, sinon moyenne de session
+    function StatTracker.rate(st, now, startT)
+        local elapsed = math.max(1, now - startT)
+        local h = st.history
+        if elapsed > WINDOW and #h >= 2 then
+            local old = h[1]
+            local dt = now - old.t
+            if dt >= 5 then
+                return math.max(0, (st.gained - old.g) / dt)
+            end
+        end
+        return st.gained / elapsed
+    end
+
+    function StatTracker.text(icon, label, st, now, startT)
+        if not st.read then
+            return string.format("%s %s : stat introuvable", icon, label)
+        end
+        local r = StatTracker.rate(st, now, startT)
+        return string.format("%s %s Tot: %s (+%s/s) | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
+            icon, label, formatNumber(st.gained), formatNumber(r),
+            formatNumber(r * 60), formatNumber(r * 3600), formatNumber(r * 86400),
+            formatNumber(r * 604800), formatNumber(r * 2592000))
+    end
+
+    -- Boucle de détection : tourne en continu mais ne compte que si Fast strength est actif
+    task.spawn(function()
+        local lastRecord = 0
+        while alive do
+            task.wait(0.2)
+            if repStartTime then
+                pcall(StatTracker.poll)
+                local now = tick()
+                if now - lastRecord >= 1 then
+                    lastRecord = now
+                    pcall(StatTracker.record, now)
+                end
+            end
+        end
+    end)
 end
 
 local Lighting = game:GetService("Lighting")
@@ -1327,10 +1477,7 @@ repToggle = addToggle(strPage, E.muscle .. " Fast strength", false, function(v)
     if v then
         repStartTime = tick()
         repTotal = 0
-        strengthGainedTotal = 0
-        durabilityGainedTotal = 0
-        lastStrengthVal = 0
-        lastDurabilityVal = 0
+        StatTracker.reset()
         notify(E.muscle .. " Fast strength", E.target .. " " .. repRate .. " reps/s targeted")
         task.spawn(fastRepLoop, repRunId)
     else
@@ -1513,29 +1660,6 @@ task.spawn(function()
             fpsFrames = 0
             killStatusLabel:SetText(E.clip .. " " .. killStatus)
 
-            -- Lecture directe et robuste de la progression via leaderstats (Strength / Durability)
-            local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
-            if leaderstats then
-                local s = leaderstats:FindFirstChild("Strength") or leaderstats:FindFirstChild("Muscle")
-                local d = leaderstats:FindFirstChild("Durability")
-
-                if s and s.Value then
-                    local curS = tonumber(s.Value) or 0
-                    if lastStrengthVal > 0 and curS > lastStrengthVal and repStartTime then
-                        strengthGainedTotal = strengthGainedTotal + (curS - lastStrengthVal)
-                    end
-                    lastStrengthVal = curS
-                end
-
-                if d and d.Value then
-                    local curD = tonumber(d.Value) or 0
-                    if lastDurabilityVal > 0 and curD > lastDurabilityVal and repStartTime then
-                        durabilityGainedTotal = durabilityGainedTotal + (curD - lastDurabilityVal)
-                    end
-                    lastDurabilityVal = curD
-                end
-            end
-
             -- Calculateur Renaissance Fast (Fiabilisé sur le temps réel de session)
             if fastStartTime then
                 local elapsed = math.max(1, tick() - fastStartTime)
@@ -1551,7 +1675,7 @@ task.spawn(function()
                 fastCalcLabel:SetText(string.format("%s Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
                     E.chart, formatNumber(fastRebirthCount), formatNumber(m1), formatNumber(h1), formatNumber(d1), formatNumber(w1), formatNumber(mo1)))
             else
-                fastTimerLabel:SetText(E.clock + " Session Time: 0s | Dernière renaissance : 0.00s")
+                fastTimerLabel:SetText(E.clock .. " Session Time: 0s | Dernière renaissance : 0.00s")
                 fastCalcLabel:SetText(E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
             end
 
@@ -1580,17 +1704,9 @@ task.spawn(function()
                 local avgReps = math.floor(repTotal / elapsed)
                 repTimerLabel:SetText(string.format("%s Session Time: %s | Moy. Reps/s: %d", E.clock, formatSeconds(elapsed), avgReps))
                 
-                -- Strength prediction
-                local sRate = strengthGainedTotal / elapsed
-                local sm1, sh1, sd1, sw1, smo1 = sRate * 60, sRate * 3600, sRate * 86400, sRate * 604800, sRate * 2592000
-                repCalcLabel:SetText(string.format("%s Strength Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
-                    E.muscle, formatNumber(strengthGainedTotal), formatNumber(sm1), formatNumber(sh1), formatNumber(sd1), formatNumber(sw1), formatNumber(smo1)))
-
-                -- Durability prediction (S'incrémente dès que le joueur gagne de la durabilité en tapant)
-                local dRate = durabilityGainedTotal / elapsed
-                local dm1, dh1, dd1, dw1, dmo1 = dRate * 60, dRate * 3600, dRate * 86400, dRate * 604800, dRate * 2592000
-                durabilityCalcLabel:SetText(string.format("%s Durability Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
-                    E.shieldAlt, formatNumber(durabilityGainedTotal), formatNumber(dm1), formatNumber(dh1), formatNumber(dd1), formatNumber(dw1), formatNumber(dmo1)))
+                local now = tick()
+                repCalcLabel:SetText(StatTracker.text(E.muscle, "Strength", StatTracker.stats.strength, now, repStartTime))
+                durabilityCalcLabel:SetText(StatTracker.text(E.shieldAlt, "Durability", StatTracker.stats.durability, now, repStartTime))
             else
                 repTimerLabel:SetText(E.clock .. " Session Time: 0s | Moy. Reps/s: 0")
                 repCalcLabel:SetText(E.muscle .. " Strength Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
