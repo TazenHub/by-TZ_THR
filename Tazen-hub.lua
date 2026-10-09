@@ -165,36 +165,6 @@ local function equipFists()
     end)
 end
 
--- Fonction de détection des zones Non-PVP / Safe Zone
-local function isInSafeZone(character)
-    if not character then return true end
-    
-    -- 1. Vérification des attributs globaux de non-PVP ou de zone sécurisée sur le personnage
-    if character:GetAttribute("InSafeZone") == true 
-        or character:GetAttribute("SafeZone") == true 
-        or character:GetAttribute("Shield") == true 
-        or character:GetAttribute("NonPvp") == true 
-        or character:GetAttribute("Protected") == true then
-        return true
-    end
-    
-    -- 2. Recherche d'objets de bouclier ou d'effets visuels/valeurs non-PVP dans le modèle du joueur
-    for _, child in ipairs(character:GetChildren()) do
-        local nameLower = child.Name:lower()
-        if nameLower:find("safe") or nameLower:find("shield") or nameLower:find("protection") or nameLower:find("bubble") or nameLower:find("nonpvp") then
-            if child:IsA("BoolValue") and child.Value == true then
-                return true
-            elseif child:IsA("BasePart") or child:IsA("Model") then
-                if not child:IsA("BasePart") or child.Transparency < 1 then
-                    return true
-                end
-            end
-        end
-    end
-
-    return false
-end
-
 local lastHopTry = 0
 local function serverHop()
     killStatus = "Changing server..."
@@ -236,7 +206,7 @@ local function autoKillAllLoop(myId)
                         local pChar = plr.Character
                         local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
                         local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
-                        if pHrp and pHum and pHum.Health > 0 and not isInSafeZone(pChar) then
+                        if pHrp and pHum and pHum.Health > 0 then
                             local dist = (hrp.Position - pHrp.Position).Magnitude
                             if dist < minDist then
                                 minDist = dist
@@ -265,7 +235,7 @@ local function autoKillAllLoop(myId)
                     end
 
                     while killRunId == myId and alive and targetPlayer.Parent and pHum and pHum.Health > 0 and wasAlive do
-                        if whitelistPlayers[targetPlayer.Name] or isInSafeZone(pChar) then
+                        if whitelistPlayers[targetPlayer.Name] then
                             break
                         end
 
@@ -319,7 +289,7 @@ local function killTargetPlayerLoop(myId)
                         local pChar = plr.Character
                         local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
                         local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
-                        if pHrp and pHum and pHum.Health > 0 and not isInSafeZone(pChar) then
+                        if pHrp and pHum and pHum.Health > 0 then
                             local dist = (hrp.Position - pHrp.Position).Magnitude
                             if dist < minDist then
                                 minDist = dist
@@ -348,7 +318,7 @@ local function killTargetPlayerLoop(myId)
                     end
 
                     while killRunId == myId and alive and targetPlayer.Parent and pHum and pHum.Health > 0 and wasAlive do
-                        if not targetPlayers[targetPlayer.Name] or whitelistPlayers[targetPlayer.Name] or isInSafeZone(pChar) then
+                        if not targetPlayers[targetPlayer.Name] or whitelistPlayers[targetPlayer.Name] then
                             break
                         end
 
@@ -564,7 +534,7 @@ local function fastRebirthLoop(myId)
                 pcall(function()
                     rebirthRemote:InvokeServer("rebirthRequest")
                 end)
-                task.wait(0.25)
+                task.wait(0.25) -- laisse la stat Rebirths se répliquer
                 local after = rebirthCount()
                 if countBefore and after then rebirthOk = after > countBefore end
                 resultReady = true
@@ -580,6 +550,8 @@ local function fastRebirthLoop(myId)
                 rebuild()
             end
 
+            -- verdict du serveur (max 1.5 s) : refusé = cooldown pas tout à fait fini -> on réessaie vite
+            -- au lieu de perdre 6 s, et on agrandit un peu la marge ; accepté -> la marge redescend
             while isRunning() and not resultReady and os.clock() < tFire + 1.5 do
                 task.wait()
             end
@@ -1028,6 +1000,7 @@ local watermark = new("Frame", {
     ZIndex = 4,
 }, main)
 
+-- Grand T Blanc en arrière-plan (plus grand et centré)
 new("TextLabel", {
     Size = UDim2.fromOffset(180, 200),
     Position = UDim2.new(0.12, 0, 0, 0),
@@ -1040,6 +1013,7 @@ new("TextLabel", {
     ZIndex = 4,
 }, watermark)
 
+-- Grand Z Rose en arrière-plan (plus grand et bien positionné)
 new("TextLabel", {
     Size = UDim2.fromOffset(180, 200),
     Position = UDim2.new(0.40, 0, 0.12, 0),
@@ -1052,6 +1026,7 @@ new("TextLabel", {
     ZIndex = 4,
 }, watermark)
 
+-- Lettrage TAZEN compact et unifié sous le grand logo
 local tazenBrandBox = new("Frame", {
     Size = UDim2.fromOffset(200, 45),
     Position = UDim2.new(0.5, -100, 0.74, 0),
@@ -1059,12 +1034,14 @@ local tazenBrandBox = new("Frame", {
     ZIndex = 4,
 }, watermark)
 
+-- Layout pour coller parfaitement les lettres entre elles sans espaces vides
 new("UIListLayout", {
     FillDirection = Enum.FillDirection.Horizontal,
     SortOrder = Enum.SortOrder.LayoutOrder,
     Padding = UDim.new(0, 0),
 }, tazenBrandBox)
 
+-- T (Blanc)
 new("TextLabel", {
     Size = UDim2.fromOffset(32, 45),
     BackgroundTransparency = 1,
@@ -1077,6 +1054,7 @@ new("TextLabel", {
     ZIndex = 4,
 }, tazenBrandBox)
 
+-- Λ (Rose, collé au T)
 new("TextLabel", {
     Size = UDim2.fromOffset(32, 45),
     BackgroundTransparency = 1,
@@ -1089,6 +1067,7 @@ new("TextLabel", {
     ZIndex = 4,
 }, tazenBrandBox)
 
+-- ZEN (Blanc, collé au Λ)
 new("TextLabel", {
     Size = UDim2.fromOffset(110, 45),
     BackgroundTransparency = 1,
@@ -1102,6 +1081,7 @@ new("TextLabel", {
 }, tazenBrandBox)
 -- =====================================================================
 
+-- TOPBAR (Bande originale noire, propre et stylée)
 local topbar = new("Frame", {
     Name = "Topbar",
     Size = UDim2.new(1, 0, 0, 28),
@@ -1110,6 +1090,7 @@ local topbar = new("Frame", {
     ZIndex = 6,
 }, main)
 
+-- Titre d'origine : Tazen hub V1 | by TZ_THR
 textLabel({
     Size = UDim2.new(1, -70, 1, 0),
     Position = UDim2.new(0, 10, 0, 0),
@@ -1621,6 +1602,8 @@ autoSaveConfigToggle = addKillingToggle(killPage, E.wrench .. " Auto Save Config
     end
 end)
 
+-- Après un server hop (auto-exec), les toggles reviennent sur ON depuis la config mais la boucle
+-- n'était jamais relancée : on la relance ici.
 task.spawn(function()
     task.wait(2)
     if not alive then return end
@@ -1738,6 +1721,7 @@ local function addPlayerRow(plr)
     playerRows[plr] = { row = row, sync = sync }
 end
 
+-- Ajoute/retire seulement les lignes nécessaires et met à jour les couleurs (très léger)
 local function refreshPlayerListUI()
     pcall(function()
         for plr in pairs(playerRows) do
@@ -1904,7 +1888,7 @@ copyDiscordBtn.Activated:Connect(function()
             setclipboard("https://discord.gg/y779ZnRGnd")
             notify("Discord", E.ok .. " Discord link copied to clipboard!")
         else
-            notify("Discord", E.no, " Clipboard not supported by executor")
+            notify("Discord", E.no .. " Clipboard not supported by executor")
         end
     end)
 end)
