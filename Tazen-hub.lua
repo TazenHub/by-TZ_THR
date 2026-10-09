@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR (Custom Logo Theme with Background Watermark)
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -899,8 +899,8 @@ local T = {
     Background = Color3.fromRGB(12, 12, 12),
     Topbar = Color3.fromRGB(18, 18, 18),
     Element = Color3.fromRGB(24, 24, 24),
-    Stroke = Color3.fromRGB(230, 100, 150),       -- Rose métallique de la bande
-    Accent = Color3.fromRGB(235, 105, 155),       -- Rose vif UI
+    Stroke = Color3.fromRGB(255, 130, 180),       -- Rose élégant
+    Accent = Color3.fromRGB(240, 110, 160),       -- Rose vif UI
     Text = Color3.fromRGB(255, 255, 255),         -- Blanc pur
     SubText = Color3.fromRGB(190, 190, 190),
     Off = Color3.fromRGB(45, 45, 45),
@@ -965,49 +965,96 @@ stroke(main, T.Stroke, 1.8)
 -- ===================== LOGO EN FOND (WATERMARK) =====================
 local watermark = new("Frame", {
     Name = "LogoWatermark",
-    Size = UDim2.fromOffset(200, 200),
-    Position = UDim2.new(0.5, -100, 0.5, -100),
+    Size = UDim2.fromOffset(280, 240),
+    Position = UDim2.new(0.5, -140, 0.5, -120),
     BackgroundTransparency = 1,
     ZIndex = 4,
 }, main)
 
 -- Grand T Blanc en arrière-plan
-local bgT = new("TextLabel", {
-    Size = UDim2.fromOffset(120, 180),
-    Position = UDim2.new(0.2, 0, 0.1, 0),
+new("TextLabel", {
+    Size = UDim2.fromOffset(140, 160),
+    Position = UDim2.new(0.1, 0, 0, 0),
     BackgroundTransparency = 1,
     Font = Enum.Font.GothamBold,
-    TextSize = 130,
+    TextSize = 150,
     TextColor3 = Color3.fromRGB(255, 255, 255),
-    TextTransparency = 0.93, -- Effet filigrane discret
+    TextTransparency = 0.88, -- Visible mais discret
     Text = "T",
     ZIndex = 4,
 }, watermark)
 
 -- Grand Z Rose en arrière-plan
-local bgZ = new("TextLabel", {
-    Size = UDim2.fromOffset(120, 180),
-    Position = UDim2.new(0.45, 0, 0.25, 0),
+new("TextLabel", {
+    Size = UDim2.fromOffset(140, 160),
+    Position = UDim2.new(0.42, 0, 0.12, 0),
     BackgroundTransparency = 1,
     Font = Enum.Font.GothamBold,
-    TextSize = 130,
+    TextSize = 150,
     TextColor3 = T.Accent,
-    TextTransparency = 0.93,
+    TextTransparency = 0.88,
     Text = "Z",
     ZIndex = 4,
 }, watermark)
+
+-- Lettrage TAZEN en bas du logo (fidèle à votre image)
+local tazenBrandBox = new("Frame", {
+    Size = UDim2.fromOffset(220, 35),
+    Position = UDim2.new(0.5, -110, 0.72, 0),
+    BackgroundTransparency = 1,
+    ZIndex = 4,
+}, watermark)
+
+-- T (Blanc)
+new("TextLabel", {
+    Size = UDim2.fromOffset(35, 35),
+    Position = UDim2.new(0, 0, 0, 0),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.GothamBold,
+    TextSize = 22,
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    TextTransparency = 0.88,
+    Text = "T",
+    ZIndex = 4,
+}, tazenBrandBox)
+
+-- A (Rose)
+new("TextLabel", {
+    Size = UDim2.fromOffset(35, 35),
+    Position = UDim2.new(0, 32, 0, 0),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.GothamBold,
+    TextSize = 22,
+    TextColor3 = T.Accent,
+    TextTransparency = 0.88,
+    Text = "Λ",
+    ZIndex = 4,
+}, tazenBrandBox)
+
+-- ZEN (Blanc)
+new("TextLabel", {
+    Size = UDim2.fromOffset(140, 35),
+    Position = UDim2.new(0, 64, 0, 0),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.GothamBold,
+    TextSize = 22,
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    TextTransparency = 0.88,
+    Text = "ZEN",
+    ZIndex = 4,
+}, tazenBrandBox)
 -- =====================================================================
 
--- TOPBAR (Style original conservé avec la bande colorée stylée)
+-- TOPBAR (Bande originale noire, propre et stylée)
 local topbar = new("Frame", {
     Name = "Topbar",
     Size = UDim2.new(1, 0, 0, 28),
-    BackgroundColor3 = T.Stroke, -- Bande stylée rose métallique
+    BackgroundColor3 = T.Topbar,
     BorderSizePixel = 0,
     ZIndex = 6,
 }, main)
 
--- Titre d'origine restauré
+-- Titre d'origine restauré : Tazen hub V1 | by TZ_THR
 textLabel({
     Size = UDim2.new(1, -70, 1, 0),
     Position = UDim2.new(0, 10, 0, 0),
@@ -1276,7 +1323,7 @@ local function addKillingToggle(page, name, categoryKey, settingKey, defaultStat
     return obj
 end
 
-local function repSliderUpdateFunc(...) end
+local repSliderUpdateFunc = function() end
 
 local function addSlider(page, name, min, max, default, callback)
     local initialVal = default
