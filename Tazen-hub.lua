@@ -1698,23 +1698,62 @@ local function findEggTool()
     return fallback
 end
 
--- Attend jusqu'à `timeout` s que le nombre d'oeufs baisse
-local function waitEggDrop(before, timeout)
-    local t0 = tick()
-    while tick() - t0 < timeout do
-        task.wait(0.1)
-        if eggTotal() < before then return true end
+-- Un Protein Egg dure 30 min : on en mange UN, puis on attend la fin de l'effet.
+local EGG_DURATION = 30 * 60 + 3
+local eggNextAt = 0
+local eggStatus = "--"
+
+-- Compte à rebours visibles à l'écran (ex: "29:58" ou "00:29:58") -> {label = secondes}
+local function visibleTimers()
+    local res = {}
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    if not pg then return res end
+    for _, d in ipairs(pg:GetDescendants()) do
+        if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Visible and not d:IsDescendantOf(gui) then
+            local h, m, sec = d.Text:match("^%s*(%d+):(%d+):(%d+)%s*$")
+            local secs
+            if h then
+                secs = tonumber(h) * 3600 + tonumber(m) * 60 + tonumber(sec)
+            else
+                local m2, s2 = d.Text:match("^%s*(%d+):(%d+)%s*$")
+                if m2 then secs = tonumber(m2) * 60 + tonumber(s2) end
+            end
+            if secs then res[d] = secs end
+        end
+    end
+    return res
+end
+
+-- Un compte à rebours de ~30 min qui vient d'apparaître = l'effet de l'oeuf est actif
+local function eggTimerStarted(before)
+    for label, secs in pairs(visibleTimers()) do
+        if secs >= 1500 and secs <= 1800 then
+            local old = before[label]
+            if not (old and old >= 1500 and old <= 1800) then return true end
+        end
     end
     return false
 end
 
--- Retourne "none" (pas d'oeuf), "eaten" (consommation confirmée) ou "stuck" (non confirmée)
+-- Confirmation : le nombre d'oeufs baisse OU un timer de 30 min apparaît
+local function waitEggConfirm(beforeCount, beforeTimers, timeout)
+    local t0 = tick()
+    while tick() - t0 < timeout do
+        task.wait(0.25)
+        if eggTotal() < beforeCount then return true end
+        if eggTimerStarted(beforeTimers) then return true end
+    end
+    return false
+end
+
+-- Retourne "none" (pas d'oeuf), "eaten" (consommation confirmée) ou "unconfirmed" (utilisé, non confirmé)
 local function eatEgg()
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     local tool = findEggTool()
     if not (hum and tool) then return "none" end
-    local before = eggTotal()
+    local beforeCount = eggTotal()
+    local beforeTimers = visibleTimers()
 
     if tool.Parent ~= char then
         pcall(function() hum:EquipTool(tool) end)
@@ -1724,56 +1763,44 @@ local function eatEgg()
     for _, d in ipairs(tool:GetDescendants()) do
         if d:IsA("RemoteEvent") then pcall(function() d:FireServer() end) end
     end
-    local confirmed = waitEggDrop(before, 1.5)
-
-    if not confirmed then
-        -- dernier recours : les remotes d'objets connus
-        local rEvents = ReplicatedStorage:FindFirstChild("rEvents")
-        local eggRemote = rEvents and (rEvents:FindFirstChild("useItemRemote") or rEvents:FindFirstChild("eatEggRemote") or rEvents:FindFirstChild("itemRemote"))
-        if eggRemote then
-            pcall(function()
-                if eggRemote:IsA("RemoteFunction") then eggRemote:InvokeServer(tool.Name) else eggRemote:FireServer(tool.Name) end
-            end)
-            confirmed = waitEggDrop(before, 1.5)
-        end
-    end
+    local confirmed = waitEggConfirm(beforeCount, beforeTimers, 3)
 
     if not confirmed then pcall(function() hum:UnequipTools() end) end
-    return confirmed and "eaten" or "stuck"
+    return confirmed and "eaten" or "unconfirmed"
 end
 
 local function updateEggLabel()
-    if eggLabel then
-        eggLabel:SetText(string.format("%s Eggs mangés: %d | Restants: %s", E.egg, eggEaten, formatNumber(eggTotal())))
-    end
+    if not eggLabel then return end
+    local nextTxt = "maintenant"
+    local left = eggNextAt - tick()
+    if left > 0 then nextTxt = formatSeconds(left) end
+    eggLabel:SetText(string.format("%s Mangés: %d | Restants: %s | Prochain: %s | Dernier: %s",
+        E.egg, eggEaten, formatNumber(eggTotal()), nextTxt, eggStatus))
 end
 
 local function autoEggLoop(myId)
-    local noEgg, stuck = 0, 0
+    local noEgg = 0
+    eggNextAt = 0
+    eggStatus = "--"
     while eggRunId == myId and alive do
-        local ok, res = pcall(eatEgg)
-        if ok and res == "eaten" then
-            noEgg, stuck = 0, 0
-            eggEaten = eggEaten + 1
-            if eggEaten == 1 then
-                notify(E.egg .. " Protein Egg", "Consommation confirmée")
-            end
-        elseif ok and res == "stuck" then
-            stuck = stuck + 1
-            noEgg = 0
-            if stuck >= 3 then
-                updateEggLabel()
-                notify(E.egg .. " Protein Egg", "Consommation non confirmée")
-                if autoEggToggle then autoEggToggle:Set(false) end
-                return
-            end
-        else
-            noEgg = noEgg + 1
-            if noEgg >= 3 then
-                updateEggLabel()
-                notify(E.egg .. " Protein Egg", "Plus de Protein Egg dans l'inventaire")
-                if autoEggToggle then autoEggToggle:Set(false) end
-                return
+        if tick() >= eggNextAt then
+            local ok, res = pcall(eatEgg)
+            if (not ok) or res == "none" then
+                noEgg = noEgg + 1
+                eggStatus = "aucun egg"
+                if noEgg >= 3 then
+                    pcall(updateEggLabel)
+                    notify(E.egg .. " Protein Egg", "Plus de Protein Egg dans l'inventaire")
+                    if autoEggToggle then autoEggToggle:Set(false) end
+                    return
+                end
+            else
+                -- un seul essai par cycle de 30 min : on ne gaspille pas d'oeufs
+                noEgg = 0
+                eggEaten = eggEaten + 1
+                eggNextAt = tick() + EGG_DURATION
+                eggStatus = (res == "eaten") and "confirmé" or "non confirmé"
+                notify(E.egg .. " Protein Egg", "Mangé (" .. eggStatus .. ") - prochain dans 30 min")
             end
         end
         pcall(updateEggLabel)
@@ -1792,7 +1819,7 @@ autoEggToggle = addToggle(miscPage, E.egg .. " Auto eat protein egg", false, fun
     end
 end)
 
-eggLabel = addLabel(miscPage, E.egg .. " Eggs mangés: 0 | Restants: --", 34)
+eggLabel = addLabel(miscPage, E.egg .. " Mangés: 0 | Restants: -- | Prochain: -- | Dernier: --", 34)
 
 local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 34)
 addSection(miscPage, E.heart .. " Credits")
