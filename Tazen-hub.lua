@@ -1320,7 +1320,7 @@ end)
 local autoTimerLabel = addLabel(autoPage, E.clock .. " Session Time: 0s | Rebirth/s: 0.0", 36)
 local autoCalcLabel = addLabel(autoPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0", 55)
 
--- Fast Strength & Durability (Groupés proprement dans l'onglet Strength)
+-- Fast Strength & Durability (Groupés dans l'onglet Strength)
 addSection(strPage, E.muscle .. " Fast Strength & Durability Predictor")
 repToggle = addToggle(strPage, E.muscle .. " Fast strength", false, function(v)
     repRunId = repRunId + 1
@@ -1329,6 +1329,8 @@ repToggle = addToggle(strPage, E.muscle .. " Fast strength", false, function(v)
         repTotal = 0
         strengthGainedTotal = 0
         durabilityGainedTotal = 0
+        lastStrengthVal = 0
+        lastDurabilityVal = 0
         notify(E.muscle .. " Fast strength", E.target .. " " .. repRate .. " reps/s targeted")
         task.spawn(fastRepLoop, repRunId)
     else
@@ -1502,7 +1504,7 @@ addCredit(miscPage, E.sparkles .. " Made by TZ_THR, Have fun " .. E.party)
 
 selectTab(TAB_FAST)
 
--- ===================== CALCULATEUR ET DÉTECTION AUTOMATIQUE DES STATS =====================
+-- ===================== CALCULATEUR ET DÉTECTION ROBUSTE DES STATS =====================
 task.spawn(function()
     while alive do
         task.wait(1)
@@ -1511,7 +1513,7 @@ task.spawn(function()
             fpsFrames = 0
             killStatusLabel:SetText(E.clip .. " " .. killStatus)
 
-            -- Capture précise et directe des gains réels de leaderstats (Force et Durabilité)
+            -- Lecture directe et robuste de la progression via leaderstats (Strength / Durability)
             local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
             if leaderstats then
                 local s = leaderstats:FindFirstChild("Strength") or leaderstats:FindFirstChild("Muscle")
@@ -1519,7 +1521,7 @@ task.spawn(function()
 
                 if s and s.Value then
                     local curS = tonumber(s.Value) or 0
-                    if lastStrengthVal > 0 and curS > lastStrengthVal then
+                    if lastStrengthVal > 0 and curS > lastStrengthVal and repStartTime then
                         strengthGainedTotal = strengthGainedTotal + (curS - lastStrengthVal)
                     end
                     lastStrengthVal = curS
@@ -1527,14 +1529,14 @@ task.spawn(function()
 
                 if d and d.Value then
                     local curD = tonumber(d.Value) or 0
-                    if lastDurabilityVal > 0 and curD > lastDurabilityVal then
+                    if lastDurabilityVal > 0 and curD > lastDurabilityVal and repStartTime then
                         durabilityGainedTotal = durabilityGainedTotal + (curD - lastDurabilityVal)
                     end
                     lastDurabilityVal = curD
                 end
             end
 
-            -- Calculateur de Renaissance (basé sur le temps écoulé réel sans bridage)
+            -- Calculateur Renaissance Fast (Fiabilisé sur le temps réel de session)
             if fastStartTime then
                 local elapsed = math.max(1, tick() - fastStartTime)
                 fastTimerLabel:SetText(string.format("%s Session Time: %s | Dernière renaissance : %s", E.clock, formatSeconds(elapsed), fastRebirthTimerText))
@@ -1549,10 +1551,11 @@ task.spawn(function()
                 fastCalcLabel:SetText(string.format("%s Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
                     E.chart, formatNumber(fastRebirthCount), formatNumber(m1), formatNumber(h1), formatNumber(d1), formatNumber(w1), formatNumber(mo1)))
             else
-                fastTimerLabel:SetText(E.clock .. " Session Time: 0s | Dernière renaissance : 0.00s")
+                fastTimerLabel:SetText(E.clock + " Session Time: 0s | Dernière renaissance : 0.00s")
                 fastCalcLabel:SetText(E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
             end
 
+            -- Calculateur Auto Rebirth
             if autoStartTime then
                 local elapsed = math.max(1, tick() - autoStartTime)
                 local gainRate = autoRebirthCount / elapsed
@@ -1571,7 +1574,7 @@ task.spawn(function()
                 autoCalcLabel:SetText(E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
             end
 
-            -- Calculateur Fast Strength & Durabilité (s'activent dès que Fast Strength est actif)
+            -- Calculateur Force & Durabilité (Actif dès que Fast Strength est enclenché)
             if repStartTime then
                 local elapsed = math.max(1, tick() - repStartTime)
                 local avgReps = math.floor(repTotal / elapsed)
@@ -1580,18 +1583,18 @@ task.spawn(function()
                 -- Strength prediction
                 local sRate = strengthGainedTotal / elapsed
                 local sm1, sh1, sd1, sw1, smo1 = sRate * 60, sRate * 3600, sRate * 86400, sRate * 604800, sRate * 2592000
-                repCalcLabel:SetText(string.format("%s Str. Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
+                repCalcLabel:SetText(string.format("%s Strength Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
                     E.muscle, formatNumber(strengthGainedTotal), formatNumber(sm1), formatNumber(sh1), formatNumber(sd1), formatNumber(sw1), formatNumber(smo1)))
 
-                -- Durability prediction (S'active indépendamment grâce au suivi des leaderstats)
+                -- Durability prediction (S'incrémente dès que le joueur gagne de la durabilité en tapant)
                 local dRate = durabilityGainedTotal / elapsed
                 local dm1, dh1, dd1, dw1, dmo1 = dRate * 60, dRate * 3600, dRate * 86400, dRate * 604800, dRate * 2592000
-                durabilityCalcLabel:SetText(string.format("%s Dur. Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
+                durabilityCalcLabel:SetText(string.format("%s Durability Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
                     E.shieldAlt, formatNumber(durabilityGainedTotal), formatNumber(dm1), formatNumber(dh1), formatNumber(dd1), formatNumber(dw1), formatNumber(dmo1)))
             else
                 repTimerLabel:SetText(E.clock .. " Session Time: 0s | Moy. Reps/s: 0")
-                repCalcLabel:SetText(E.muscle .. " Str. Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
-                durabilityCalcLabel:SetText(E.shieldAlt .. " Dur. Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
+                repCalcLabel:SetText(E.muscle .. " Strength Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
+                durabilityCalcLabel:SetText(E.shieldAlt .. " Durability Tot: 0 | 1m: 0 | 1h: 0 | 1j: 0 | 1sem: 0 | 1mois: 0")
             end
         end)
     end
@@ -1629,5 +1632,5 @@ end)
 
 end)
 if not ok then
-    warn("[Tazen hub] Error: " + tostring(err))
+    warn("[Tazen hub] Error: " .. tostring(err))
 end
