@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR (Custom Logo Theme with Background Watermark)
 
 local success, err = pcall(function()
 
@@ -899,9 +899,9 @@ local T = {
     Background = Color3.fromRGB(12, 12, 12),
     Topbar = Color3.fromRGB(18, 18, 18),
     Element = Color3.fromRGB(24, 24, 24),
-    Stroke = Color3.fromRGB(230, 100, 150),       -- Rose métallique du logo
+    Stroke = Color3.fromRGB(230, 100, 150),       -- Rose métallique de la bande
     Accent = Color3.fromRGB(235, 105, 155),       -- Rose vif UI
-    Text = Color3.fromRGB(255, 255, 255),         -- Blanc T text
+    Text = Color3.fromRGB(255, 255, 255),         -- Blanc pur
     SubText = Color3.fromRGB(190, 190, 190),
     Off = Color3.fromRGB(45, 45, 45),
 }
@@ -962,92 +962,81 @@ local main = new("Frame", {
 corner(main, 8)
 stroke(main, T.Stroke, 1.8)
 
--- TOPBAR (Logo Inspired Design)
+-- ===================== LOGO EN FOND (WATERMARK) =====================
+local watermark = new("Frame", {
+    Name = "LogoWatermark",
+    Size = UDim2.fromOffset(200, 200),
+    Position = UDim2.new(0.5, -100, 0.5, -100),
+    BackgroundTransparency = 1,
+    ZIndex = 4,
+}, main)
+
+-- Grand T Blanc en arrière-plan
+local bgT = new("TextLabel", {
+    Size = UDim2.fromOffset(120, 180),
+    Position = UDim2.new(0.2, 0, 0.1, 0),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.GothamBold,
+    TextSize = 130,
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    TextTransparency = 0.93, -- Effet filigrane discret
+    Text = "T",
+    ZIndex = 4,
+}, watermark)
+
+-- Grand Z Rose en arrière-plan
+local bgZ = new("TextLabel", {
+    Size = UDim2.fromOffset(120, 180),
+    Position = UDim2.new(0.45, 0, 0.25, 0),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.GothamBold,
+    TextSize = 130,
+    TextColor3 = T.Accent,
+    TextTransparency = 0.93,
+    Text = "Z",
+    ZIndex = 4,
+}, watermark)
+-- =====================================================================
+
+-- TOPBAR (Style original conservé avec la bande colorée stylée)
 local topbar = new("Frame", {
     Name = "Topbar",
-    Size = UDim2.new(1, 0, 0, 32),
-    BackgroundColor3 = T.Topbar,
+    Size = UDim2.new(1, 0, 0, 28),
+    BackgroundColor3 = T.Stroke, -- Bande stylée rose métallique
     BorderSizePixel = 0,
     ZIndex = 6,
 }, main)
 
--- Barre luminescente fine en bas du topbar rappelant le design du logo
-local topbarLine = new("Frame", {
-    Size = UDim2.new(1, 0, 0, 1),
-    Position = UDim2.new(0, 0, 1, -1),
-    BackgroundColor3 = T.Stroke,
-    BorderSizePixel = 0,
+-- Titre d'origine restauré
+textLabel({
+    Size = UDim2.new(1, -70, 1, 0),
+    Position = UDim2.new(0, 10, 0, 0),
+    Text = "Tazen hub V1  |  by TZ_THR",
+    Font = Enum.Font.GothamBold,
+    TextSize = 11,
+    TextColor3 = Color3.fromRGB(255, 255, 255),
     ZIndex = 7,
 }, topbar)
 
--- Custom TAZEN Brand Title (White T, Pink Z styled look)
-local logoContainer = new("Frame", {
-    Size = UDim2.new(0, 160, 1, 0),
-    Position = UDim2.new(0, 10, 0, 0),
-    BackgroundTransparency = 1,
-    ZIndex = 8,
-}, topbar)
-
--- Grand T Blanc
-textLabel({
-    Size = UDim2.new(0, 20, 1, 0),
-    Position = UDim2.new(0, 0, 0, 0),
-    Text = "T",
-    Font = Enum.Font.GothamBold,
-    TextSize = 14,
-    TextColor3 = Color3.new(1, 1, 1),
-}, logoContainer)
-
--- Z Rose vif (rappelant le logo)
-textLabel({
-    Size = UDim2.new(0, 20, 1, 0),
-    Position = UDim2.new(0, 14, 0, 0),
-    Text = "Z",
-    Font = Enum.Font.GothamBold,
-    TextSize = 14,
-    TextColor3 = T.Accent,
-}, logoContainer)
-
--- Lettrage TAZEN complet de la marque
-textLabel({
-    Size = UDim2.new(0, 100, 1, 0),
-    Position = UDim2.new(0, 32, 0, 0),
-    Text = "EN",
-    Font = Enum.Font.GothamBold,
-    TextSize = 12,
-    TextColor3 = Color3.fromRGB(220, 220, 220),
-}, logoContainer)
-
--- Badge V1 subtil
-textLabel({
-    Size = UDim2.new(0, 50, 1, 0),
-    Position = UDim2.new(0, 60, 0, 0),
-    Text = "| V1",
-    Font = Enum.Font.GothamMedium,
-    TextSize = 11,
-    TextColor3 = T.SubText,
-}, logoContainer)
-
 local function topButton(text, xOffset)
     local b = new("TextButton", {
-        Size = UDim2.fromOffset(20, 20),
-        Position = UDim2.new(1, xOffset, 0, 6),
-        BackgroundColor3 = Color3.fromRGB(30, 30, 30),
+        Size = UDim2.fromOffset(18, 18),
+        Position = UDim2.new(1, xOffset, 0, 5),
+        BackgroundColor3 = Color3.fromRGB(0, 0, 0),
         BackgroundTransparency = 0.3,
         Text = text,
         Font = Enum.Font.GothamBold,
-        TextSize = 11,
+        TextSize = 10,
         TextColor3 = T.Text,
         BorderSizePixel = 0,
         ZIndex = 8,
     }, topbar)
-    corner(b, 5)
-    stroke(b, T.Stroke, 1)
+    corner(b, 4)
     return b
 end
 
-local closeBtn = topButton("X", -26)
-local minBtn = topButton("-", -50)
+local closeBtn = topButton("X", -22)
+local minBtn = topButton("-", -44)
 
 do
     local dragging, dragStart, startPos = false, nil, nil
@@ -1074,26 +1063,24 @@ end
 
 local tabBar = new("Frame", {
     Name = "TabBar",
-    Size = UDim2.new(1, -16, 0, 28),
-    Position = UDim2.new(0, 8, 0, 38),
-    BackgroundColor3 = Color3.fromRGB(16, 16, 16),
+    Size = UDim2.new(1, -16, 0, 26),
+    Position = UDim2.new(0, 8, 0, 34),
+    BackgroundColor3 = Color3.fromRGB(20, 20, 20),
     BorderSizePixel = 0,
     ZIndex = 6,
 }, main)
-corner(tabBar, 5)
-stroke(tabBar, Color3.fromRGB(40, 40, 40), 1)
-
+corner(tabBar, 4)
 new("UIListLayout", {
     FillDirection = Enum.FillDirection.Horizontal,
     Padding = UDim.new(0, 4),
     SortOrder = Enum.SortOrder.LayoutOrder,
 }, tabBar)
-new("UIPadding", { PaddingLeft = UDim.new(0, 4), PaddingTop = UDim.new(0, 4) }, tabBar)
+new("UIPadding", { PaddingLeft = UDim.new(0, 4), PaddingTop = UDim.new(0, 3) }, tabBar)
 
 local pagesHolder = new("Frame", {
     Name = "Pages",
-    Size = UDim2.new(1, 0, 1, -74),
-    Position = UDim2.new(0, 0, 0, 70),
+    Size = UDim2.new(1, 0, 1, -66),
+    Position = UDim2.new(0, 0, 0, 64),
     BackgroundTransparency = 1,
     ZIndex = 5,
 }, main)
@@ -1121,6 +1108,7 @@ local function createTab(name, width)
         TextColor3 = T.Text,
         BorderSizePixel = 0,
         LayoutOrder = tabCount,
+        ZIndex = 6,
     }, tabBar)
     corner(button, 4)
 
@@ -1133,6 +1121,7 @@ local function createTab(name, width)
         CanvasSize = UDim2.new(0, 0, 0, 0),
         AutomaticCanvasSize = Enum.AutomaticSize.Y,
         Visible = false,
+        ZIndex = 6,
     }, pagesHolder)
     new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, page)
     new("UIPadding", {
@@ -1152,6 +1141,7 @@ local function addSection(page, text)
         Font = Enum.Font.GothamBold,
         TextSize = 12,
         TextColor3 = T.Accent,
+        ZIndex = 6,
     }, page)
 end
 
@@ -1160,9 +1150,9 @@ local function addLabel(page, text, height)
         Size = UDim2.new(1, 0, 0, height or 36),
         BackgroundColor3 = T.Element,
         BorderSizePixel = 0,
+        ZIndex = 6,
     }, page)
-    corner(f, 5)
-    stroke(f, Color3.fromRGB(35, 35, 35), 1)
+    corner(f, 4)
     local l = textLabel({
         Size = UDim2.new(1, -16, 1, 0),
         Position = UDim2.new(0, 8, 0, 0),
@@ -1170,6 +1160,7 @@ local function addLabel(page, text, height)
         TextSize = 12,
         TextColor3 = T.SubText,
         TextWrapped = true,
+        ZIndex = 7,
     }, f)
     return { SetText = function(_, t) l.Text = t end }
 end
@@ -1180,15 +1171,16 @@ local function addToggle(page, name, defaultState, callback)
         Size = UDim2.new(1, 0, 0, 36),
         BackgroundColor3 = T.Element,
         BorderSizePixel = 0,
+        ZIndex = 6,
     }, page)
-    corner(f, 5)
-    stroke(f, Color3.fromRGB(35, 35, 35), 1)
+    corner(f, 4)
 
     textLabel({
         Size = UDim2.new(1, -60, 1, 0),
         Position = UDim2.new(0, 8, 0, 0),
         Text = name,
         TextSize = 12,
+        ZIndex = 7,
     }, f)
 
     local sw = new("Frame", {
@@ -1196,6 +1188,7 @@ local function addToggle(page, name, defaultState, callback)
         Position = UDim2.new(1, -44, 0.5, -9),
         BackgroundColor3 = initialState and T.Accent or T.Off,
         BorderSizePixel = 0,
+        ZIndex = 7,
     }, f)
     corner(sw, 9)
     local knob = new("Frame", {
@@ -1203,10 +1196,11 @@ local function addToggle(page, name, defaultState, callback)
         Position = initialState and UDim2.fromOffset(20, 2) or UDim2.fromOffset(2, 2),
         BackgroundColor3 = Color3.new(1, 1, 1),
         BorderSizePixel = 0,
+        ZIndex = 8,
     }, sw)
     corner(knob, 7)
 
-    local hit = new("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "" }, f)
+    local hit = new("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "", ZIndex = 9 }, f)
 
     local obj = { Value = initialState }
     function obj:Set(v, noSave)
@@ -1231,15 +1225,16 @@ local function addKillingToggle(page, name, categoryKey, settingKey, defaultStat
         Size = UDim2.new(1, 0, 0, 36),
         BackgroundColor3 = T.Element,
         BorderSizePixel = 0,
+        ZIndex = 6,
     }, page)
-    corner(f, 5)
-    stroke(f, Color3.fromRGB(35, 35, 35), 1)
+    corner(f, 4)
 
     textLabel({
         Size = UDim2.new(1, -60, 1, 0),
         Position = UDim2.new(0, 8, 0, 0),
         Text = name,
         TextSize = 12,
+        ZIndex = 7,
     }, f)
 
     local sw = new("Frame", {
@@ -1247,6 +1242,7 @@ local function addKillingToggle(page, name, categoryKey, settingKey, defaultStat
         Position = UDim2.new(1, -44, 0.5, -9),
         BackgroundColor3 = initialState and T.Accent or T.Off,
         BorderSizePixel = 0,
+        ZIndex = 7,
     }, f)
     corner(sw, 9)
     local knob = new("Frame", {
@@ -1254,10 +1250,11 @@ local function addKillingToggle(page, name, categoryKey, settingKey, defaultStat
         Position = initialState and UDim2.fromOffset(20, 2) or UDim2.fromOffset(2, 2),
         BackgroundColor3 = Color3.new(1, 1, 1),
         BorderSizePixel = 0,
+        ZIndex = 8,
     }, sw)
     corner(knob, 7)
 
-    local hit = new("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "" }, f)
+    local hit = new("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "", ZIndex = 9 }, f)
 
     local obj = { Value = initialState }
     function obj:Set(v, noSave)
@@ -1287,11 +1284,11 @@ local function addSlider(page, name, min, max, default, callback)
         Size = UDim2.new(1, 0, 0, 52),
         BackgroundColor3 = T.Element,
         BorderSizePixel = 0,
+        ZIndex = 6,
     }, page)
-    corner(f, 5)
-    stroke(f, Color3.fromRGB(35, 35, 35), 1)
+    corner(f, 4)
 
-    textLabel({ Size = UDim2.new(1, -80, 0, 20), Position = UDim2.new(0, 8, 0, 6), Text = name, TextSize = 12 }, f)
+    textLabel({ Size = UDim2.new(1, -80, 0, 20), Position = UDim2.new(0, 8, 0, 6), Text = name, TextSize = 12, ZIndex = 7 }, f)
     local valueLabel = textLabel({
         Size = UDim2.fromOffset(70, 20),
         Position = UDim2.new(1, -78, 0, 6),
@@ -1300,6 +1297,7 @@ local function addSlider(page, name, min, max, default, callback)
         TextColor3 = T.Accent,
         Font = Enum.Font.GothamBold,
         TextSize = 12,
+        ZIndex = 7,
     }, f)
 
     local track = new("Frame", {
@@ -1307,12 +1305,14 @@ local function addSlider(page, name, min, max, default, callback)
         Position = UDim2.new(0, 8, 0, 34),
         BackgroundColor3 = T.Off,
         BorderSizePixel = 0,
+        ZIndex = 7,
     }, f)
     corner(track, 3)
     local fill = new("Frame", {
         Size = UDim2.new((initialVal - min) / (max - min), 0, 1, 0),
         BackgroundColor3 = T.Accent,
         BorderSizePixel = 0,
+        ZIndex = 8,
     }, track)
     corner(fill, 3)
 
@@ -1321,6 +1321,7 @@ local function addSlider(page, name, min, max, default, callback)
         Position = UDim2.new(0, 4, 0, 28),
         BackgroundTransparency = 1,
         Text = "",
+        ZIndex = 9,
     }, f)
 
     local function setValue(val)
@@ -1370,16 +1371,17 @@ local function notify(title, text)
             Position = UDim2.new(1, 20, 1, -64),
             BackgroundColor3 = T.Element,
             BorderSizePixel = 0,
+            ZIndex = 10,
         }, gui)
         corner(n, 6)
         stroke(n, T.Stroke, 1)
         textLabel({
             Size = UDim2.new(1, -12, 0, 18), Position = UDim2.new(0, 8, 0, 4),
-            Text = title, Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = T.Accent,
+            Text = title, Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = T.Accent, ZIndex = 11,
         }, n)
         textLabel({
             Size = UDim2.new(1, -12, 0, 18), Position = UDim2.new(0, 8, 0, 22),
-            Text = text, TextSize = 11, TextColor3 = T.SubText,
+            Text = text, TextSize = 11, TextColor3 = T.SubText, ZIndex = 11,
         }, n)
         local info = TweenInfo.new(0.25, Enum.EasingStyle.Quad)
         TweenService:Create(n, info, { Position = UDim2.new(1, -250, 1, -64) }):Play()
@@ -1544,6 +1546,7 @@ local playerListContainer = new("ScrollingFrame", {
     ScrollBarImageColor3 = T.Accent,
     CanvasSize = UDim2.new(0, 0, 0, 0),
     AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    ZIndex = 6,
 }, killPage)
 new("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, playerListContainer)
 
@@ -1559,6 +1562,7 @@ local function refreshPlayerListUI()
                     Size = UDim2.new(1, -4, 0, 32),
                     BackgroundColor3 = T.Element,
                     BorderSizePixel = 0,
+                    ZIndex = 6,
                 }, playerListContainer)
                 corner(row, 4)
                 
@@ -1568,6 +1572,7 @@ local function refreshPlayerListUI()
                     Text = plr.Name,
                     TextSize = 11,
                     TextColor3 = T.Text,
+                    ZIndex = 7,
                 }, row)
 
                 local wBtn = new("TextButton", {
@@ -1579,6 +1584,7 @@ local function refreshPlayerListUI()
                     TextSize = 10,
                     TextColor3 = T.Text,
                     BorderSizePixel = 0,
+                    ZIndex = 7,
                 }, row)
                 corner(wBtn, 4)
 
@@ -1597,6 +1603,7 @@ local function refreshPlayerListUI()
                     TextSize = 10,
                     TextColor3 = T.Text,
                     BorderSizePixel = 0,
+                    ZIndex = 7,
                 }, row)
                 corner(tBtn, 4)
 
@@ -1752,6 +1759,7 @@ local copyDiscordBtn = new("TextButton", {
     TextSize = 12,
     TextColor3 = Color3.fromRGB(15, 15, 15),
     BorderSizePixel = 0,
+    ZIndex = 6,
 }, infoPage)
 corner(copyDiscordBtn, 4)
 
@@ -1818,8 +1826,9 @@ minBtn.Activated:Connect(function()
     minimized = not minimized
     tabBar.Visible = not minimized
     pagesHolder.Visible = not minimized
+    watermark.Visible = not minimized
     TweenService:Create(main, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
-        Size = UDim2.fromOffset(W, minimized and 32 or H),
+        Size = UDim2.fromOffset(W, minimized and 28 or H),
     }):Play()
 end)
 
