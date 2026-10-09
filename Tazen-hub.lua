@@ -241,9 +241,11 @@ local function autoKillAllLoop(myId)
                             hrp.CFrame = pHrp.CFrame * CFrame.new(0, 3, 2)
                         end
                         if attackRemote then
-                            pcall(function() attackRemote:FireServer("punch", targetPlayer.Character) end)
+                            pcall(function() 
+                                attackRemote:FireServer("punch", targetPlayer.Character) 
+                            end)
                         end
-                        task.wait(0.03)
+                        task.wait(0.1)
                     end
 
                     if deathConn then deathConn:Disconnect() end
@@ -316,9 +318,11 @@ local function killTargetPlayerLoop(myId)
                             hrp.CFrame = pHrp.CFrame * CFrame.new(0, 3, 2)
                         end
                         if attackRemote then
-                            pcall(function() attackRemote:FireServer("punch", targetPlayer.Character) end)
+                            pcall(function() 
+                                attackRemote:FireServer("punch", targetPlayer.Character) 
+                            end)
                         end
-                        task.wait(0.03)
+                        task.wait(0.1)
                     end
 
                     if deathConn then deathConn:Disconnect() end
