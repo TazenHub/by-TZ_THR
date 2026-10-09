@@ -246,6 +246,11 @@ local function autoKillAllLoop(myId)
                     end
 
                     while killRunId == myId and alive and targetPlayer.Parent and pHum and pHum.Health > 0 and wasAlive do
+                        -- Vérification dynamique en temps réel si la cible devient safe (whitelistée)
+                        if whitelistPlayers[targetPlayer.Name] then
+                            break
+                        end
+
                         equipFists()
                         if hrp and pHrp then
                             hrp.CFrame = pHrp.CFrame * CFrame.new(0, 3, 2)
@@ -324,6 +329,11 @@ local function killTargetPlayerLoop(myId)
                     end
 
                     while killRunId == myId and alive and targetPlayer.Parent and pHum and pHum.Health > 0 and wasAlive do
+                        -- Vérification dynamique si la cible est retirée des targets ou ajoutée en safe
+                        if not targetPlayers[targetPlayer.Name] or whitelistPlayers[targetPlayer.Name] then
+                            break
+                        end
+
                         equipFists()
                         if hrp and pHrp then
                             hrp.CFrame = pHrp.CFrame * CFrame.new(0, 3, 2)
@@ -1563,6 +1573,14 @@ local function refreshPlayerListUI()
     end)
 end
 
+-- Système de rafraîchissement automatique de la liste des joueurs toutes les 1 seconde
+task.spawn(function()
+    while alive do
+        task.wait(1)
+        refreshPlayerListUI()
+    end
+end)
+
 connect(Players.PlayerAdded, refreshPlayerListUI)
 connect(Players.PlayerRemoving, refreshPlayerListUI)
 task.spawn(refreshPlayerListUI)
@@ -1760,7 +1778,7 @@ task.spawn(function()
 end)
 
 local minimized = false
-minBtn.Activated:Connect(function()
+minBtn.Activated:Connect(function`()
     minimized = not minimized
     tabBar.Visible = not minimized
     pagesHolder.Visible = not minimized
