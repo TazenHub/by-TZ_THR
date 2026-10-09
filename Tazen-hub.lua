@@ -1684,9 +1684,9 @@ end)
 eggLabel = addLabel(miscPage, E.egg .. " Eaten: 0 | Boost: -- | Last: --", 32)
 local fpsLabel = addLabel(miscPage, E.game .. " FPS: --", 32)
 
--- Infos Tab (Ajout d'une image/logo et des crédits)
+-- Infos Tab (Image avec ton ID et les crédits)
 addSection(infoPage, E.image .. " Hub Logo / Banner")
-addImage(infoPage, "rbxassetid://0", 100)
+addImage(infoPage, "rbxassetid://99940078182762", 100)
 
 addSection(infoPage, E.sparkles .. " Credits & Info")
 addLabel(infoPage, "Roblox Main : TZ_THR\nRoblox Alt : TZ_THRV2", 40)
