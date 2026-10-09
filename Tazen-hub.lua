@@ -1403,7 +1403,7 @@ end
 
 -- Fast Rebirth
 addSection(fastPage, E.fire .. " Fast Rebirth (Pack)")
-addLabel(fastPage, "\u{26A0}\u{FE0F} You need gamepass for fast rebirth", 34)
+addLabel(fastPage, "\u{26A0}\u{FE0F} You need pack for fast rebirth", 34)
 fastToggle = addToggle(fastPage, E.bolt .. " Fast Rebirth", false, function(v)
     fastRunId = fastRunId + 1
     if v then
@@ -1444,7 +1444,7 @@ local autoTimerLabel = addLabel(autoPage, E.clock .. " Session Time: 0s | Last R
 local autoCalcLabel = addLabel(autoPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 55)
 
 -- Fast Strength & Durability
-addSection(strPage, E.muscle .. " Fast Strength & Durability Predictor")
+addSection(strPage, E.muscle .. " Fast Strength & Durability")
 repToggle = addToggle(strPage, E.muscle .. " Fast Strength", false, function(v)
     repRunId = repRunId + 1
     if v then
@@ -1465,7 +1465,7 @@ local repCalcLabel = addLabel(strPage, E.muscle .. " Strength Tot: 0 | 1m: 0 | 1
 local durabilityCalcLabel = addLabel(strPage, E.shieldAlt .. " Durability Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 55)
 
 -- Killing Tab
-addSection(killPage, E.sword .. " Combat Module / Killing")
+addSection(killPage, E.sword .. " Killing")
 killAllToggle = addKillingToggle(killPage, E.sword .. " Auto Kill All Players", "Killing", "AutoKillAll", false, function(v)
     killRunId = killRunId + 1
     if v then
@@ -1488,7 +1488,7 @@ killTargetToggle = addKillingToggle(killPage, E.target .. " Kill Target Players 
     end
 end)
 
-autoSaveConfigToggle = addKillingToggle(killPage, E.wrench .. " Auto Save Config (Killing)", "Killing", "AutoSaveConfig", false, function(v)
+autoSaveConfigToggle = addKillingToggle(killPage, E.wrench .. " Auto Save Config", "Killing", "AutoSaveConfig", false, function(v)
     if v then
         local cfg = { AutoKillAll = killAllToggle.Value, KillTarget = killTargetToggle.Value, AutoSaveConfig = true }
         saveCategoryConfig("Killing", cfg)
@@ -1502,8 +1502,8 @@ end)
 
 local killStatusLabel = addLabel(killPage, E.clip .. " " .. killStatus, 40)
 
-addSection(killPage, E.shield .. " Whitelist & Friends System")
-autoWhitelistToggle = addToggle(killPage, E.heart .. " Auto Whitelist Friends", false, function(v)
+addSection(killPage, E.shield .. " White List")
+autoWhitelistToggle = addToggle(killPage, E.heart .. " Auto White List Friends", false, function(v)
     if v then
         local count = 0
         for _, plr in ipairs(Players:GetPlayers()) do
@@ -1518,7 +1518,7 @@ autoWhitelistToggle = addToggle(killPage, E.heart .. " Auto Whitelist Friends", 
     end
 end)
 
-addSection(killPage, E.crosshairs .. " Connected Players Management")
+addSection(killPage, E.crosshairs .. " Players")
 local playerListContainer = new("ScrollingFrame", {
     Size = UDim2.new(1, 0, 0, 160),
     BackgroundTransparency = 1,
@@ -1599,7 +1599,7 @@ task.spawn(refreshPlayerListUI)
 
 -- Misc Tab
 addSection(miscPage, E.toolbox .. " Utilities")
-antiAfkToggle = addToggle(miscPage, E.sleep .. " Anti AFK (IY Method)", false, function(v)
+antiAfkToggle = addToggle(miscPage, E.sleep .. " Anti AFK", false, function(v)
     setAntiAfk(v)
     notifyState(E.sleep .. " Anti AFK", v)
 end)
