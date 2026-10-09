@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR (Custom Logo Watermark Theme - Adjusted)
 
 local success, err = pcall(function()
 
@@ -965,81 +965,81 @@ stroke(main, T.Stroke, 1.8)
 -- ===================== LOGO EN FOND (WATERMARK) =====================
 local watermark = new("Frame", {
     Name = "LogoWatermark",
-    Size = UDim2.fromOffset(280, 240),
-    Position = UDim2.new(0.5, -140, 0.5, -120),
+    Size = UDim2.fromOffset(340, 280),
+    Position = UDim2.new(0.5, -170, 0.5, -140),
     BackgroundTransparency = 1,
     ZIndex = 4,
 }, main)
 
--- Grand T Blanc en arrière-plan
+-- Grand T Blanc en arrière-plan (plus grand)
 new("TextLabel", {
-    Size = UDim2.fromOffset(140, 160),
-    Position = UDim2.new(0.1, 0, 0, 0),
+    Size = UDim2.fromOffset(170, 190),
+    Position = UDim2.new(0.08, 0, 0, 0),
     BackgroundTransparency = 1,
     Font = Enum.Font.GothamBold,
-    TextSize = 150,
+    TextSize = 180,
     TextColor3 = Color3.fromRGB(255, 255, 255),
-    TextTransparency = 0.88, -- Visible mais discret
+    TextTransparency = 0.86,
     Text = "T",
     ZIndex = 4,
 }, watermark)
 
--- Grand Z Rose en arrière-plan
+-- Grand Z Rose en arrière-plan (plus grand)
 new("TextLabel", {
-    Size = UDim2.fromOffset(140, 160),
-    Position = UDim2.new(0.42, 0, 0.12, 0),
+    Size = UDim2.fromOffset(170, 190),
+    Position = UDim2.new(0.40, 0, 0.12, 0),
     BackgroundTransparency = 1,
     Font = Enum.Font.GothamBold,
-    TextSize = 150,
+    TextSize = 180,
     TextColor3 = T.Accent,
-    TextTransparency = 0.88,
+    TextTransparency = 0.86,
     Text = "Z",
     ZIndex = 4,
 }, watermark)
 
--- Lettrage TAZEN en bas du logo (fidèle à votre image)
+-- Lettrage TAZEN en bas du logo (plus grand, rapproché et compact)
 local tazenBrandBox = new("Frame", {
-    Size = UDim2.fromOffset(220, 35),
-    Position = UDim2.new(0.5, -110, 0.72, 0),
+    Size = UDim2.fromOffset(180, 40),
+    Position = UDim2.new(0.5, -90, 0.72, 0),
     BackgroundTransparency = 1,
     ZIndex = 4,
 }, watermark)
 
 -- T (Blanc)
 new("TextLabel", {
-    Size = UDim2.fromOffset(35, 35),
+    Size = UDim2.fromOffset(26, 40),
     Position = UDim2.new(0, 0, 0, 0),
     BackgroundTransparency = 1,
     Font = Enum.Font.GothamBold,
-    TextSize = 22,
+    TextSize = 26,
     TextColor3 = Color3.fromRGB(255, 255, 255),
-    TextTransparency = 0.88,
+    TextTransparency = 0.86,
     Text = "T",
     ZIndex = 4,
 }, tazenBrandBox)
 
--- A (Rose)
+-- A / Λ (Rose, collé au T)
 new("TextLabel", {
-    Size = UDim2.fromOffset(35, 35),
-    Position = UDim2.new(0, 32, 0, 0),
+    Size = UDim2.fromOffset(26, 40),
+    Position = UDim2.new(0, 22, 0, 0),
     BackgroundTransparency = 1,
     Font = Enum.Font.GothamBold,
-    TextSize = 22,
+    TextSize = 26,
     TextColor3 = T.Accent,
-    TextTransparency = 0.88,
+    TextTransparency = 0.86,
     Text = "Λ",
     ZIndex = 4,
 }, tazenBrandBox)
 
--- ZEN (Blanc)
+-- ZEN (Blanc, collé au Λ)
 new("TextLabel", {
-    Size = UDim2.fromOffset(140, 35),
-    Position = UDim2.new(0, 64, 0, 0),
+    Size = UDim2.fromOffset(120, 40),
+    Position = UDim2.new(0, 45, 0, 0),
     BackgroundTransparency = 1,
     Font = Enum.Font.GothamBold,
-    TextSize = 22,
+    TextSize = 26,
     TextColor3 = Color3.fromRGB(255, 255, 255),
-    TextTransparency = 0.88,
+    TextTransparency = 0.86,
     Text = "ZEN",
     ZIndex = 4,
 }, tazenBrandBox)
@@ -1054,7 +1054,7 @@ local topbar = new("Frame", {
     ZIndex = 6,
 }, main)
 
--- Titre d'origine restauré : Tazen hub V1 | by TZ_THR
+-- Titre d'origine : Tazen hub V1 | by TZ_THR
 textLabel({
     Size = UDim2.new(1, -70, 1, 0),
     Position = UDim2.new(0, 10, 0, 0),
