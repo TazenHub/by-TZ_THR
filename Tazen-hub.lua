@@ -889,9 +889,9 @@ connect(RunService.Heartbeat, function() fpsFrames = fpsFrames + 1 end)
 -- ===================== LIBRARY GUI THEME (ROSE, BLACK, WHITE) =====================
 local T = {
     Background = Color3.fromRGB(15, 15, 15),     -- Noir pur bibliothèque
-    Topbar = Color3.fromRGB(22, 22, 22),        -- Noir/Gris très sombre pour la barre de titre
+    Topbar = Color3.fromRGB(235, 100, 150),     -- Rose vibrant inspiré du logo TZ
     Element = Color3.fromRGB(28, 28, 28),       -- Élément gris très foncé/noir
-    Stroke = Color3.fromRGB(70, 45, 60),         -- Bordure subtile rosée/foncée
+    Stroke = Color3.fromRGB(255, 130, 180),      -- Bordure rose lumineuse
     Accent = Color3.fromRGB(240, 110, 160),     -- Rose personnalisé demandé
     Text = Color3.new(1, 1, 1),                 -- Blanc pur
     SubText = Color3.fromRGB(200, 200, 200),    -- Blanc cassé / Gris clair
@@ -941,7 +941,7 @@ local gui = new("ScreenGui", {
 local cam = workspace.CurrentCamera
 local vp = cam and cam.ViewportSize or Vector2.new(900, 600)
 local W = math.min(540, vp.X - 30)
-local H = math.min(400, vp.Y - 30)
+local H = math.min(390, vp.Y - 30)
 
 local main = new("Frame", {
     Name = "Main",
@@ -954,40 +954,33 @@ local main = new("Frame", {
 corner(main, 6)
 stroke(main, T.Accent, 1.5)
 
+-- Barre de titre fine en rose (hauteur 26 pixels)
 local topbar = new("Frame", {
     Name = "Topbar",
-    Size = UDim2.new(1, 0, 0, 36),
+    Size = UDim2.new(1, 0, 0, 26),
     BackgroundColor3 = T.Topbar,
     BorderSizePixel = 0,
     ZIndex = 6,
 }, main)
 
 textLabel({
-    Size = UDim2.new(1, -110, 0, 20),
-    Position = UDim2.new(0, 10, 0, 4),
-    Text = E.sparkles .. " Tazen hub V1",
-    Font = Enum.Font.GothamBlack,
-    TextSize = 15,
-    TextColor3 = T.Text,
-}, topbar)
-
-textLabel({
-    Size = UDim2.new(1, -110, 0, 12),
-    Position = UDim2.new(0, 10, 0, 22),
-    Text = E.heart .. " by TZ_THR  |  press K to hide",
-    TextSize = 10,
-    TextColor3 = T.Accent,
+    Size = UDim2.new(1, -70, 1, 0),
+    Position = UDim2.new(0, 8, 0, 0),
+    Text = E.sparkles .. " Tazen hub V1  |  " .. E.heart .. " by TZ_THR",
+    Font = Enum.Font.GothamBold,
+    TextSize = 11,
+    TextColor3 = Color3.new(1, 1, 1),
 }, topbar)
 
 local function topButton(text, xOffset)
     local b = new("TextButton", {
-        Size = UDim2.fromOffset(24, 24),
-        Position = UDim2.new(1, xOffset, 0, 6),
+        Size = UDim2.fromOffset(18, 18),
+        Position = UDim2.new(1, xOffset, 0, 4),
         BackgroundColor3 = Color3.fromRGB(0, 0, 0),
         BackgroundTransparency = 0.3,
         Text = text,
         Font = Enum.Font.GothamBold,
-        TextSize = 13,
+        TextSize = 10,
         TextColor3 = T.Text,
         BorderSizePixel = 0,
     }, topbar)
@@ -995,8 +988,8 @@ local function topButton(text, xOffset)
     return b
 end
 
-local closeBtn = topButton("X", -30)
-local minBtn = topButton("-", -58)
+local closeBtn = topButton("X", -22)
+local minBtn = topButton("-", -44)
 
 do
     local dragging, dragStart, startPos = false, nil, nil
@@ -1024,7 +1017,7 @@ end
 local tabBar = new("Frame", {
     Name = "TabBar",
     Size = UDim2.new(1, -16, 0, 26),
-    Position = UDim2.new(0, 8, 0, 42),
+    Position = UDim2.new(0, 8, 0, 32),
     BackgroundColor3 = Color3.fromRGB(20, 20, 20),
     BorderSizePixel = 0,
     ZIndex = 6,
@@ -1039,8 +1032,8 @@ new("UIPadding", { PaddingLeft = UDim.new(0, 4), PaddingTop = UDim.new(0, 3) }, 
 
 local pagesHolder = new("Frame", {
     Name = "Pages",
-    Size = UDim2.new(1, 0, 1, -76),
-    Position = UDim2.new(0, 0, 0, 74),
+    Size = UDim2.new(1, 0, 1, -64),
+    Position = UDim2.new(0, 0, 0, 62),
     BackgroundTransparency = 1,
     ZIndex = 5,
 }, main)
@@ -1331,7 +1324,7 @@ local function notify(title, text)
         local n = new("Frame", {
             Size = UDim2.fromOffset(230, 48),
             Position = UDim2.new(1, 20, 1, -64),
-            BackgroundColor3 = T.Topbar,
+            BackgroundColor3 = T.Element,
             BorderSizePixel = 0,
         }, gui)
         corner(n, 6)
@@ -1746,7 +1739,7 @@ minBtn.Activated:Connect(function()
     tabBar.Visible = not minimized
     pagesHolder.Visible = not minimized
     TweenService:Create(main, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
-        Size = UDim2.fromOffset(W, minimized and 36 or H),
+        Size = UDim2.fromOffset(W, minimized and 26 or H),
     }):Play()
 end)
 
