@@ -687,13 +687,13 @@ do
                     return function()
                         if not inst.Parent then return nil end
                         return parse(inst.Value)
-                    end
+                    end, ((c == LocalPlayer) and "Player" or c.Name) .. "." .. name
                 end
             end
         end
         for _, name in ipairs(names) do
             if LocalPlayer:GetAttribute(name) ~= nil then
-                return function() return parse(LocalPlayer:GetAttribute(name)) end
+                return function() return parse(LocalPlayer:GetAttribute(name)) end, "Attribut." .. name
             end
         end
         return nil
@@ -793,12 +793,21 @@ do
 end
 
 -- ===================== REBIRTH TRACKER =====================
--- Compte uniquement les renaissances confirmées par la stat "Rebirths" du joueur
--- (le retour du serveur n'est utilisé qu'en secours si la stat est introuvable).
+-- Deux signaux sont surveillés :
+--  1) la stat "Rebirths" du joueur (méthode préférée, la plus fiable)
+--  2) les réponses "true" du serveur à la demande de renaissance
+-- Si la stat n'existe pas ou ne bouge pas alors que le serveur confirme des renaissances,
+-- on bascule automatiquement sur le signal serveur pour que le compteur ne reste jamais bloqué.
 do
     local T = RebirthTracker
-    T.count, T.startT, T.firstT, T.lastT, T.gap = 0, tick(), nil, nil, nil
-    T.read, T.last = nil, nil
+
+    local function clear()
+        T.count, T.startT, T.firstT, T.lastT, T.gap = 0, tick(), nil, nil, nil
+        T.read, T.last, T.desc = nil, nil, nil
+        T.statMoved, T.mode = false, "stat"
+        T.srvTrue, T.srvTotal = 0, 0
+    end
+    clear()
 
     local function register(now, n)
         if T.lastT then T.gap = now - T.lastT end
@@ -809,13 +818,22 @@ do
 
     function T.poll()
         if not T.read then
-            T.read = StatTracker.findSource({ "Rebirths", "Rebirth" })
+            T.read, T.desc = StatTracker.findSource({ "Rebirths", "Rebirth" })
             T.last = nil
         end
         if T.read then
             local ok, cur = pcall(T.read)
             if ok and cur then
-                if T.last and cur > T.last then register(tick(), math.floor(cur - T.last + 0.5)) end
+                if T.last and cur > T.last then
+                    local n = math.max(1, math.floor(cur - T.last + 0.5))
+                    if T.mode == "srv" then
+                        -- déjà compté via le serveur : la stat bouge enfin, on repasse sur elle
+                        T.mode = "stat"
+                    else
+                        register(tick(), n)
+                    end
+                    T.statMoved = true
+                end
                 T.last = cur
             else
                 T.read, T.last = nil, nil
@@ -824,14 +842,23 @@ do
     end
 
     function T.reset()
-        T.count, T.startT, T.firstT, T.lastT, T.gap = 0, tick(), nil, nil, nil
-        T.read, T.last = nil, nil
+        clear()
         pcall(T.poll) -- baseline immédiate pour ne pas rater la 1re renaissance
     end
 
-    -- Secours : si la stat n'existe pas, on ne compte que les réponses "true" du serveur
+    -- Appelé à chaque réponse du serveur à "rebirthRequest"
     function T.onRemote(res)
-        if not T.read and res == true then register(tick(), 1) end
+        T.srvTotal = T.srvTotal + 1
+        if res ~= true then return end
+        T.srvTrue = T.srvTrue + 1
+        if T.statMoved then return end -- la stat fait déjà le travail
+        if (not T.read) or T.srvTrue >= 3 then
+            if T.mode ~= "srv" then
+                T.mode = "srv"
+                T.count = math.max(T.count, T.srvTrue - 1) -- rattrape les premières confirmations
+            end
+            register(tick(), 1)
+        end
     end
 
     function T.lastText()
@@ -848,10 +875,10 @@ do
     function T.text(icon, now)
         local r = T.rate(now)
         local function p(x) return formatNumber(math.floor(x + 0.5)) end
-        local txt = string.format("%s Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s",
-            icon, formatNumber(T.count), p(r * 60), p(r * 3600), p(r * 86400), p(r * 604800), p(r * 2592000))
-        if not T.read then txt = txt .. " | source: serveur" end
-        return txt
+        local src = (T.mode == "srv") and "serveur" or (T.desc or "stat introuvable")
+        return string.format("%s Tot: %s | 1m: %s | 1h: %s | 1j: %s | 1sem: %s | 1mois: %s\n[source: %s | serveur ok: %d/%d]",
+            icon, formatNumber(T.count), p(r * 60), p(r * 3600), p(r * 86400), p(r * 604800), p(r * 2592000),
+            src, T.srvTrue, T.srvTotal)
     end
 
     task.spawn(function()
