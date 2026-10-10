@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR rework
 
 local success, err = pcall(function()
 
@@ -395,6 +395,16 @@ local function killTargetPlayerLoop(myId)
                 local targetPlayer = nil
                 local minDist = math.huge
 
+                local function getPetScore(pet)
+                    local o = pet:FindFirstChild("RepSpeed") or pet:FindFirstChild("Rep Speed")
+                    if o and (o:IsA("NumberValue") or o:IsA("IntValue")) then return o.Value end
+                    local attr = pet:GetAttribute("RepSpeed") or pet:GetAttribute("Rep Speed")
+                    if attr then return tonumber(attr) or 0 end
+                    local lvl = pet:FindFirstChild("Level") or pet:FindFirstChild("Lvl")
+                    if lvl and lvl.Value then return tonumber(lvl.Value) or 0 end
+                    return 1
+                end
+
                 for _, plr in ipairs(Players:GetPlayers()) do
                     if targetPlayers[plr.Name] and plr ~= LocalPlayer and not whitelistPlayers[plr.Name] then
                         local pChar = plr.Character
@@ -459,7 +469,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (STABLE & FLUIDE 6s) =====================
+-- ===================== FAST REBIRTH LOOP (ORIGINAL STABLE 6s) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -478,21 +488,6 @@ local function fastRebirthLoop(myId)
             petsFolder = LocalPlayer:FindFirstChild("petsFolder")
         end
         if not isRunning() then return end
-
-        local function getMaxPetSlots()
-            local ok, maxSlots = pcall(function()
-                local slotsVal = LocalPlayer:FindFirstChild("maxEquippedPets") 
-                    or LocalPlayer:FindFirstChild("PetSlots")
-                    or (LocalPlayer:FindFirstChild("leaderstats") and LocalPlayer.leaderstats:FindFirstChild("PetSlots"))
-                if slotsVal and slotsVal.Value then
-                    return tonumber(slotsVal.Value)
-                end
-                local attr = LocalPlayer:GetAttribute("MaxPets") or LocalPlayer:GetAttribute("PetSlots")
-                if attr then return tonumber(attr) end
-                return 3
-            end)
-            return (ok and maxSlots and maxSlots > 0) and maxSlots or 12
-        end
 
         local hydraList = {}
         local repPetsUnsorted = {}
@@ -522,45 +517,32 @@ local function fastRebirthLoop(myId)
             return a.Priority < b.Priority
         end)
 
-        local maxSlots = getMaxPetSlots()
-
         local repList = {}
-        for i = 1, math.min(maxSlots, #repPetsUnsorted) do
+        for i = 1, math.min(12, #repPetsUnsorted) do
             table.insert(repList, repPetsUnsorted[i].Instance)
         end
 
         local finalHydraList = {}
-        for i = 1, math.min(maxSlots, #hydraList) do
+        for i = 1, math.min(12, #hydraList) do
             table.insert(finalHydraList, hydraList[i])
         end
 
         if #finalHydraList == 0 or #repList == 0 then return end
 
-        local function safeEquipGroup(petList)
-            task.spawn(function()
-                for _, pet in ipairs(petList) do
-                    pcall(function()
-                        equipPetEvent:FireServer("equipPet", pet)
-                    end)
-                end
-            end)
-        end
-
-        local nextCycleTarget = os.clock() + 6.0
-
         while isRunning() do
-            while isRunning() and os.clock() < nextCycleTarget do
-                RunService.Heartbeat:Wait()
+            for _, pet in ipairs(finalHydraList) do
+                pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
-            if not isRunning() then break end
 
-            safeEquipGroup(finalHydraList)
             pcall(function()
                 rebirthRemote:InvokeServer("rebirthRequest")
             end)
-            safeEquipGroup(repList)
 
-            nextCycleTarget = nextCycleTarget + 6.0
+            for _, pet in ipairs(repList) do
+                pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
+            end
+
+            task.wait(REBIRTH_COOLDOWN)
         end
     end)
 end
