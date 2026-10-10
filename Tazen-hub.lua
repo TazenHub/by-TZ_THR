@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR rework
 
 local success, err = pcall(function()
 
@@ -459,7 +459,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (STABLE & FLUIDE 6s) =====================
+-- ===================== FAST REBIRTH LOOP (OPTIMISÉ & STABLE 6s) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -536,34 +536,43 @@ local function fastRebirthLoop(myId)
 
         if #finalHydraList == 0 or #repList == 0 then return end
 
-        local nextCycleTarget = os.clock() + 6.0
+        local function safeEquipGroup(petList)
+            task.spawn(function()
+                for _, pet in ipairs(petList) do
+                    pcall(function()
+                        equipPetEvent:FireServer("equipPet", pet)
+                    end)
+                end
+            end)
+        end
+
+        local nextCycleTarget = os.clock()
 
         while isRunning() do
+            -- 1. Équiper les Fast Rep Pets au début du cycle
+            safeEquipGroup(repList)
+
+            -- 2. Attendre jusqu'à 0.1s avant la fin du cycle
+            while isRunning() and os.clock() < (nextCycleTarget - 0.1) do
+                RunService.Heartbeat:Wait()
+            end
+            if not isRunning() then break end
+
+            -- 3. Équiper les Hydras juste avant la renaissance
+            safeEquipGroup(finalHydraList)
+
+            -- 4. Attendre pile les 6 secondes
             while isRunning() and os.clock() < nextCycleTarget do
                 RunService.Heartbeat:Wait()
             end
             if not isRunning() then break end
 
-            -- 1. Équiper les Hydras instantanément
-            pcall(function()
-                for _, pet in ipairs(finalHydraList) do
-                    equipPetEvent:FireServer("equipPet", pet)
-                end
-            end)
-
-            -- 2. Lancer la renaissance
+            -- 5. Lancer la renaissance (priorité absolue)
             pcall(function()
                 rebirthRemote:InvokeServer("rebirthRequest")
             end)
 
-            -- 3. Remettre immédiatement les Fast Rep Pets (le jeu gère le remplacement automatique des slots)
-            pcall(function()
-                for _, pet in ipairs(repList) do
-                    equipPetEvent:FireServer("equipPet", pet)
-                end
-            end)
-
-            nextCycleTarget = nextCycleTarget + 6.0
+            nextCycleTarget = os.clock() + REBIRTH_COOLDOWN
         end
     end)
 end
