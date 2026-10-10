@@ -110,7 +110,7 @@ local function saveCategoryConfig(categoryName, data)
 end
 
 -- ===================== SETTINGS =====================
-local REBIRTH_COOLDOWN = 2.5 -- Réduit à 2.5 pour forcer une vitesse maximale
+local REBIRTH_COOLDOWN = 6 -- Forcé à 6 secondes pile
 
 local E = {
     bolt = "⚡", cycle = "🔄", muscle = "💪", toolbox = "🧰",
@@ -418,7 +418,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP ULTRA-RAPIDE FIXE =====================
+-- ===================== FAST REBIRTH LOOP AVEC SWAP D'ORIGINE & 6s PILE =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -426,11 +426,11 @@ local function fastRebirthLoop(myId)
         local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
 
-        local HYDRA_LEAD = 0.04             
-        local HYDRA_TAIL = 0.02             
-        local REP_OFF_LEAD = 0.04           
-        local REP_ON_DELAY = 0.02           
-        local REBIRTH_MARGIN = 0.005        -- Marge fixe minimale
+        local HYDRA_LEAD = 0.06             
+        local HYDRA_TAIL = 0.03             
+        local REP_OFF_LEAD = 0.06           
+        local REP_ON_DELAY = 0.03           
+        local REBIRTH_MARGIN = 0.01         
         local SLOTS = 12                    
         local AUTO_TRY = 20                 
         local FULL_SWAP = true              
@@ -580,6 +580,7 @@ local function fastRebirthLoop(myId)
         setEquipped(repTarget, true)
 
         local cycle = 0
+        local margin = REBIRTH_MARGIN
         local rebirthAt = os.clock() + HYDRA_LEAD
 
         while isRunning() do
@@ -599,11 +600,15 @@ local function fastRebirthLoop(myId)
             waitUntil(rebirthAt)
             if not isRunning() then break end
             local tFire = os.clock()
-            local resultReady = false
+            local countBefore = rebirthCount()
+            local resultReady, rebirthOk = false, true
             task.spawn(function()
                 pcall(function()
                     rebirthRemote:InvokeServer("rebirthRequest")
                 end)
+                task.wait(0.15)
+                local after = rebirthCount()
+                if countBefore and after then rebirthOk = after > countBefore end
                 resultReady = true
             end)
 
@@ -617,11 +622,11 @@ local function fastRebirthLoop(myId)
                 rebuild()
             end
 
-            while isRunning() and not resultReady and os.clock() < tFire + 0.5 do
+            while isRunning() and not resultReady and os.clock() < tFire + 1.0 do
                 task.wait()
             end
 
-            -- On force un délai fixe ultra-rapide sans réajustement dynamique vers le haut
+            -- Forçage d'un cycle à 6 secondes pile par rebirth avec le swap complet d'origine
             rebirthAt = tFire + REBIRTH_COOLDOWN + REBIRTH_MARGIN
         end
     end)
