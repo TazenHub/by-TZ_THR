@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR rework
 
 local success, err = pcall(function()
 
@@ -120,7 +120,7 @@ local function saveCategoryConfig(categoryName, data)
 end
 
 -- ===================== SETTINGS =====================
-local REBIRTH_COOLDOWN = 6.0
+local REBIRTH_COOLDOWN = 4.0
 
 local E = {
     bolt = "⚡", cycle = "🔄", muscle = "💪", toolbox = "🧰",
@@ -428,7 +428,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (CLEAN SEPARATE REP + DYNAMIC FAST SWAP) =====================
+-- ===================== FAST REBIRTH LOOP (INSTANT SWAP & UNDER 6S TARGET) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -558,17 +558,13 @@ local function fastRebirthLoop(myId)
         setEquipped(repList, true)
 
         local cycle = 0
-        local nextCycleTime = tick() + 1
-
         while isRunning() do
             cycle = cycle + 1
-            local targetTime = nextCycleTime
 
+            -- 1. Farme les reps en boucle ultra-rapide jusqu'à ce que canRebirth() soit valide
             local carry = 0
-            local farmTimeout = tick() + 2.0
             local canR = false
-            
-            while isRunning() and tick() < farmTimeout do
+            while isRunning() do
                 local dt = RunService.Heartbeat:Wait()
                 if muscleEvent and INTERNAL_REP_RATE > 0 then
                     carry = carry + INTERNAL_REP_RATE * dt
@@ -582,28 +578,21 @@ local function fastRebirthLoop(myId)
                 pcall(function()
                     canR = canRebirth()
                 end)
-                if canR and tick() - (targetTime - 1) >= 0 then 
-                    break 
-                end
+                if canR then break end
             end
 
             if not isRunning() then break end
 
+            -- 2. Swap instantané vers les Hydras
             setEquipped(hydraList, true)
             task.wait(0.02)
 
-            local tFire = tick()
+            -- 3. Envoi de la requête de renaissance
             pcall(function()
                 rebirthRemote:InvokeServer("rebirthRequest")
             end)
 
-            local rebirthHoldTime = tFire + 4.0
-            while isRunning() and tick() < rebirthHoldTime do
-                RunService.Heartbeat:Wait()
-            end
-
-            if not isRunning() then break end
-
+            -- 4. RETOUR IMMÉDIAT SUR LES REP PETS (Plus aucune attente inutile de 4s !)
             setEquipped(repList, true)
 
             if cycle % LIST_REFRESH_EVERY == 0 then
@@ -612,8 +601,6 @@ local function fastRebirthLoop(myId)
                 repList = buildRepList(petsFolder, SLOTS)
                 muscleEvent = findMuscleEvent(rEvents or ReplicatedStorage) or muscleEvent
             end
-
-            nextCycleTime = tFire + 5.5
         end
     end)
 end
@@ -1540,11 +1527,6 @@ local function notifyState(title, v)
     notify(title, v and (E.ok .. " Enabled") or (E.no .. " Disabled"))
 end
 
-local function enableAutoFastRep()
-    if repSliderUpdateFunc then repSliderUpdateFunc(659) end
-    if repToggle and not repToggle.Value then repToggle:Set(true) end
-end
-
 -- Fast Rebirth
 addSection(fastPage, E.fire .. " Fast Rebirth (Pack)")
 addLabel(fastPage, "⚠️ You need pack for fast rebirth", 32)
@@ -1575,7 +1557,6 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto Rebirth", false, function(v)
         StatTracker.reset("rebirths")
         fastRunId = fastRunId + 1
         if fastToggle then fastToggle:Set(false) end
-        enableAutoFastRep()
         notifyState(E.cycle .. " Auto Rebirth", true)
         task.spawn(autoRebirthLoop, autoRunId)
     else
