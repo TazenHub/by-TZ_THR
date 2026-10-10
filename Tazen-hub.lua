@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR rework
 
 local success, err = pcall(function()
 
@@ -428,7 +428,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (CLEAN 1-SHOT SWAP LOGIC) =====================
+-- ===================== FAST REBIRTH LOOP (VIDEO STYLE SWAP & 5.9-6.3s TARGET) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -560,10 +560,10 @@ local function fastRebirthLoop(myId)
         while isRunning() do
             cycle = cycle + 1
 
-            -- ÉTAPE 1 : Équipement propre des Fast Rep Pets (1 seule fois au début du cycle)
+            -- 1. Équipement propre des Fast Rep Pets pour le farm rapide
             setEquipped(repList, true)
 
-            -- ÉTAPE 2 : Farm ultra-rapide des reps pendant ~0.5 à 1s avec les fast pets
+            -- 2. Phase de farm de reps (environ 0.8s pour stabiliser le timing parfait 5.9s - 6.3s)
             local carry = 0
             local farmStart = tick()
             local canR = false
@@ -581,19 +581,18 @@ local function fastRebirthLoop(myId)
                 pcall(function()
                     canR = canRebirth()
                 end)
-                -- On valide dès que les requirements sont prêts et qu'on a passé au moins 0.5s en farm
-                if canR and (tick() - farmStart >= 0.5) then 
+                if canR and (tick() - farmStart >= 0.8) then 
                     break 
                 end
             end
 
             if not isRunning() then break end
 
-            -- ÉTAPE 3 : Swap propre et unique vers les Hydras (X2 Rebirth Pets)
+            -- 3. Swap propre vers les Hydras (le personnage garde ses Hydras tout le long de la phase de rebirth)
             setEquipped(hydraList, true)
-            task.wait(0.03) -- Léger délai propre pour que le serveur enregistre les Hydras
+            task.wait(0.1)
 
-            -- ÉTAPE 4 : Envoi de la requête de renaissance en boucle jusqu'à ce qu'elle passe
+            -- 4. Envoi de la requête de renaissance et maintien des Hydras équipés pendant l'attente
             local rebirthSuccess = false
             while isRunning() and not rebirthSuccess do
                 pcall(function()
@@ -604,6 +603,9 @@ local function fastRebirthLoop(myId)
                     RunService.Heartbeat:Wait()
                 end
             end
+
+            -- Petite pause propre avec les Hydras sur le dos avant de repartir sur le farm (exactement comme dans la vidéo)
+            task.wait(0.4)
 
             if cycle % LIST_REFRESH_EVERY == 0 then
                 petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
