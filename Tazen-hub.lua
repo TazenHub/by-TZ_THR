@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR rework
 
 local success, err = pcall(function()
 
@@ -432,7 +432,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (SMART SWAP OPTIMIZED) =====================
+-- ===================== FAST REBIRTH LOOP (SMART TIMED SWAP) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -541,6 +541,7 @@ local function fastRebirthLoop(myId)
         while isRunning() do
             cycle = cycle + 1
 
+            -- 1. Gain de force avec les Rep Pets actifs
             local carry = 0
             local canR = false
             while isRunning() do
@@ -562,7 +563,7 @@ local function fastRebirthLoop(myId)
 
             if not isRunning() then break end
 
-            -- 1. Switch rapide vers les Rebirth Pets (Hydra/Overlord)
+            -- 2. Passer aux Rebirth Pets (x2 reb) pour le rebirth
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
@@ -570,17 +571,22 @@ local function fastRebirthLoop(myId)
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
 
-            -- Attente ultra courte pour que le serveur valide les pets de rebirth
-            task.wait(0.1)
+            -- Maintenir les Rebirth Pets pendant max 5 secondes ou jusqu'à confirmation du rebirth
+            local startWait = tick()
+            while isRunning() and (tick() - startWait < 5) do
+                pcall(function()
+                    rebirthRemote:InvokeServer("rebirthRequest")
+                end)
+                task.wait(0.3)
+                
+                -- Si le rebirth est passé, on sort de la boucle d'attente
+                local okC, canStillR = pcall(canRebirth)
+                if okC and not canStillR then
+                    break
+                end
+            end
 
-            -- 2. Demande de Rebirth
-            local successRebirth = false
-            pcall(function()
-                rebirthRemote:InvokeServer("rebirthRequest")
-                successRebirth = true
-            end)
-
-            -- 3. Remise immédiate des Rep Pets pour le prochain cycle
+            -- 3. Remettre immédiatement les Rep Pets pour le cycle suivant ("alors rep pet")
             for _, pet in ipairs(hydraList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
