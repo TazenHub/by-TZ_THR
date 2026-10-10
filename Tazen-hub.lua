@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR rework
 
 local success, err = pcall(function()
 
@@ -459,7 +459,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (VRAI FULL SWAP + DÉTECTION DYNAMIQUE) =====================
+-- ===================== FAST REBIRTH LOOP (TIMING CONSTANT 6s & FULL SWAP OPTIMISÉ) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -553,23 +553,22 @@ local function fastRebirthLoop(myId)
             end)
         end
 
-        local nextCycleTarget = os.clock()
+        local nextCycleTarget = os.clock() + 6.0
 
         while isRunning() do
-            executeFullSwap(finalHydraList)
-
             while isRunning() and os.clock() < nextCycleTarget do
                 RunService.Heartbeat:Wait()
             end
             if not isRunning() then break end
 
+            executeFullSwap(finalHydraList)
             pcall(function()
                 rebirthRemote:InvokeServer("rebirthRequest")
             end)
 
             executeFullSwap(repList)
 
-            nextCycleTarget = os.clock() + REBIRTH_COOLDOWN
+            nextCycleTarget = nextCycleTarget + 6.0
         end
     end)
 end
