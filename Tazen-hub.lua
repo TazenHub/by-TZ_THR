@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR REWORK
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -388,7 +388,7 @@ local function killTargetPlayerLoop(myId)
         pcall(function()
             local character = LocalPlayer.Character
             local hrp = character and character:FindFirstChild("HumanoidRootPart")
-            if not hrp me then
+            if not hrp then
                 killStatus = "Waiting for character..."
                 task.wait(1)
             else
@@ -522,7 +522,6 @@ local function fastRebirthLoop(myId)
 
         local currentEquippedGroup = nil
 
-        -- Fonction d'echange directe : Desequipe ET equipe dans le meme passage sans double appel
         local function switchToGroup(targetList)
             if currentEquippedGroup == targetList then return end
 
@@ -551,27 +550,21 @@ local function fastRebirthLoop(myId)
 
         if #hydraList == 0 or #repList == 0 then return end
 
-        -- Etape initiale : On commence sur les Rep Speed Pets
         switchToGroup(repList)
 
         while isRunning() do
-            -- 1. Attente de 5 secondes avec les Rep Speed Pets équipés
             task.wait(5.0)
             if not isRunning() then break end
 
-            -- 2. UN SEUL SWAP : Passage unique aux Hydras (x2 Rebirth) juste avant de faire la renaissance
             switchToGroup(hydraList)
             task.wait(0.1)
 
-            -- 3. Execution de la renaissance
             pcall(function()
                 rebirthRemote:InvokeServer("rebirthRequest")
             end)
 
-            -- 4. UN SEUL SWAP : Retour immediat aux Rep Speed Pets
             switchToGroup(repList)
 
-            -- Reste du cooldown (0.9s pour atteindre exactement les 6.0s du cooldown)
             task.wait(0.9)
         end
     end)
