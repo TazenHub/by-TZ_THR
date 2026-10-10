@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR rework
 
 local success, err = pcall(function()
 
@@ -120,7 +120,7 @@ local function saveCategoryConfig(categoryName, data)
 end
 
 -- ===================== SETTINGS =====================
-local REBIRTH_COOLDOWN = 5.5
+local REBIRTH_COOLDOWN = 6.03
 
 local E = {
     bolt = "⚡", cycle = "🔄", muscle = "💪", toolbox = "🧰",
@@ -428,7 +428,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (ORIGINAL STABLE FULL SWAP + 12 SLOTS) =====================
+-- ===================== FAST REBIRTH LOOP (STABLE FIRST REQ + 6.03s TIMING) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -583,7 +583,7 @@ local function fastRebirthLoop(myId)
         setEquipped(repTarget, true)
 
         local cycle = 0
-        local nextCycleTime = os.clock()
+        local nextCycleTime = os.clock() + 1
 
         while isRunning() do
             cycle = cycle + 1
@@ -597,9 +597,13 @@ local function fastRebirthLoop(myId)
             if not isRunning() then break end
             local tFire = os.clock()
 
+            local successRebirth = false
             pcall(function()
                 task.spawn(function()
-                    rebirthRemote:InvokeServer("rebirthRequest")
+                    local res = rebirthRemote:InvokeServer("rebirthRequest")
+                    if res ~= false then
+                        successRebirth = true
+                    end
                 end)
             end)
 
@@ -613,7 +617,11 @@ local function fastRebirthLoop(myId)
                 rebuild()
             end
 
-            nextCycleTime = tFire + REBIRTH_COOLDOWN
+            if cycle == 1 and not successRebirth then
+                nextCycleTime = os.clock() + 1.5
+            else
+                nextCycleTime = tFire + REBIRTH_COOLDOWN
+            end
         end
     end)
 end
