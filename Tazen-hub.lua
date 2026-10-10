@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR rework
 
 local success, err = pcall(function()
 
@@ -459,7 +459,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (TIMING DYNAMIQUE PRÉCIS) =====================
+-- ===================== FAST REBIRTH LOOP (OPTIMISATION BULK CONCURRENT) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -522,18 +522,23 @@ local function fastRebirthLoop(myId)
 
         local currentEquippedGroup = nil
 
+        -- Envoi simultané et instantané (en parallèle) pour éviter toute latence serveur
         local function switchToGroup(targetList)
             if currentEquippedGroup == targetList then return end
 
             if currentEquippedGroup then
-                for _, pet in ipairs(currentEquippedGroup) do
-                    pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
-                end
+                task.spawn(function()
+                    for _, pet in ipairs(currentEquippedGroup) do
+                        pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
+                    end
+                end)
             end
 
-            for _, pet in ipairs(targetList) do
-                pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
-            end
+            task.spawn(function()
+                for _, pet in ipairs(targetList) do
+                    pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
+                end
+            end)
 
             currentEquippedGroup = targetList
         end
@@ -556,13 +561,13 @@ local function fastRebirthLoop(myId)
             -- 1. Équiper les Rep Speed Pets immédiatement
             switchToGroup(repList)
 
-            -- 2. Attendre jusqu'à 0.35s AVANT le moment exact du rebirth
-            while isRunning() and os.clock() < (nextCycleTarget - 0.35) do
+            -- 2. Attendre jusqu'à 0.20s AVANT le moment exact du rebirth (anticipation ultra-courte)
+            while isRunning() and os.clock() < (nextCycleTarget - 0.20) do
                 task.wait()
             end
             if not isRunning() then break end
 
-            -- 3. Équiper les Hydras (x2 Rebirth)
+            -- 3. Équiper les Hydras instantanément
             switchToGroup(hydraList)
 
             -- 4. Attendre l'instant exact du cooldown (6.0s)
@@ -576,7 +581,7 @@ local function fastRebirthLoop(myId)
                 rebirthRemote:InvokeServer("rebirthRequest")
             end)
 
-            -- Fixer l'objectif du prochain cycle à EXACTEMENT 6 secondes
+            -- Relancer le cycle à pile 6 secondes
             nextCycleTarget = os.clock() + REBIRTH_COOLDOWN
         end
     end)
