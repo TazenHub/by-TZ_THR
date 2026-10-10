@@ -110,7 +110,7 @@ local function saveCategoryConfig(categoryName, data)
 end
 
 -- ===================== SETTINGS =====================
-local REBIRTH_COOLDOWN = 6
+local REBIRTH_COOLDOWN = 3 -- Réduit à 3 pour forcer une vitesse accrue
 
 local E = {
     bolt = "⚡", cycle = "🔄", muscle = "💪", toolbox = "🧰",
