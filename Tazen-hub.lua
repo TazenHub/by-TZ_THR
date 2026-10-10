@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR rework
 
 local success, err = pcall(function()
 
@@ -459,7 +459,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (SINGLE SWAP OPTIMISÉ) =====================
+-- ===================== FAST REBIRTH LOOP (PET SWAP DIRECT ET UNIQUE) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -470,7 +470,7 @@ local function fastRebirthLoop(myId)
         local SLOTS = 12                    
         local AUTO_TRY = 20                 
         local STARTUP_UNEQUIP_PER_FRAME = 20
-        local LIST_REFRESH_EVERY = 10        
+        local LIST_REFRESH_EVERY = 15        
 
         local function petRealName(pet)
             if pet:FindFirstChild("PetName") then return pet.PetName.Value end
@@ -592,33 +592,16 @@ local function fastRebirthLoop(myId)
         setEquipped(repTarget)
 
         local cycle = 0
-        local nextCycleTime = os.clock()
-
-        local function waitUntil(t)
-            while isRunning() and os.clock() < t do
-                task.wait()
-            end
-        end
-
         while isRunning() do
             cycle = cycle + 1
-            local targetTime = nextCycleTime
 
-            waitUntil(targetTime - 0.01)
-            if not isRunning() then break end
             setEquipped(hydraList)
-
-            waitUntil(targetTime)
-            if not isRunning() then break end
-            local tFire = os.clock()
-
+            
             pcall(function()
-                task.spawn(function()
-                    rebirthRemote:InvokeServer("rebirthRequest")
-                end)
+                rebirthRemote:InvokeServer("rebirthRequest")
             end)
 
-            waitUntil(tFire + 0.01)
+            task.wait(0.01)
             setEquipped(repTarget)
 
             if cycle % LIST_REFRESH_EVERY == 0 then
@@ -626,7 +609,7 @@ local function fastRebirthLoop(myId)
                 rebuild()
             end
 
-            nextCycleTime = tFire + REBIRTH_COOLDOWN
+            task.wait(REBIRTH_COOLDOWN)
         end
     end)
 end
