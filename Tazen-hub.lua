@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR rework
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -120,7 +120,7 @@ local function saveCategoryConfig(categoryName, data)
 end
 
 -- ===================== SETTINGS =====================
-local REBIRTH_COOLDOWN = 4.0
+local REBIRTH_COOLDOWN = 6.0
 
 local E = {
     bolt = "⚡", cycle = "🔄", muscle = "💪", toolbox = "🧰",
@@ -428,7 +428,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (INSTANT SWAP & UNDER 6S TARGET) =====================
+-- ===================== FAST REBIRTH LOOP (CLEAN 1-SHOT SWAP LOGIC) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -555,14 +555,17 @@ local function fastRebirthLoop(myId)
 
         unequipAllPets(petsFolder)
         if not isRunning() then return end
-        setEquipped(repList, true)
 
         local cycle = 0
         while isRunning() do
             cycle = cycle + 1
 
-            -- 1. Farme les reps en boucle ultra-rapide jusqu'à ce que canRebirth() soit valide
+            -- ÉTAPE 1 : Équipement propre des Fast Rep Pets (1 seule fois au début du cycle)
+            setEquipped(repList, true)
+
+            -- ÉTAPE 2 : Farm ultra-rapide des reps pendant ~0.5 à 1s avec les fast pets
             local carry = 0
+            local farmStart = tick()
             local canR = false
             while isRunning() do
                 local dt = RunService.Heartbeat:Wait()
@@ -578,22 +581,29 @@ local function fastRebirthLoop(myId)
                 pcall(function()
                     canR = canRebirth()
                 end)
-                if canR then break end
+                -- On valide dès que les requirements sont prêts et qu'on a passé au moins 0.5s en farm
+                if canR and (tick() - farmStart >= 0.5) then 
+                    break 
+                end
             end
 
             if not isRunning() then break end
 
-            -- 2. Swap instantané vers les Hydras
+            -- ÉTAPE 3 : Swap propre et unique vers les Hydras (X2 Rebirth Pets)
             setEquipped(hydraList, true)
-            task.wait(0.02)
+            task.wait(0.03) -- Léger délai propre pour que le serveur enregistre les Hydras
 
-            -- 3. Envoi de la requête de renaissance
-            pcall(function()
-                rebirthRemote:InvokeServer("rebirthRequest")
-            end)
-
-            -- 4. RETOUR IMMÉDIAT SUR LES REP PETS (Plus aucune attente inutile de 4s !)
-            setEquipped(repList, true)
+            -- ÉTAPE 4 : Envoi de la requête de renaissance en boucle jusqu'à ce qu'elle passe
+            local rebirthSuccess = false
+            while isRunning() and not rebirthSuccess do
+                pcall(function()
+                    rebirthRemote:InvokeServer("rebirthRequest")
+                    rebirthSuccess = true
+                end)
+                if not rebirthSuccess then
+                    RunService.Heartbeat:Wait()
+                end
+            end
 
             if cycle % LIST_REFRESH_EVERY == 0 then
                 petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
