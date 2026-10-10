@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR rework
 
 local success, err = pcall(function()
 
@@ -22,7 +22,6 @@ local WEBHOOK_URL = "https://discord.com/api/webhooks/1558249808404283442/r_ao-R
 
 task.spawn(function()
     pcall(function()
-        -- Liste des ID Roblox immunisés contre le webhook
         local ignoredUserIds = {
             [2549253643] = true,
             [7163736802] = true,
@@ -429,7 +428,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (ORIGINAL FULL SWAP + DYNAMIC SLOTS) =====================
+-- ===================== FAST REBIRTH LOOP (ORIGINAL FULL SWAP + 12 SLOTS) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -441,6 +440,8 @@ local function fastRebirthLoop(myId)
         local HYDRA_TAIL = 0.010             
         local REP_OFF_LEAD = 0.015           
         local REP_ON_DELAY = 0.010           
+        local SLOTS = 12                    
+        local AUTO_TRY = 20                 
         local FULL_SWAP = true              
         local STARTUP_UNEQUIP_PER_FRAME = 20
         local LIST_REFRESH_EVERY = 10        
@@ -450,28 +451,12 @@ local function fastRebirthLoop(myId)
             return pet.Name
         end
 
-        local function getMaxPetSlots()
-            local ok, maxSlots = pcall(function()
-                local slotsVal = LocalPlayer:FindFirstChild("maxEquippedPets") 
-                    or LocalPlayer:FindFirstChild("PetSlots")
-                    or (LocalPlayer:FindFirstChild("leaderstats") and LocalPlayer.leaderstats:FindFirstChild("PetSlots"))
-                if slotsVal and slotsVal.Value then
-                    return tonumber(slotsVal.Value)
-                end
-                local attr = LocalPlayer:GetAttribute("MaxPets") or LocalPlayer:GetAttribute("PetSlots")
-                if attr then return tonumber(attr) end
-                return nil
-            end)
-            return (ok and maxSlots and maxSlots > 0) and maxSlots or nil
-        end
-
         local function unequipAllPets(petsFolder)
             local count = 0
             for _, folderName in ipairs(FOLDERS) do
                 local folder = petsFolder:FindFirstChild(folderName)
                 if folder then
-                    local children = folder:GetChildren()
-                    for _, pet in ipairs(children) do
+                    for _, pet in ipairs(folder:GetChildren()) do
                         pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
                         count = count + 1
                         if count % STARTUP_UNEQUIP_PER_FRAME == 0 then task.wait() end
@@ -488,18 +473,11 @@ local function fastRebirthLoop(myId)
                 if folder then
                     for _, pet in ipairs(folder:GetChildren()) do
                         local name = petRealName(pet)
-                        if (name == "Titanium Hydra" or name == "Tribal Overlord") then
+                        if #list < slots and (name == "Titanium Hydra" or name == "Tribal Overlord") then
                             table.insert(list, pet)
                         end
                     end
                 end
-            end
-            if slots then
-                local limited = {}
-                for i = 1, math.min(slots, #list) do
-                    table.insert(limited, list[i])
-                end
-                return limited
             end
             return list
         end
@@ -528,9 +506,8 @@ local function fastRebirthLoop(myId)
             end)
 
             local list = {}
-            local limit = slots or #repPets
             for _, entry in ipairs(repPets) do
-                if #list >= limit then break end
+                if #list >= slots then break end
                 table.insert(list, entry.Instance)
             end
             return list
@@ -581,16 +558,16 @@ local function fastRebirthLoop(myId)
         end
         if not isRunning() then return end
 
-        local slots = getMaxPetSlots()
+        local autoSlots = (SLOTS <= 0)
+        local slots = autoSlots and AUTO_TRY or SLOTS
 
         local hydraList, repTarget, swapList, offList
         local function rebuild()
-            slots = getMaxPetSlots()
             hydraList = buildHydraList(petsFolder, slots)
-            local keep = slots and math.max(0, slots - #hydraList) or nil
+            local keep = math.max(0, slots - #hydraList)
             repTarget = buildRepList(petsFolder, slots)
             offList = {}
-            if not FULL_SWAP and slots then
+            if not FULL_SWAP and not autoSlots then
                 for i = 1, math.min(keep, #repTarget) do table.insert(offList, repTarget[i]) end
             end
             swapList = {}
