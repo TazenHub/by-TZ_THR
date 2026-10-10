@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR rework
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -960,53 +960,22 @@ local function antiLagStop()
 end
 
 -- ===================== HIDE PETS & HIDE POPUPS SYSTEM =====================
-local hidePetsActive = false
-local hidePopupsActive = false
-local petsFolderConn = nil
-
-local function applyHidePets(state)
+local function setHidePets(state)
     pcall(function()
-        for _, plr in ipairs(Players:GetPlayers()) do
-            local pf = plr:FindFirstChild("petsFolder")
-            if pf then
-                for _, folder in ipairs(pf:GetChildren()) do
-                    for _, pet in ipairs(folder:GetChildren()) do
-                        for _, pPart in ipairs(pet:GetDescendants()) do
-                            if pPart:IsA("BasePart") or pPart:IsA("Decal") then
-                                pPart.Transparency = state and 1 or 0
-                            end
-                        end
-                    end
-                end
-            end
+        local rEvents = ReplicatedStorage:FindFirstChild("rEvents")
+        local showPetsEvent = rEvents and rEvents:FindFirstChild("showPetsEvent")
+        if showPetsEvent then
+            showPetsEvent:FireServer(state and "hidePets" or "showPets")
         end
     end)
 end
 
-local function setHidePets(state)
-    hidePetsActive = state
-    applyHidePets(state)
-    if petsFolderConn then petsFolderConn:Disconnect(); petsFolderConn = nil end
-    if state then
-        petsFolderConn = RunService.Heartbeat:Connect(function()
-            if hidePetsActive then
-                applyHidePets(true)
-            end
-        end)
-    end
-end
-
 local function setHidePopups(state)
-    hidePopupsActive = state
     pcall(function()
-        local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-        if playerGui then
-            for _, child in ipairs(playerGui:GetChildren()) do
-                local name = child.Name:lower()
-                if name:find("popup") or name:find("notification") or name:find("prompt") or name:find("alert") then
-                    child.Enabled = not state
-                end
-            end
+        local rEvents = ReplicatedStorage:FindFirstChild("rEvents")
+        local saveEvent = rEvents and rEvents:FindFirstChild("savePlayerSizeEvent")
+        if saveEvent then
+            saveEvent:FireServer("showPopupsOption")
         end
     end)
 end
@@ -1573,7 +1542,7 @@ local killPage = createTab(TAB_KILL, 65)
 local miscPage = createTab(TAB_MISC, 55)
 local infoPage = createTab(TAB_INFO, 55)
 
-local fastToggle, autoToggle, repToggle, equipWeightToggle, equipPushupToggle, killAllToggle, killTargetToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle, hidePetsToggle, hidePopupsToggle, autoSaveConfigToggle, autoWhitelistToggle
+local fastToggle, autoToggle, repToggle, equipWeightFastToggle, equipWeightAutoToggle, equipPushupToggle, killAllToggle, killTargetToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle, hidePetsToggle, hidePopupsToggle, autoSaveConfigToggle, autoWhitelistToggle
 
 local function notifyState(title, v)
     notify(title, v and (E.ok .. " Enabled") or (E.no .. " Disabled"))
@@ -1597,7 +1566,7 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast Rebirth", false, function(v)
     end
 end)
 
-equipWeightToggle = addSavedToggle(fastPage, E.wrench .. " Equip Weight", "RebirthTab", "EquipWeight", false, function(v)
+equipWeightFastToggle = addSavedToggle(fastPage, E.wrench .. " Equip Weight", "FastRebirthTab", "EquipWeightFast", false, function(v)
     if v then
         equipToolByName("weight")
         notify("Equip", E.ok .. " Weight equipped")
@@ -1625,10 +1594,10 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto Rebirth", false, function(v)
     end
 end)
 
-equipPushupToggle = addSavedToggle(autoPage, E.wrench .. " Equip Pushup", "RebirthTab", "EquipPushup", false, function(v)
+equipWeightAutoToggle = addSavedToggle(autoPage, E.wrench .. " Equip Weight", "AutoRebirthTab", "EquipWeightAuto", false, function(v)
     if v then
-        equipToolByName("pushup")
-        notify("Equip", E.ok .. " Pushup equipped")
+        equipToolByName("weight")
+        notify("Equip", E.ok .. " Weight equipped")
     end
 end)
 
@@ -1649,6 +1618,13 @@ repToggle = addToggle(strPage, E.muscle .. " Fast Strength", false, function(v)
     else
         repStartTime = nil
         notifyState(E.muscle .. " Fast Strength", false)
+    end
+end)
+
+equipPushupToggle = addSavedToggle(strPage, E.wrench .. " Equip Pushup", "StrengthTab", "EquipPushup", false, function(v)
+    if v then
+        equipToolByName("pushup")
+        notify("Equip", E.ok .. " Pushup equipped")
     end
 end)
 
