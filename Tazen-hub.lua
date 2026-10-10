@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR rework
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -432,7 +432,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (SMART TIMED SWAP) =====================
+-- ===================== FAST REBIRTH LOOP (2.5S REP PETS + REBIRTH) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -532,19 +532,18 @@ local function fastRebirthLoop(myId)
         unequipAllPets(petsFolder)
         if not isRunning() then return end
 
-        -- Équiper les Rep Pets au départ
-        for _, pet in ipairs(repList) do
-            pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
-        end
-
         local cycle = 0
         while isRunning() do
             cycle = cycle + 1
 
-            -- 1. Gain de force avec les Rep Pets actifs
+            -- 1. Équiper les Rep Pets pendant 2.5 secondes
+            for _, pet in ipairs(repList) do
+                pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
+            end
+
+            local repTimer = tick()
             local carry = 0
-            local canR = false
-            while isRunning() do
+            while isRunning() and (tick() - repTimer < 2.5) do
                 local dt = RunService.Heartbeat:Wait()
                 if muscleEvent and INTERNAL_REP_RATE > 0 then
                     carry = carry + INTERNAL_REP_RATE * dt
@@ -554,11 +553,6 @@ local function fastRebirthLoop(myId)
                         pcall(muscleEvent.FireServer, muscleEvent, "rep")
                     end
                 end
-                
-                pcall(function()
-                    canR = canRebirth()
-                end)
-                if canR then break end
             end
 
             if not isRunning() then break end
@@ -571,7 +565,7 @@ local function fastRebirthLoop(myId)
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
 
-            -- Maintenir les Rebirth Pets pendant max 5 secondes ou jusqu'à confirmation du rebirth
+            -- Attente et validation du rebirth
             local startWait = tick()
             while isRunning() and (tick() - startWait < 5) do
                 pcall(function()
@@ -579,19 +573,15 @@ local function fastRebirthLoop(myId)
                 end)
                 task.wait(0.3)
                 
-                -- Si le rebirth est passé, on sort de la boucle d'attente
                 local okC, canStillR = pcall(canRebirth)
                 if okC and not canStillR then
                     break
                 end
             end
 
-            -- 3. Remettre immédiatement les Rep Pets pour le cycle suivant ("alors rep pet")
+            -- 3. Retirer les Rebirth Pets
             for _, pet in ipairs(hydraList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
-            end
-            for _, pet in ipairs(repList) do
-                pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
 
             if cycle % LIST_REFRESH_EVERY == 0 then
