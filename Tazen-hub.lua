@@ -110,7 +110,7 @@ local function saveCategoryConfig(categoryName, data)
 end
 
 -- ===================== SETTINGS =====================
-local REBIRTH_COOLDOWN = 3 -- Réduit à 3 pour forcer une vitesse accrue
+local REBIRTH_COOLDOWN = 2.5 -- Réduit à 2.5 pour forcer une vitesse maximale
 
 local E = {
     bolt = "⚡", cycle = "🔄", muscle = "💪", toolbox = "🧰",
@@ -418,7 +418,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP ULTRA-RAPIDE =====================
+-- ===================== FAST REBIRTH LOOP ULTRA-RAPIDE FIXE =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -430,7 +430,7 @@ local function fastRebirthLoop(myId)
         local HYDRA_TAIL = 0.02             
         local REP_OFF_LEAD = 0.04           
         local REP_ON_DELAY = 0.02           
-        local REBIRTH_MARGIN = 0.01         
+        local REBIRTH_MARGIN = 0.005        -- Marge fixe minimale
         local SLOTS = 12                    
         local AUTO_TRY = 20                 
         local FULL_SWAP = true              
@@ -580,7 +580,6 @@ local function fastRebirthLoop(myId)
         setEquipped(repTarget, true)
 
         local cycle = 0
-        local margin = REBIRTH_MARGIN
         local rebirthAt = os.clock() + HYDRA_LEAD
 
         while isRunning() do
@@ -600,15 +599,11 @@ local function fastRebirthLoop(myId)
             waitUntil(rebirthAt)
             if not isRunning() then break end
             local tFire = os.clock()
-            local countBefore = rebirthCount()
-            local resultReady, rebirthOk = false, true
+            local resultReady = false
             task.spawn(function()
                 pcall(function()
                     rebirthRemote:InvokeServer("rebirthRequest")
                 end)
-                task.wait(0.08)
-                local after = rebirthCount()
-                if countBefore and after then rebirthOk = after > countBefore end
                 resultReady = true
             end)
 
@@ -622,16 +617,12 @@ local function fastRebirthLoop(myId)
                 rebuild()
             end
 
-            while isRunning() and not resultReady and os.clock() < tFire + 0.8 do
+            while isRunning() and not resultReady and os.clock() < tFire + 0.5 do
                 task.wait()
             end
-            if resultReady and not rebirthOk then
-                margin = math.min(margin + 0.03, 0.3)
-                rebirthAt = os.clock() + 0.05
-            else
-                margin = math.max(REBIRTH_MARGIN, margin - 0.005)
-                rebirthAt = tFire + REBIRTH_COOLDOWN + margin
-            end
+
+            -- On force un délai fixe ultra-rapide sans réajustement dynamique vers le haut
+            rebirthAt = tFire + REBIRTH_COOLDOWN + REBIRTH_MARGIN
         end
     end)
 end
