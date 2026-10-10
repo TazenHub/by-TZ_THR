@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR rework
 
 local success, err = pcall(function()
 
@@ -125,7 +125,7 @@ local function saveCategoryConfig(categoryName, data)
 end
 
 -- ===================== SETTINGS =====================
-local REBIRTH_COOLDOWN = 3.6
+local REBIRTH_COOLDOWN = 3.2
 
 local E = {
     bolt = "⚡", cycle = "🔄", muscle = "💪", toolbox = "🧰",
@@ -433,7 +433,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (PET SWAP ACTIF) =====================
+-- ===================== FAST REBIRTH LOOP (FULL PET SWAP) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -441,11 +441,15 @@ local function fastRebirthLoop(myId)
         local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
 
+        local HYDRA_LEAD = 0.012             
+        local HYDRA_TAIL = 0.008             
+        local REP_OFF_LEAD = 0.012           
+        local REP_ON_DELAY = 0.008           
         local SLOTS = 12                    
         local AUTO_TRY = 20                 
         local FULL_SWAP = true              
         local STARTUP_UNEQUIP_PER_FRAME = 20
-        local LIST_REFRESH_EVERY = 15        
+        local LIST_REFRESH_EVERY = 10        
 
         local function petRealName(pet)
             if pet:FindFirstChild("PetName") then return pet.PetName.Value end
@@ -516,7 +520,7 @@ local function fastRebirthLoop(myId)
 
         local equipped = {}
 
-        local function setEquipped(wanted)
+        local function setEquipped(wanted, burst, equipFirst)
             local want, have = {}, {}
             for _, pet in ipairs(wanted) do want[pet] = true end
             for _, pet in ipairs(equipped) do have[pet] = true end
@@ -526,6 +530,10 @@ local function fastRebirthLoop(myId)
                 if not want[pet] and pet.Parent then table.insert(outList, pet) end
             end
             local newEquipped = {}
+            local function fire(kind, pet)
+                pcall(function() equipPetEvent:FireServer(kind, pet) end)
+                if not burst then task.wait() end
+            end
 
             for _, pet in ipairs(wanted) do
                 if pet.Parent then
@@ -534,14 +542,18 @@ local function fastRebirthLoop(myId)
                 end
             end
 
-            for _, pet in ipairs(outList) do
-                pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
-            end
-            for _, pet in ipairs(inList) do
-                pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
-            end
+            local firstN = equipFirst and math.min(#inList, #outList) or #outList
+            for i = 1, firstN do fire("unequipPet", outList[i]) end
+            for _, pet in ipairs(inList) do fire("equipPet", pet) end
+            for i = firstN + 1, #outList do fire("unequipPet", outList[i]) end
 
             equipped = newEquipped
+        end
+
+        local function waitUntil(t)
+            while isRunning() and os.clock() < t do
+                task.wait()
+            end
         end
 
         local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
@@ -551,13 +563,20 @@ local function fastRebirthLoop(myId)
         end
         if not isRunning() then return end
 
-        local slots = SLOTS <= 0 and AUTO_TRY or SLOTS
+        local autoSlots = (SLOTS <= 0)
+        local slots = autoSlots and AUTO_TRY or SLOTS
 
-        local hydraList, repTarget, swapList
+        local hydraList, repTarget, swapList, offList
         local function rebuild()
             hydraList = buildHydraList(petsFolder, slots)
+            local keep = math.max(0, slots - #hydraList)
             repTarget = buildRepList(petsFolder, slots)
+            offList = {}
+            if not FULL_SWAP and not autoSlots then
+                for i = 1, math.min(keep, #repTarget) do table.insert(offList, repTarget[i]) end
+            end
             swapList = {}
+            for _, pet in ipairs(offList) do table.insert(swapList, pet) end
             for _, h in ipairs(hydraList) do table.insert(swapList, h) end
         end
         rebuild()
@@ -566,29 +585,40 @@ local function fastRebirthLoop(myId)
 
         unequipAllPets(petsFolder)
         if not isRunning() then return end
-        setEquipped(repTarget)
+        setEquipped(repTarget, true)
 
         local cycle = 0
+        local nextCycleTime = os.clock()
+
         while isRunning() do
             cycle = cycle + 1
+            local targetTime = nextCycleTime
 
-            setEquipped(swapList)
-            
-            task.spawn(function()
-                pcall(function()
+            waitUntil(targetTime - HYDRA_LEAD)
+            if not isRunning() then break end
+            setEquipped(swapList, true, true)
+
+            waitUntil(targetTime)
+            if not isRunning() then break end
+            local tFire = os.clock()
+
+            pcall(function()
+                task.spawn(function()
                     rebirthRemote:InvokeServer("rebirthRequest")
                 end)
             end)
 
-            task.wait(0.01)
-            setEquipped(repTarget)
+            waitUntil(tFire + HYDRA_TAIL)
+            setEquipped(offList, true)
+            waitUntil(tFire + REP_ON_DELAY)
+            setEquipped(repTarget, true)
 
             if cycle % LIST_REFRESH_EVERY == 0 then
                 petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
                 rebuild()
             end
 
-            task.wait(REBIRTH_COOLDOWN)
+            nextCycleTime = tFire + REBIRTH_COOLDOWN
         end
     end)
 end
