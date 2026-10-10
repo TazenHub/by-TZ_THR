@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR rework
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -578,10 +578,14 @@ local function fastRebirthLoop(myId)
             pingEma = pingEma * 0.7 + math.min(respLatency, 1.5) * 0.3
 
             if resultReady and not rebirthOk then
-                margin = math.min(margin + math.max(0.1, pingEma), 0.4)
+                -- Vraiment refusé par le serveur : on élargit un peu la marge et on retente bientôt.
+                margin = math.min(margin + 0.05, 0.3)
                 rebirthAt = tFire + math.max(0.3, pingEma + 0.15)
             else
-                margin = math.max(REBIRTH_MARGIN, pingEma * 1.3)
+                -- Accepté : on resserre doucement la marge. Le ping sert à savoir combien de temps
+                -- attendre la confirmation, PAS à gonfler la marge : un ping élevé ne veut pas dire
+                -- qu'il faut tirer plus tard, juste qu'on met plus de temps à savoir si ça a marché.
+                margin = math.max(REBIRTH_MARGIN, margin - 0.01)
                 rebirthAt = tFire + REBIRTH_COOLDOWN + margin
             end
             -- Garde-fou : quoi qu'il arrive, jamais plus de 6.5s entre deux renaissances
@@ -594,7 +598,7 @@ local function fastRebirthLoop(myId)
             local gapMs = prevFire and ((tFire - prevFire) * 1000) or 0
             prevFire = tFire
             rebirthDiag = string.format(
-                "#%d gap:%dms off:%dms swap:%dms wait:%dms rebuild:%dms ping:%dms margin:%dms",
+                "#%d gap:%dms off:%dms attente avant tir:%dms wait verdict:%dms rebuild:%dms ping:%dms margin:%dms",
                 cycle, gapMs,
                 (tAfterOff - tCycleStart) * 1000,
                 (tAfterSwap - tAfterOff) * 1000,
