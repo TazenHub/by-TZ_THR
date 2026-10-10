@@ -513,6 +513,7 @@ local function fastRebirthLoop(myId)
 
         local cycle = 0
         local margin = REBIRTH_MARGIN
+        local pingEma = 0.15 -- estimation du temps de réponse serveur, affinée au fil des cycles
         local rebirthAt = os.clock() + HYDRA_LEAD
 
         while isRunning() do
@@ -533,12 +534,14 @@ local function fastRebirthLoop(myId)
             if not isRunning() then break end
             local tFire = os.clock()
             local countBefore = rebirthCount()
-            local resultReady, rebirthOk = false, true
+            local resultReady, rebirthOk, respLatency = false, true, pingEma
             task.spawn(function()
+                local tSend = os.clock()
                 pcall(function()
                     rebirthRemote:InvokeServer("rebirthRequest")
                 end)
-                task.wait(0.25) -- laisse la stat Rebirths se répliquer
+                respLatency = os.clock() - tSend -- durée réelle de l'aller-retour serveur
+                task.wait(0.08) -- laisse la stat Rebirths se répliquer côté client
                 local after = rebirthCount()
                 if countBefore and after then rebirthOk = after > countBefore end
                 resultReady = true
@@ -554,17 +557,23 @@ local function fastRebirthLoop(myId)
                 rebuild()
             end
 
-            -- verdict du serveur (max 1.5 s) : refusé = cooldown pas tout à fait fini -> on réessaie vite
-            -- au lieu de perdre 6 s, et on agrandit un peu la marge ; accepté -> la marge redescend
-            while isRunning() and not resultReady and os.clock() < tFire + 1.5 do
+            -- On attend vraiment la réponse du serveur avant de juger (jusqu'à 2.5 s) : couper
+            -- l'attente trop tôt faisait supposer un succès à tort et laissait la marge trop fine,
+            -- ce qui provoquait des refus en cascade et des cycles de plus en plus longs.
+            while isRunning() and not resultReady and os.clock() < tFire + 2.5 do
                 task.wait()
             end
+            pingEma = pingEma * 0.7 + math.min(respLatency, 1.5) * 0.3
+
             if resultReady and not rebirthOk then
-                -- Refusé (cooldown pas tout à fait fini) : on réessaie vite plutôt que d'attendre 6s de plus
-                margin = math.min(margin + 0.05, 0.3)
-                rebirthAt = os.clock() + 0.1
+                -- Refusé : le cooldown réel n'était pas tout à fait fini. Retenter en 0.1 s coûte
+                -- un aller-retour serveur complet à chaque fois (c'est ça qui faisait stagner vers
+                -- 7.7-8 s) : on attend plutôt un délai basé sur le ping réel avant de retenter,
+                -- et on élargit la marge pour les cycles suivants.
+                margin = math.min(margin + math.max(0.1, pingEma), 0.4)
+                rebirthAt = tFire + math.max(0.3, pingEma + 0.15)
             else
-                margin = math.max(REBIRTH_MARGIN, margin - 0.01)
+                margin = math.max(REBIRTH_MARGIN, pingEma * 1.3)
                 rebirthAt = tFire + REBIRTH_COOLDOWN + margin
             end
             -- Garde-fou : quoi qu'il arrive, jamais plus de 6.5s entre deux renaissances
