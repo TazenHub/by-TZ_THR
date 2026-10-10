@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR rework
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -362,7 +362,8 @@ local function fastRebirthLoop(myId)
         local REBIRTH_MARGIN = 0.02         
         local SLOTS = 12                    
         local AUTO_TRY = 20                 
-        local FULL_SWAP = true              
+        local FULL_SWAP = false              -- ne swap que les pets nécessaires pour faire de la place aux Hydra,
+                                               -- pas toute l'équipe de 12 à chaque cycle (voir explication plus bas)
         local STARTUP_UNEQUIP_PER_FRAME = 20
         local LIST_REFRESH_EVERY = 5        
 
