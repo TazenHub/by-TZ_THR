@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR rework
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -120,7 +120,7 @@ local function saveCategoryConfig(categoryName, data)
 end
 
 -- ===================== SETTINGS =====================
-local REBIRTH_COOLDOWN = 6.0
+local REBIRTH_COOLDOWN = 4.0
 
 local E = {
     bolt = "⚡", cycle = "🔄", muscle = "💪", toolbox = "🧰",
@@ -226,23 +226,27 @@ local function findMuscleEvent(rEvents)
         or rEvents:FindFirstChild("muscleEvent")
 end
 
-local function equipFists()
+local function equipToolByName(toolKeyword)
     pcall(function()
         local char = LocalPlayer.Character
         if not char then return end
         local backpack = LocalPlayer:FindFirstChild("Backpack")
         if not backpack then return end
 
-        local punchTool = char:FindFirstChild("Fight") or char:FindFirstChild("Punch")
-        if not punchTool then
+        local foundTool = char:FindFirstChild(toolKeyword)
+        if not foundTool then
             for _, tool in ipairs(backpack:GetChildren()) do
-                if tool:IsA("Tool") and (tool.Name:lower():find("fight") or tool.Name:lower():find("punch")) then
+                if tool:IsA("Tool") and tool.Name:lower():find(toolKeyword:lower()) then
                     tool.Parent = char
                     break
                 end
             end
         end
     end)
+end
+
+local function equipFists()
+    equipToolByName("punch")
 end
 
 local lastHopTry = 0
@@ -428,7 +432,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (VIDEO STYLE SWAP & 5.9-6.3s TARGET) =====================
+-- ===================== FAST REBIRTH LOOP (ORIGINAL LOGIC) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -555,17 +559,13 @@ local function fastRebirthLoop(myId)
 
         unequipAllPets(petsFolder)
         if not isRunning() then return end
+        setEquipped(repList, true)
 
         local cycle = 0
         while isRunning() do
             cycle = cycle + 1
 
-            -- 1. Équipement propre des Fast Rep Pets pour le farm rapide
-            setEquipped(repList, true)
-
-            -- 2. Phase de farm de reps (environ 0.8s pour stabiliser le timing parfait 5.9s - 6.3s)
             local carry = 0
-            local farmStart = tick()
             local canR = false
             while isRunning() do
                 local dt = RunService.Heartbeat:Wait()
@@ -581,31 +581,19 @@ local function fastRebirthLoop(myId)
                 pcall(function()
                     canR = canRebirth()
                 end)
-                if canR and (tick() - farmStart >= 0.8) then 
-                    break 
-                end
+                if canR then break end
             end
 
             if not isRunning() then break end
 
-            -- 3. Swap propre vers les Hydras (le personnage garde ses Hydras tout le long de la phase de rebirth)
             setEquipped(hydraList, true)
-            task.wait(0.1)
+            task.wait(0.02)
 
-            -- 4. Envoi de la requête de renaissance et maintien des Hydras équipés pendant l'attente
-            local rebirthSuccess = false
-            while isRunning() and not rebirthSuccess do
-                pcall(function()
-                    rebirthRemote:InvokeServer("rebirthRequest")
-                    rebirthSuccess = true
-                end)
-                if not rebirthSuccess then
-                    RunService.Heartbeat:Wait()
-                end
-            end
+            pcall(function()
+                rebirthRemote:InvokeServer("rebirthRequest")
+            end)
 
-            -- Petite pause propre avec les Hydras sur le dos avant de repartir sur le farm (exactement comme dans la vidéo)
-            task.wait(0.4)
+            setEquipped(repList, true)
 
             if cycle % LIST_REFRESH_EVERY == 0 then
                 petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
@@ -967,6 +955,58 @@ local function antiLagStop()
                 Lighting.GlobalShadows = backup.GlobalShadows
                 Lighting.FogEnd = backup.FogEnd
             end)
+        end
+    end)
+end
+
+-- ===================== HIDE PETS & HIDE POPUPS SYSTEM =====================
+local hidePetsActive = false
+local hidePopupsActive = false
+local petsFolderConn = nil
+
+local function applyHidePets(state)
+    pcall(function()
+        local pf = LocalPlayer:FindFirstChild("petsFolder")
+        if pf then
+            for _, folder in ipairs(pf:GetChildren()) do
+                for _, pet in ipairs(folder:GetChildren()) do
+                    for _, pPart in ipairs(pet:GetDescendants()) do
+                        if pPart:IsA("BasePart") or pPart:IsA("Decal") then
+                            pPart.Transparency = state and 1 or 0
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+local function setHidePets(state)
+    hidePetsActive = state
+    applyHidePets(state)
+    if petsFolderConn then petsFolderConn:Disconnect(); petsFolderConn = nil end
+    if state then
+        petsFolderConn = LocalPlayer.ChildAdded:Connect(function(child)
+            if child.Name == "petsFolder" then
+                task.wait(0.5)
+                applyHidePets(true)
+            end
+        end)
+    end
+end
+
+local function setHidePopups(state)
+    hidePopupsActive = state
+    pcall(function()
+        local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+        if playerGui then
+            local guiMain = playerGui:FindFirstChild("ScreenGui") or playerGui:FindFirstChild("Main")
+            -- On cible les éléments de type popup/notifications si présents
+            for _, child in ipairs(playerGui:GetChildren()) do
+                if child.Name:lower():find("popup") or child.Name:lower():find("float") then
+                    child.Enabled = not state
+                end
+            end
         end
     end)
 end
@@ -1340,7 +1380,7 @@ local function addToggle(page, name, defaultState, callback)
     return obj
 end
 
-local function addKillingToggle(page, name, categoryKey, settingKey, defaultState, callback)
+local function addSavedToggle(page, name, categoryKey, settingKey, defaultState, callback)
     local configData = loadCategoryConfig(categoryKey)
     local initialState = defaultState
     if configData[settingKey] ~= nil then initialState = configData[settingKey] end
@@ -1533,7 +1573,7 @@ local killPage = createTab(TAB_KILL, 65)
 local miscPage = createTab(TAB_MISC, 55)
 local infoPage = createTab(TAB_INFO, 55)
 
-local fastToggle, autoToggle, repToggle, killAllToggle, killTargetToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle, autoWhitelistToggle, autoSaveConfigToggle
+local fastToggle, autoToggle, repToggle, equipWeightToggle, equipPushupToggle, killAllToggle, killTargetToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle, hidePetsToggle, hidePopupsToggle, autoSaveConfigToggle, autoWhitelistToggle
 
 local function notifyState(title, v)
     notify(title, v and (E.ok .. " Enabled") or (E.no .. " Disabled"))
@@ -1595,6 +1635,21 @@ repToggle = addToggle(strPage, E.muscle .. " Fast Strength", false, function(v)
         notifyState(E.muscle .. " Fast Strength", false)
     end
 end)
+
+equipWeightToggle = addSavedToggle(strPage, E.wrench .. " Equip Weight", "StrengthTab", "EquipWeight", false, function(v)
+    if v then
+        equipToolByName("weight")
+        notify("Equip", E.ok .. " Weight equipped")
+    end
+end)
+
+equipPushupToggle = addSavedToggle(strPage, E.wrench .. " Equip Pushup", "StrengthTab", "EquipPushup", false, function(v)
+    if v then
+        equipToolByName("pushup")
+        notify("Equip", E.ok .. " Pushup equipped")
+    end
+end)
+
 repSliderUpdateFunc = addSlider(strPage, E.wrench .. " Reps per second", 0, REP_CAP, math.min(repRate, REP_CAP), function(v) repRate = math.min(v, REP_CAP) end)
 local repTimerLabel = addLabel(strPage, E.clock .. " Session Time: 0s | Avg Reps/s: 0", 34)
 local repCalcLabel = addLabel(strPage, E.muscle .. " Strength Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
@@ -1602,7 +1657,7 @@ local durabilityCalcLabel = addLabel(strPage, E.shieldAlt .. " Durability Tot: 0
 
 -- Killing Tab
 addSection(killPage, E.sword .. " Killing")
-killAllToggle = addKillingToggle(killPage, E.sword .. " Auto Kill All Players", "Killing", "AutoKillAll", false, function(v)
+killAllToggle = addSavedToggle(killPage, E.sword .. " Auto Kill All Players", "Killing", "AutoKillAll", false, function(v)
     killRunId = killRunId + 1
     if v then
         if killTargetToggle and killTargetToggle.Value then killTargetToggle:Set(false) end
@@ -1613,7 +1668,7 @@ killAllToggle = addKillingToggle(killPage, E.sword .. " Auto Kill All Players", 
     end
 end)
 
-killTargetToggle = addKillingToggle(killPage, E.target .. " Kill Target Players Only", "Killing", "KillTarget", false, function(v)
+killTargetToggle = addSavedToggle(killPage, E.target .. " Kill Target Players Only", "Killing", "KillTarget", false, function(v)
     killRunId = killRunId + 1
     if v then
         if killAllToggle and killAllToggle.Value then killAllToggle:Set(false) end
@@ -1624,14 +1679,10 @@ killTargetToggle = addKillingToggle(killPage, E.target .. " Kill Target Players 
     end
 end)
 
-autoSaveConfigToggle = addKillingToggle(killPage, E.wrench .. " Auto Save Config", "Killing", "AutoSaveConfig", false, function(v)
+autoSaveConfigToggle = addSavedToggle(killPage, E.wrench .. " Auto Save Config", "Killing", "AutoSaveConfig", false, function(v)
     if v then
-        local cfg = { AutoKillAll = killAllToggle.Value, KillTarget = killTargetToggle.Value, AutoSaveConfig = true }
-        saveCategoryConfig("Killing", cfg)
-        notify("Config", E.ok .. " Killing settings auto-saved!")
+        notify("Config", E.ok .. " Auto-save configuration active!")
     else
-        local cfg = { AutoKillAll = killAllToggle.Value, KillTarget = killTargetToggle.Value, AutoSaveConfig = false }
-        saveCategoryConfig("Killing", cfg)
         notify("Config", E.no .. " Auto-save disabled")
     end
 end)
@@ -1800,6 +1851,16 @@ autoWheelToggle = addToggle(miscPage, E.wheel .. " Auto Wheel", false, function(
     end
 end)
 
+hidePetsToggle = addSavedToggle(miscPage, E.sparkles .. " Hide Pets", "MiscTab", "HidePets", false, function(v)
+    setHidePets(v)
+    notifyState("Hide Pets", v)
+end)
+
+hidePopupsToggle = addSavedToggle(miscPage, E.clip .. " Hide Popups", "MiscTab", "HidePopups", false, function(v)
+    setHidePopups(v)
+    notifyState("Hide Popups", v)
+end)
+
 -- ===================== AUTO EAT PROTEIN EGG =====================
 local eggEaten = 0
 local eggLabel
@@ -1925,6 +1986,13 @@ copyDiscordBtn.Activated:Connect(function()
 end)
 
 selectTab(TAB_FAST)
+
+-- Appliquer les configurations sauvegardées au démarrage
+task.spawn(function()
+    task.wait(1)
+    if hidePetsToggle and hidePetsToggle.Value then setHidePets(true) end
+    if hidePopupsToggle and hidePopupsToggle.Value then setHidePopups(true) end
+end)
 
 -- ===================== STAT TRACKER =====================
 task.spawn(function()
