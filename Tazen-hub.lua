@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR rework
 
 local success, err = pcall(function()
 
@@ -360,7 +360,7 @@ local function fastRebirthLoop(myId)
         local HYDRA_TAIL = 0.03             
         local REP_OFF_LEAD = 0.06           
         local REP_ON_DELAY = 0.03           
-        local REBIRTH_MARGIN = 0.02         
+        local REBIRTH_MARGIN = 0.008         -- marge mini : en dessous, les refus deviennent trop fréquents et coûtent plus cher que la marge économisée
         local SLOTS = 12                    
         local AUTO_TRY = 20                 
         local FULL_SWAP = false              -- ne swap que les pets nécessaires pour faire de la place aux Hydra,
