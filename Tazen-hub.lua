@@ -459,7 +459,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (1 SWAP PAR ETAPE EXACTE) =====================
+-- ===================== FAST REBIRTH LOOP (TIMING DYNAMIQUE PRÉCIS) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -550,22 +550,34 @@ local function fastRebirthLoop(myId)
 
         if #hydraList == 0 or #repList == 0 then return end
 
-        switchToGroup(repList)
+        local nextCycleTarget = os.clock()
 
         while isRunning() do
-            task.wait(5.0)
+            -- 1. Équiper les Rep Speed Pets immédiatement
+            switchToGroup(repList)
+
+            -- 2. Attendre jusqu'à 0.35s AVANT le moment exact du rebirth
+            while isRunning() and os.clock() < (nextCycleTarget - 0.35) do
+                task.wait()
+            end
             if not isRunning() then break end
 
+            -- 3. Équiper les Hydras (x2 Rebirth)
             switchToGroup(hydraList)
-            task.wait(0.1)
 
+            -- 4. Attendre l'instant exact du cooldown (6.0s)
+            while isRunning() and os.clock() < nextCycleTarget do
+                task.wait()
+            end
+            if not isRunning() then break end
+
+            -- 5. Déclencher le Rebirth
             pcall(function()
                 rebirthRemote:InvokeServer("rebirthRequest")
             end)
 
-            switchToGroup(repList)
-
-            task.wait(0.9)
+            -- Fixer l'objectif du prochain cycle à EXACTEMENT 6 secondes
+            nextCycleTarget = os.clock() + REBIRTH_COOLDOWN
         end
     end)
 end
