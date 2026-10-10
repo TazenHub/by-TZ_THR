@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR rework
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -459,7 +459,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (OPTIMISÉ & STABLE 6s) =====================
+-- ===================== FAST REBIRTH LOOP (STABLE & FLUIDE 6s) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -546,33 +546,21 @@ local function fastRebirthLoop(myId)
             end)
         end
 
-        local nextCycleTarget = os.clock()
+        local nextCycleTarget = os.clock() + 6.0
 
         while isRunning() do
-            -- 1. Équiper les Fast Rep Pets au début du cycle
-            safeEquipGroup(repList)
-
-            -- 2. Attendre jusqu'à 0.1s avant la fin du cycle
-            while isRunning() and os.clock() < (nextCycleTarget - 0.1) do
-                RunService.Heartbeat:Wait()
-            end
-            if not isRunning() then break end
-
-            -- 3. Équiper les Hydras juste avant la renaissance
-            safeEquipGroup(finalHydraList)
-
-            -- 4. Attendre pile les 6 secondes
             while isRunning() and os.clock() < nextCycleTarget do
                 RunService.Heartbeat:Wait()
             end
             if not isRunning() then break end
 
-            -- 5. Lancer la renaissance (priorité absolue)
+            safeEquipGroup(finalHydraList)
             pcall(function()
                 rebirthRemote:InvokeServer("rebirthRequest")
             end)
+            safeEquipGroup(repList)
 
-            nextCycleTarget = os.clock() + REBIRTH_COOLDOWN
+            nextCycleTarget = nextCycleTarget + 6.0
         end
     end)
 end
