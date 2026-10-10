@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR rework
 
 local success, err = pcall(function()
 
@@ -166,6 +166,7 @@ local function equipFists()
 end
 
 local lastHopTry = 0
+local rebirthDiag = "--"
 local function serverHop()
     killStatus = "Changing server..."
     pcall(function()
@@ -516,9 +517,11 @@ local function fastRebirthLoop(myId)
         local margin = REBIRTH_MARGIN
         local pingEma = 0.15 -- estimation du temps de réponse serveur, affinée au fil des cycles
         local rebirthAt = os.clock() + HYDRA_LEAD
+        local prevFire = nil
 
         while isRunning() do
             cycle = cycle + 1
+            local tCycleStart = os.clock()
 
             local repOffLead = math.max(REP_OFF_LEAD, HYDRA_LEAD)
             if repOffLead > HYDRA_LEAD + 0.001 then
@@ -526,10 +529,12 @@ local function fastRebirthLoop(myId)
                 if not isRunning() then break end
                 setEquipped(offList, true)
             end
+            local tAfterOff = os.clock()
 
             waitUntil(rebirthAt - HYDRA_LEAD)
             if not isRunning() then break end
             setEquipped(swapList, true, true)
+            local tAfterSwap = os.clock()
 
             waitUntil(rebirthAt)
             if not isRunning() then break end
@@ -552,11 +557,16 @@ local function fastRebirthLoop(myId)
             setEquipped(offList, true)
             waitUntil(tFire + REP_ON_DELAY)
             setEquipped(repTarget, true)
+            local tAfterTail = os.clock()
 
+            local rebuildMs = 0
             if cycle % LIST_REFRESH_EVERY == 0 then
+                local tRb0 = os.clock()
                 petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
                 rebuild()
+                rebuildMs = (os.clock() - tRb0) * 1000
             end
+            local tAfterRebuild = os.clock()
 
             -- On attend vraiment la réponse du serveur avant de juger (jusqu'à 2.5 s) : couper
             -- l'attente trop tôt faisait supposer un succès à tort et laissait la marge trop fine,
@@ -564,13 +574,10 @@ local function fastRebirthLoop(myId)
             while isRunning() and not resultReady and os.clock() < tFire + 2.5 do
                 task.wait()
             end
+            local tAfterWait = os.clock()
             pingEma = pingEma * 0.7 + math.min(respLatency, 1.5) * 0.3
 
             if resultReady and not rebirthOk then
-                -- Refusé : le cooldown réel n'était pas tout à fait fini. Retenter en 0.1 s coûte
-                -- un aller-retour serveur complet à chaque fois (c'est ça qui faisait stagner vers
-                -- 7.7-8 s) : on attend plutôt un délai basé sur le ping réel avant de retenter,
-                -- et on élargit la marge pour les cycles suivants.
                 margin = math.min(margin + math.max(0.1, pingEma), 0.4)
                 rebirthAt = tFire + math.max(0.3, pingEma + 0.15)
             else
@@ -579,6 +586,23 @@ local function fastRebirthLoop(myId)
             end
             -- Garde-fou : quoi qu'il arrive, jamais plus de 6.5s entre deux renaissances
             rebirthAt = math.min(rebirthAt, tFire + 6.5)
+
+            -- Diagnostic : durée réelle du cycle précédent et répartition par phase, en ms.
+            -- off = retirer les pets de force | swap = équiper les Hydra | fire->tail = entre le
+            -- tir et la remise en place | wait = attente du verdict serveur | rebuild = reconstruction
+            -- des listes de pets (seulement 1 cycle sur 5) | cycleGap = temps réel entre 2 tirs.
+            local gapMs = prevFire and ((tFire - prevFire) * 1000) or 0
+            prevFire = tFire
+            rebirthDiag = string.format(
+                "#%d gap:%dms off:%dms swap:%dms wait:%dms rebuild:%dms ping:%dms margin:%dms",
+                cycle, gapMs,
+                (tAfterOff - tCycleStart) * 1000,
+                (tAfterSwap - tAfterOff) * 1000,
+                (tAfterWait - tAfterTail) * 1000,
+                rebuildMs,
+                pingEma * 1000,
+                margin * 1000
+            )
         end
     end)
 end
@@ -1540,6 +1564,7 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast Rebirth", false, function(v)
 end)
 local fastTimerLabel = addLabel(fastPage, E.clock .. " Session Time: 0s | Last Rebirth : --", 34)
 local fastCalcLabel = addLabel(fastPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
+local fastDiagLabel = addLabel(fastPage, E.wrench .. " Diagnostic : --", 34)
 
 -- Auto Rebirth
 addSection(autoPage, E.cycle .. " Auto Rebirth (No Pack)")
@@ -1926,6 +1951,7 @@ task.spawn(function()
                 fastTimerLabel:SetText(string.format("%s Session Time: %s | Last Rebirth : %s",
                     E.clock, formatSeconds(rbNow - fastStartTime), StatTracker.rebirthGap()))
                 fastCalcLabel:SetText(StatTracker.rebirthText(E.chart, rbNow, fastStartTime))
+                fastDiagLabel:SetText(E.wrench .. " " .. rebirthDiag)
             else
                 fastTimerLabel:SetText(E.clock .. " Session Time: 0s | Last Rebirth : --")
                 fastCalcLabel:SetText(E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0")
