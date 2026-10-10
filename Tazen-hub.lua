@@ -110,7 +110,7 @@ local function saveCategoryConfig(categoryName, data)
 end
 
 -- ===================== SETTINGS =====================
-local REBIRTH_COOLDOWN = 5.8 -- Réglé à 5.8 pour viser pile 6.0s max en tenant compte du réseau
+local REBIRTH_COOLDOWN = 0 -- Inutile avec le mode continu
 
 local E = {
     bolt = "⚡", cycle = "🔄", muscle = "💪", toolbox = "🧰",
@@ -418,7 +418,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP STRICTEMENT LIMITE A 6s MAX =====================
+-- ===================== FAST REBIRTH LOOP AVEC ENVOI CONTINU =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -426,22 +426,10 @@ local function fastRebirthLoop(myId)
         local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
 
-        local HYDRA_LEAD = 0.02             
-        local HYDRA_TAIL = 0.01             
-        local REP_OFF_LEAD = 0.02           
-        local REP_ON_DELAY = 0.01           
-        local REBIRTH_MARGIN = 0.00         
         local SLOTS = 12                    
         local AUTO_TRY = 20                 
         local FULL_SWAP = true              
         local STARTUP_UNEQUIP_PER_FRAME = 20
-        local LIST_REFRESH_EVERY = 5        
-
-        local function rebirthCount()
-            local ls = LocalPlayer:FindFirstChild("leaderstats")
-            local v = ls and ls:FindFirstChild("Rebirths")
-            return v and tonumber(v.Value) or nil
-        end
 
         local function petRealName(pet)
             if pet:FindFirstChild("PetName") then return pet.PetName.Value end
@@ -512,7 +500,7 @@ local function fastRebirthLoop(myId)
 
         local equipped = {}
 
-        local function setEquipped(wanted, burst, equipFirst)
+        local function setEquipped(wanted, burst)
             local want, have = {}, {}
             for _, pet in ipairs(wanted) do want[pet] = true end
             for _, pet in ipairs(equipped) do have[pet] = true end
@@ -534,19 +522,23 @@ local function fastRebirthLoop(myId)
                 end
             end
 
-            local firstN = equipFirst and math.min(#inList, #outList) or #outList
-            for i = 1, firstN do fire("unequipPet", outList[i]) end
+            for _, pet in ipairs(outList) do fire("unequipPet", pet) end
             for _, pet in ipairs(inList) do fire("equipPet", pet) end
-            for i = firstN + 1, #outList do fire("unequipPet", outList[i]) end
 
             equipped = newEquipped
         end
 
-        local function waitUntil(t)
-            while isRunning() and os.clock() < t do
-                task.wait()
+        -- SPAM DE REQUÊTES DE REBIRTH EN CONTINU EN TÂCHE DE FOND
+        task.spawn(function()
+            while isRunning() and alive do
+                pcall(function()
+                    if canRebirth() then
+                        rebirthRemote:InvokeServer("rebirthRequest")
+                    end
+                end)
+                task.wait(0.05) -- Envoie en continu toutes les 0.05s
             end
-        end
+        end)
 
         local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
         while isRunning() and not petsFolder do
@@ -577,52 +569,13 @@ local function fastRebirthLoop(myId)
 
         unequipAllPets(petsFolder)
         if not isRunning() then return end
-        setEquipped(repTarget, true)
 
-        local cycle = 0
-        local rebirthAt = os.clock() + HYDRA_LEAD
-
+        -- BOUCLE RAPIDE DE SWAP DES PETS
         while isRunning() do
-            cycle = cycle + 1
-
-            local repOffLead = math.max(REP_OFF_LEAD, HYDRA_LEAD)
-            if repOffLead > HYDRA_LEAD + 0.001 then
-                waitUntil(rebirthAt - repOffLead)
-                if not isRunning() then break end
-                setEquipped(offList, true)
-            end
-
-            waitUntil(rebirthAt - HYDRA_LEAD)
-            if not isRunning() then break end
-            setEquipped(swapList, true, true)
-
-            waitUntil(rebirthAt)
-            if not isRunning() then break end
-            local tFire = os.clock()
-            local resultReady = false
-            task.spawn(function()
-                pcall(function()
-                    rebirthRemote:InvokeServer("rebirthRequest")
-                end)
-                resultReady = true
-            end)
-
-            waitUntil(tFire + HYDRA_TAIL)
-            setEquipped(offList, true)
-            waitUntil(tFire + REP_ON_DELAY)
+            setEquipped(swapList, true)
+            task.wait(0.1)
             setEquipped(repTarget, true)
-
-            if cycle % LIST_REFRESH_EVERY == 0 then
-                petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
-                rebuild()
-            end
-
-            while isRunning() and not resultReady and os.clock() < tFire + 0.5 do
-                task.wait()
-            end
-
-            -- Verrouillage strict de l'intervalle à ~6 secondes maximum
-            rebirthAt = tFire + REBIRTH_COOLDOWN + REBIRTH_MARGIN
+            task.wait(0.1)
         end
     end)
 end
@@ -638,7 +591,7 @@ local function autoRebirthLoop(myId)
                 rebirthRemote:InvokeServer("rebirthRequest")
             end
         end)
-        task.wait(REBIRTH_COOLDOWN)
+        task.wait(0.1)
     end
 end
 
