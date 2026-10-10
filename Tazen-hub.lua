@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR rework
 
 local success, err = pcall(function()
 
@@ -966,13 +966,15 @@ local petsFolderConn = nil
 
 local function applyHidePets(state)
     pcall(function()
-        local pf = LocalPlayer:FindFirstChild("petsFolder")
-        if pf then
-            for _, folder in ipairs(pf:GetChildren()) do
-                for _, pet in ipairs(folder:GetChildren()) do
-                    for _, pPart in ipairs(pet:GetDescendants()) do
-                        if pPart:IsA("BasePart") or pPart:IsA("Decal") then
-                            pPart.Transparency = state and 1 or 0
+        for _, plr in ipairs(Players:GetPlayers()) do
+            local pf = plr:FindFirstChild("petsFolder")
+            if pf then
+                for _, folder in ipairs(pf:GetChildren()) do
+                    for _, pet in ipairs(folder:GetChildren()) do
+                        for _, pPart in ipairs(pet:GetDescendants()) do
+                            if pPart:IsA("BasePart") or pPart:IsA("Decal") then
+                                pPart.Transparency = state and 1 or 0
+                            end
                         end
                     end
                 end
@@ -986,9 +988,8 @@ local function setHidePets(state)
     applyHidePets(state)
     if petsFolderConn then petsFolderConn:Disconnect(); petsFolderConn = nil end
     if state then
-        petsFolderConn = LocalPlayer.ChildAdded:Connect(function(child)
-            if child.Name == "petsFolder" then
-                task.wait(0.5)
+        petsFolderConn = RunService.Heartbeat:Connect(function()
+            if hidePetsActive then
                 applyHidePets(true)
             end
         end)
@@ -1000,10 +1001,9 @@ local function setHidePopups(state)
     pcall(function()
         local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
         if playerGui then
-            local guiMain = playerGui:FindFirstChild("ScreenGui") or playerGui:FindFirstChild("Main")
-            -- On cible les éléments de type popup/notifications si présents
             for _, child in ipairs(playerGui:GetChildren()) do
-                if child.Name:lower():find("popup") or child.Name:lower():find("float") then
+                local name = child.Name:lower()
+                if name:find("popup") or name:find("notification") or name:find("prompt") or name:find("alert") then
                     child.Enabled = not state
                 end
             end
@@ -1596,6 +1596,14 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast Rebirth", false, function(v)
         notifyState(E.bolt .. " Fast Rebirth", false)
     end
 end)
+
+equipWeightToggle = addSavedToggle(fastPage, E.wrench .. " Equip Weight", "RebirthTab", "EquipWeight", false, function(v)
+    if v then
+        equipToolByName("weight")
+        notify("Equip", E.ok .. " Weight equipped")
+    end
+end)
+
 local fastTimerLabel = addLabel(fastPage, E.clock .. " Session Time: 0s | Last Rebirth : --", 34)
 local fastCalcLabel = addLabel(fastPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
 
@@ -1616,6 +1624,14 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto Rebirth", false, function(v)
         notifyState(E.cycle .. " Auto Rebirth", false)
     end
 end)
+
+equipPushupToggle = addSavedToggle(autoPage, E.wrench .. " Equip Pushup", "RebirthTab", "EquipPushup", false, function(v)
+    if v then
+        equipToolByName("pushup")
+        notify("Equip", E.ok .. " Pushup equipped")
+    end
+end)
+
 local autoTimerLabel = addLabel(autoPage, E.clock .. " Session Time: 0s | Last Rebirth : --", 34)
 local autoCalcLabel = addLabel(autoPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
 
@@ -1633,20 +1649,6 @@ repToggle = addToggle(strPage, E.muscle .. " Fast Strength", false, function(v)
     else
         repStartTime = nil
         notifyState(E.muscle .. " Fast Strength", false)
-    end
-end)
-
-equipWeightToggle = addSavedToggle(strPage, E.wrench .. " Equip Weight", "StrengthTab", "EquipWeight", false, function(v)
-    if v then
-        equipToolByName("weight")
-        notify("Equip", E.ok .. " Weight equipped")
-    end
-end)
-
-equipPushupToggle = addSavedToggle(strPage, E.wrench .. " Equip Pushup", "StrengthTab", "EquipPushup", false, function(v)
-    if v then
-        equipToolByName("pushup")
-        notify("Equip", E.ok .. " Pushup equipped")
     end
 end)
 
@@ -1676,14 +1678,6 @@ killTargetToggle = addSavedToggle(killPage, E.target .. " Kill Target Players On
         task.spawn(killTargetPlayerLoop, killRunId)
     else
         notifyState("Kill Target Only", false)
-    end
-end)
-
-autoSaveConfigToggle = addSavedToggle(killPage, E.wrench .. " Auto Save Config", "Killing", "AutoSaveConfig", false, function(v)
-    if v then
-        notify("Config", E.ok .. " Auto-save configuration active!")
-    else
-        notify("Config", E.no .. " Auto-save disabled")
     end
 end)
 
@@ -1859,6 +1853,10 @@ end)
 hidePopupsToggle = addSavedToggle(miscPage, E.clip .. " Hide Popups", "MiscTab", "HidePopups", false, function(v)
     setHidePopups(v)
     notifyState("Hide Popups", v)
+end)
+
+autoSaveConfigToggle = addSavedToggle(miscPage, E.wrench .. " Save Config", "MiscTab", "AutoSaveConfig", true, function(v)
+    notify("Config", v and (E.ok .. " Auto-save enabled") or (E.no .. " Auto-save disabled"))
 end)
 
 -- ===================== AUTO EAT PROTEIN EGG =====================
