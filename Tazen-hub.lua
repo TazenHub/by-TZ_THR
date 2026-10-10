@@ -125,7 +125,7 @@ local function saveCategoryConfig(categoryName, data)
 end
 
 -- ===================== SETTINGS =====================
-local REBIRTH_COOLDOWN = 0.05
+local REBIRTH_COOLDOWN = 3.6
 
 local E = {
     bolt = "⚡", cycle = "🔄", muscle = "💪", toolbox = "🧰",
@@ -433,20 +433,161 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP ULTRA RAPIDE =====================
+-- ===================== FAST REBIRTH LOOP (PET SWAP ACTIF) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
-        local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
-        local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
-        if not rebirthRemote then return end
+        local rebirthRemote = ReplicatedStorage.rEvents.rebirthRemote
+        local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
+        local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
 
-        while isRunning() and alive do
-            if canRebirth() then
+        local SLOTS = 12                    
+        local AUTO_TRY = 20                 
+        local FULL_SWAP = true              
+        local STARTUP_UNEQUIP_PER_FRAME = 20
+        local LIST_REFRESH_EVERY = 15        
+
+        local function petRealName(pet)
+            if pet:FindFirstChild("PetName") then return pet.PetName.Value end
+            return pet.Name
+        end
+
+        local function unequipAllPets(petsFolder)
+            local count = 0
+            for _, folderName in ipairs(FOLDERS) do
+                local folder = petsFolder:FindFirstChild(folderName)
+                if folder then
+                    for _, pet in ipairs(folder:GetChildren()) do
+                        pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
+                        count = count + 1
+                        if count % STARTUP_UNEQUIP_PER_FRAME == 0 then task.wait() end
+                    end
+                end
+            end
+            return count
+        end
+
+        local function buildHydraList(petsFolder, slots)
+            local list = {}
+            for _, folderName in ipairs(FOLDERS) do
+                local folder = petsFolder:FindFirstChild(folderName)
+                if folder then
+                    for _, pet in ipairs(folder:GetChildren()) do
+                        local name = petRealName(pet)
+                        if #list < slots and (name == "Titanium Hydra" or name == "Tribal Overlord") then
+                            table.insert(list, pet)
+                        end
+                    end
+                end
+            end
+            return list
+        end
+
+        local function buildRepList(petsFolder, slots)
+            local repPets = {}
+            for _, folderName in ipairs(FOLDERS) do
+                local folder = petsFolder:FindFirstChild(folderName)
+                if folder then
+                    for _, pet in ipairs(folder:GetChildren()) do
+                        local priority = repSpeedPetPriorities[petRealName(pet)] or 10
+                        table.insert(repPets, {
+                            Instance = pet,
+                            Priority = priority,
+                            Score = getPetScore(pet)
+                        })
+                    end
+                end
+            end
+
+            table.sort(repPets, function(a, b)
+                if a.Priority == b.Priority then
+                    return a.Score > b.Score
+                end
+                return a.Priority < b.Priority
+            end)
+
+            local list = {}
+            for _, entry in ipairs(repPets) do
+                if #list >= slots then break end
+                table.insert(list, entry.Instance)
+            end
+            return list
+        end
+
+        local equipped = {}
+
+        local function setEquipped(wanted)
+            local want, have = {}, {}
+            for _, pet in ipairs(wanted) do want[pet] = true end
+            for _, pet in ipairs(equipped) do have[pet] = true end
+
+            local outList, inList = {}, {}
+            for _, pet in ipairs(equipped) do
+                if not want[pet] and pet.Parent then table.insert(outList, pet) end
+            end
+            local newEquipped = {}
+
+            for _, pet in ipairs(wanted) do
+                if pet.Parent then
+                    if not have[pet] then table.insert(inList, pet) end
+                    table.insert(newEquipped, pet)
+                end
+            end
+
+            for _, pet in ipairs(outList) do
+                pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
+            end
+            for _, pet in ipairs(inList) do
+                pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
+            end
+
+            equipped = newEquipped
+        end
+
+        local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+        while isRunning() and not petsFolder do
+            task.wait(1)
+            petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+        end
+        if not isRunning() then return end
+
+        local slots = SLOTS <= 0 and AUTO_TRY or SLOTS
+
+        local hydraList, repTarget, swapList
+        local function rebuild()
+            hydraList = buildHydraList(petsFolder, slots)
+            repTarget = buildRepList(petsFolder, slots)
+            swapList = {}
+            for _, h in ipairs(hydraList) do table.insert(swapList, h) end
+        end
+        rebuild()
+
+        if #hydraList == 0 then return end
+
+        unequipAllPets(petsFolder)
+        if not isRunning() then return end
+        setEquipped(repTarget)
+
+        local cycle = 0
+        while isRunning() do
+            cycle = cycle + 1
+
+            setEquipped(swapList)
+            
+            task.spawn(function()
                 pcall(function()
                     rebirthRemote:InvokeServer("rebirthRequest")
                 end)
+            end)
+
+            task.wait(0.01)
+            setEquipped(repTarget)
+
+            if cycle % LIST_REFRESH_EVERY == 0 then
+                petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
+                rebuild()
             end
+
             task.wait(REBIRTH_COOLDOWN)
         end
     end)
