@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR rework
 
 local success, err = pcall(function()
 
@@ -428,7 +428,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (SMART PET SWAP @ 6.03s) =====================
+-- ===================== FAST REBIRTH LOOP (DYNAMIC REQUIREMENT DETECTION + 12 SLOTS) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -536,12 +536,6 @@ local function fastRebirthLoop(myId)
             equipped = newEquipped
         end
 
-        local function waitUntil(t)
-            while isRunning() and os.clock() < t do
-                task.wait()
-            end
-        end
-
         local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
         while isRunning() and not petsFolder do
             task.wait(1)
@@ -558,27 +552,32 @@ local function fastRebirthLoop(myId)
         if not isRunning() then return end
         setEquipped(repList, true)
 
-        local nextCycleTime = os.clock()
-
         while isRunning() do
-            local targetTime = nextCycleTime
+            local canR = false
+            repeat
+                RunService.Heartbeat:Wait()
+                pcall(function()
+                    canR = canRebirth()
+                end)
+            until not isRunning() or canR
 
-            -- 1. Attente de la fin du remplissage des requirements avec les Fast Rep Pets
-            waitUntil(targetTime)
             if not isRunning() then break end
 
-            -- 2. Swap instantané vers les X2 Rebirth Pets juste avant la requête
+            -- 1. Les prérequis sont atteints, swap instantané sur les X2 Rebirth Pets
             setEquipped(hydraList, true)
 
-            -- 3. Requête de renaissance à 6.03s pile
+            -- 2. Sécurité timing de précision (6.03s / délai d'attente serveur)
+            task.wait(0.03)
+
+            -- 3. Requête de renaissance immédiate
             pcall(function()
                 rebirthRemote:InvokeServer("rebirthRequest")
             end)
 
-            -- 4. Retour immédiat sur les Fast Rep Pets pour le cycle suivant
+            -- 4. Retour immédiat sur les Fast Rep Pets pour le prochain cycle de farm
             setEquipped(repList, true)
 
-            nextCycleTime = targetTime + REBIRTH_COOLDOWN
+            task.wait(0.5)
         end
     end)
 end
