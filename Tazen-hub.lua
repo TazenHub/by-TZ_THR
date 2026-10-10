@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR rework
 
 local success, err = pcall(function()
 
@@ -120,7 +120,7 @@ local function saveCategoryConfig(categoryName, data)
 end
 
 -- ===================== SETTINGS =====================
-local REBIRTH_COOLDOWN = 4.0
+local REBIRTH_COOLDOWN = 6.0
 
 local E = {
     bolt = "⚡", cycle = "🔄", muscle = "💪", toolbox = "🧰",
@@ -428,7 +428,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (ULTRA-FAST UNDER 4S SWAP) =====================
+-- ===================== FAST REBIRTH LOOP (INDEPENDENT AUTO REP + 1S/5S TIMING) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -439,6 +439,7 @@ local function fastRebirthLoop(myId)
         local SLOTS = 12                    
         local STARTUP_UNEQUIP_PER_FRAME = 20
         local LIST_REFRESH_EVERY = 10        
+        local INTERNAL_REP_RATE = 659        
 
         local function petRealName(pet)
             if pet:FindFirstChild("PetName") then return pet.PetName.Value end
@@ -549,6 +550,9 @@ local function fastRebirthLoop(myId)
 
         if #hydraList == 0 or #repList == 0 then return end
 
+        local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
+        local muscleEvent = rEvents and findMuscleEvent(rEvents)
+
         unequipAllPets(petsFolder)
         if not isRunning() then return end
         setEquipped(repList, true)
@@ -557,13 +561,19 @@ local function fastRebirthLoop(myId)
         while isRunning() do
             cycle = cycle + 1
 
-            local canR = false
-            repeat
-                RunService.Heartbeat:Wait()
-                pcall(function()
-                    canR = canRebirth()
-                end)
-            until not isRunning() or canR
+            local farmTime = tick() + 1.0
+            local carry = 0
+            while isRunning() and tick() < farmTime do
+                local dt = RunService.Heartbeat:Wait()
+                if muscleEvent and INTERNAL_REP_RATE > 0 then
+                    carry = carry + INTERNAL_REP_RATE * dt
+                    local n = math.floor(carry)
+                    carry = carry - n
+                    for _ = 1, n do
+                        pcall(muscleEvent.FireServer, muscleEvent, "rep")
+                    end
+                end
+            end
 
             if not isRunning() then break end
 
@@ -574,17 +584,20 @@ local function fastRebirthLoop(myId)
                 rebirthRemote:InvokeServer("rebirthRequest")
             end)
 
+            local rebirthTime = tick() + 5.0
+            while isRunning() and tick() < rebirthTime do
+                RunService.Heartbeat:Wait()
+            end
+
+            if not isRunning() then break end
+
             setEquipped(repList, true)
 
             if cycle % LIST_REFRESH_EVERY == 0 then
                 petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
                 hydraList = buildHydraList(petsFolder, SLOTS)
                 repList = buildRepList(petsFolder, SLOTS)
-            end
-
-            local targetTime = tick() + REBIRTH_COOLDOWN
-            while isRunning() and tick() < targetTime do
-                RunService.Heartbeat:Wait()
+                muscleEvent = findMuscleEvent(rEvents or ReplicatedStorage) or muscleEvent
             end
         end
     end)
