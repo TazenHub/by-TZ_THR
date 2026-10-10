@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR rework
 
 local success, err = pcall(function()
 
@@ -459,14 +459,13 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (FULL SWAP OPTIMISÉ & RAPIDE) =====================
+-- ===================== FAST REBIRTH LOOP (FULL SWAP AVEC DÉTECTION AUTO) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
         local rebirthRemote = ReplicatedStorage.rEvents.rebirthRemote
         local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
-        local SLOTS = 12                    
 
         local function petRealName(pet)
             if pet:FindFirstChild("PetName") then return pet.PetName.Value end
@@ -480,19 +479,33 @@ local function fastRebirthLoop(myId)
         end
         if not isRunning() then return end
 
+        local function getMaxPetSlots()
+            local ok, maxSlots = pcall(function()
+                local slotsVal = LocalPlayer:FindFirstChild("maxEquippedPets") 
+                    or LocalPlayer:FindFirstChild("PetSlots")
+                    or (LocalPlayer:FindFirstChild("leaderstats") and LocalPlayer.leaderstats:FindFirstChild("PetSlots"))
+                if slotsVal and slotsVal.Value then
+                    return tonumber(slotsVal.Value)
+                end
+                local attr = LocalPlayer:GetAttribute("MaxPets") or LocalPlayer:GetAttribute("PetSlots")
+                if attr then return tonumber(attr) end
+                return 3
+            end)
+            return (ok and maxSlots and maxSlots > 0) and maxSlots or 12
+        end
+
         local hydraList = {}
         local repPetsUnsorted = {}
 
         for _, folderName in ipairs(FOLDERS) do
             local folder = petsFolder:FindFirstChild(folderName)
             if folder then
-                local children = folder:GetChildren()
-                for _, pet in ipairs(children) do
+                for _, pet in ipairs(folder:GetChildren()) do
                     local name = petRealName(pet)
-                    if #hydraList < SLOTS and (name == "Titanium Hydra" or name == "Tribal Overlord") then
+                    if (name == "Titanium Hydra" or name == "Tribal Overlord") then
                         table.insert(hydraList, pet)
                     end
-                    local priority = repSpeedPetPriorities[name] < 10 and repSpeedPetPriorities[name] or 10
+                    local priority = repSpeedPetPriorities[name] or 10
                     table.insert(repPetsUnsorted, {
                         Instance = pet,
                         Priority = priority,
@@ -509,64 +522,46 @@ local function fastRebirthLoop(myId)
             return a.Priority < b.Priority
         end)
 
+        local maxSlots = getMaxPetSlots()
+
         local repList = {}
-        for i = 1, math.min(SLOTS, #repPetsUnsorted) do
+        for i = 1, math.min(maxSlots, #repPetsUnsorted) do
             table.insert(repList, repPetsUnsorted[i].Instance)
         end
 
-        if #hydraList == 0 or #repList == 0 then return end
-
-        -- Fonction full swap optimisée : envoie tout en parallèle direct sans bloquer le thread principal
-        local function swapToPets(targetList)
-            task.spawn(function()
-                pcall(function()
-                    -- Déséquiper tous les pets actuels d'un coup
-                    local equippedFolder = LocalPlayer:FindFirstChild("equippedPets") or petsFolder
-                    for _, pet in ipairs(petsFolder:GetDescendants()) do
-                        if pet:IsA("Model") or pet:IsA("Folder") or pet:IsA("Configuration") then
-                            -- Le serveur gère directement l'objet
-                        end
-                    end
-                    
-                    for _, pet in ipairs(targetList) do
-                        equipPetEvent:FireServer("equipPet", pet)
-                    end
-                end)
-            end)
+        local finalHydraList = {}
+        for i = 1, math.min(maxSlots, #hydraList) do
+            table.insert(finalHydraList, hydraList[i])
         end
+
+        if #finalHydraList == 0 or #repList == 0 then return end
 
         local nextCycleTarget = os.clock()
 
         while isRunning() do
-            -- 1. Équiper les Rep Pets instantanément
-            task.spawn(function()
-                for _, pet in ipairs(repList) do
-                    pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
+            -- 1. Équiper le full set de pets Hydras/Overlord juste avant le cycle
+            pcall(function()
+                for _, pet in ipairs(finalHydraList) do
+                    equipPetEvent:FireServer("equipPet", pet)
                 end
             end)
 
-            -- 2. Attendre jusqu'à 0.3s avant la fin du cycle
-            while isRunning() and os.clock() < (nextCycleTarget - 0.3) do
-                RunService.Heartbeat:Wait()
-            end
-            if not isRunning() then break end
-
-            -- 3. Équiper les Hydras instantanément avant le rebirth
-            task.spawn(function()
-                for _, pet in ipairs(hydraList) do
-                    pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
-                end
-            end)
-
-            -- 4. Attendre l'instant exact des 6 secondes
+            -- 2. Attendre le palier exact des 6 secondes
             while isRunning() and os.clock() < nextCycleTarget do
                 RunService.Heartbeat:Wait()
             end
             if not isRunning() then break end
 
-            -- 5. Rebirth instantané
+            -- 3. Valider la renaissance
             pcall(function()
                 rebirthRemote:InvokeServer("rebirthRequest")
+            end)
+
+            -- 4. Remettre instantanément le full set de fast rep pets
+            pcall(function()
+                for _, pet in ipairs(repList) do
+                    equipPetEvent:FireServer("equipPet", pet)
+                end
             end)
 
             nextCycleTarget = os.clock() + REBIRTH_COOLDOWN
