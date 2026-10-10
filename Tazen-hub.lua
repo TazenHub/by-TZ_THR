@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR rework
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -459,12 +459,13 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (FULL SWAP AVEC DÉTECTION AUTO) =====================
+-- ===================== FAST REBIRTH LOOP (VRAI FULL SWAP + DÉTECTION DYNAMIQUE) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
         local rebirthRemote = ReplicatedStorage.rEvents.rebirthRemote
         local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
+        local unequipPetEvent = ReplicatedStorage.rEvents.unequipPetEvent or equipPetEvent
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
 
         local function petRealName(pet)
@@ -536,33 +537,37 @@ local function fastRebirthLoop(myId)
 
         if #finalHydraList == 0 or #repList == 0 then return end
 
+        local function executeFullSwap(targetGroup)
+            task.spawn(function()
+                pcall(function()
+                    local equippedFolder = LocalPlayer:FindFirstChild("equippedPets")
+                    if equippedFolder then
+                        for _, pet in ipairs(equippedFolder:GetChildren()) do
+                            unequipPetEvent:FireServer("unequipPet", pet)
+                        end
+                    end
+                    for _, pet in ipairs(targetGroup) do
+                        equipPetEvent:FireServer("equipPet", pet)
+                    end
+                end)
+            end)
+        end
+
         local nextCycleTarget = os.clock()
 
         while isRunning() do
-            -- 1. Équiper le full set de pets Hydras/Overlord juste avant le cycle
-            pcall(function()
-                for _, pet in ipairs(finalHydraList) do
-                    equipPetEvent:FireServer("equipPet", pet)
-                end
-            end)
+            executeFullSwap(finalHydraList)
 
-            -- 2. Attendre le palier exact des 6 secondes
             while isRunning() and os.clock() < nextCycleTarget do
                 RunService.Heartbeat:Wait()
             end
             if not isRunning() then break end
 
-            -- 3. Valider la renaissance
             pcall(function()
                 rebirthRemote:InvokeServer("rebirthRequest")
             end)
 
-            -- 4. Remettre instantanément le full set de fast rep pets
-            pcall(function()
-                for _, pet in ipairs(repList) do
-                    equipPetEvent:FireServer("equipPet", pet)
-                end
-            end)
+            executeFullSwap(repList)
 
             nextCycleTarget = os.clock() + REBIRTH_COOLDOWN
         end
