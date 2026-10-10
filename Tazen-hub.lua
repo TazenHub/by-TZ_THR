@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR rework
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -459,7 +459,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (STABLE SANS LATENCE) =====================
+-- ===================== FAST REBIRTH LOOP (ULTRA-FLUIDE SANS LATENCE) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -509,54 +509,48 @@ local function fastRebirthLoop(myId)
         end)
 
         local repList = {}
+        local count = 0
         for _, entry in ipairs(repPetsUnsorted) do
-            if #repList >= SLOTS then break end
+            if count >= SLOTS then break end
             table.insert(repList, entry.Instance)
+            count = count + 1
         end
 
         if #hydraList == 0 or #repList == 0 then return end
 
-        local currentEquippedGroup = nil
-
-        -- Envoi direct et synchrone sans multiplication de threads pour ne pas saturer le serveur
-        local function switchToGroup(targetList)
-            if currentEquippedGroup == targetList then return end
-
-            if currentEquippedGroup then
-                for _, pet in ipairs(currentEquippedGroup) do
-                    pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
-                end
-            end
-
-            for _, pet in ipairs(targetList) do
-                pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
-            end
-
-            currentEquippedGroup = targetList
+        -- Fonction d'envoi non bloquante en arrière-plan pour ne jamais ralentir la boucle principale
+        local function switchToGroupAsync(targetList)
+            task.spawn(function()
+                pcall(function()
+                    for _, pet in ipairs(targetList) do
+                        equipPetEvent:FireServer("equipPet", pet)
+                    end
+                end)
+            end)
         end
 
         local nextCycleTarget = os.clock()
 
         while isRunning() do
-            -- 1. Équiper les Rep Speed Pets
-            switchToGroup(repList)
+            -- 1. Équiper les Rep Pets immédiatement au début du cycle
+            switchToGroupAsync(repList)
 
-            -- 2. Attendre jusqu'à 0.3s avant le prochain rebirth
-            while isRunning() and os.clock() < (nextCycleTarget - 0.3) do
-                task.wait()
+            -- 2. Attendre proprement les 6 secondes sans saturer le processeur avec des boucles vides
+            while isRunning() and os.clock() < (nextCycleTarget - 0.2) do
+                task.wait(0.05)
             end
             if not isRunning() then break end
 
-            -- 3. Équiper les Hydras
-            switchToGroup(hydraList)
+            -- 3. Équiper les Hydras juste avant le rebirth
+            switchToGroupAsync(hydraList)
 
-            -- 4. Attendre l'instant exact du cooldown
+            -- Attendre l'instant exact des 6.0s
             while isRunning() and os.clock() < nextCycleTarget do
-                task.wait()
+                RunService.Heartbeat:Wait()
             end
             if not isRunning() then break end
 
-            -- 5. Rebirth
+            -- 4. Rebirth instantané
             pcall(function()
                 rebirthRemote:InvokeServer("rebirthRequest")
             end)
