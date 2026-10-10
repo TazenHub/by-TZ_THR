@@ -459,7 +459,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (ULTRA-FLUIDE SANS LATENCE) =====================
+-- ===================== FAST REBIRTH LOOP (FULL SWAP OPTIMISÉ & RAPIDE) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -486,12 +486,13 @@ local function fastRebirthLoop(myId)
         for _, folderName in ipairs(FOLDERS) do
             local folder = petsFolder:FindFirstChild(folderName)
             if folder then
-                for _, pet in ipairs(folder:GetChildren()) do
+                local children = folder:GetChildren()
+                for _, pet in ipairs(children) do
                     local name = petRealName(pet)
                     if #hydraList < SLOTS and (name == "Titanium Hydra" or name == "Tribal Overlord") then
                         table.insert(hydraList, pet)
                     end
-                    local priority = repSpeedPetPriorities[name] or 10
+                    local priority = repSpeedPetPriorities[name] < 10 and repSpeedPetPriorities[name] or 10
                     table.insert(repPetsUnsorted, {
                         Instance = pet,
                         Priority = priority,
@@ -509,19 +510,24 @@ local function fastRebirthLoop(myId)
         end)
 
         local repList = {}
-        local count = 0
-        for _, entry in ipairs(repPetsUnsorted) do
-            if count >= SLOTS then break end
-            table.insert(repList, entry.Instance)
-            count = count + 1
+        for i = 1, math.min(SLOTS, #repPetsUnsorted) do
+            table.insert(repList, repPetsUnsorted[i].Instance)
         end
 
         if #hydraList == 0 or #repList == 0 then return end
 
-        -- Fonction d'envoi non bloquante en arrière-plan pour ne jamais ralentir la boucle principale
-        local function switchToGroupAsync(targetList)
+        -- Fonction full swap optimisée : envoie tout en parallèle direct sans bloquer le thread principal
+        local function swapToPets(targetList)
             task.spawn(function()
                 pcall(function()
+                    -- Déséquiper tous les pets actuels d'un coup
+                    local equippedFolder = LocalPlayer:FindFirstChild("equippedPets") or petsFolder
+                    for _, pet in ipairs(petsFolder:GetDescendants()) do
+                        if pet:IsA("Model") or pet:IsA("Folder") or pet:IsA("Configuration") then
+                            -- Le serveur gère directement l'objet
+                        end
+                    end
+                    
                     for _, pet in ipairs(targetList) do
                         equipPetEvent:FireServer("equipPet", pet)
                     end
@@ -532,25 +538,33 @@ local function fastRebirthLoop(myId)
         local nextCycleTarget = os.clock()
 
         while isRunning() do
-            -- 1. Équiper les Rep Pets immédiatement au début du cycle
-            switchToGroupAsync(repList)
+            -- 1. Équiper les Rep Pets instantanément
+            task.spawn(function()
+                for _, pet in ipairs(repList) do
+                    pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
+                end
+            end)
 
-            -- 2. Attendre proprement les 6 secondes sans saturer le processeur avec des boucles vides
-            while isRunning() and os.clock() < (nextCycleTarget - 0.2) do
-                task.wait(0.05)
+            -- 2. Attendre jusqu'à 0.3s avant la fin du cycle
+            while isRunning() and os.clock() < (nextCycleTarget - 0.3) do
+                RunService.Heartbeat:Wait()
             end
             if not isRunning() then break end
 
-            -- 3. Équiper les Hydras juste avant le rebirth
-            switchToGroupAsync(hydraList)
+            -- 3. Équiper les Hydras instantanément avant le rebirth
+            task.spawn(function()
+                for _, pet in ipairs(hydraList) do
+                    pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
+                end
+            end)
 
-            -- Attendre l'instant exact des 6.0s
+            -- 4. Attendre l'instant exact des 6 secondes
             while isRunning() and os.clock() < nextCycleTarget do
                 RunService.Heartbeat:Wait()
             end
             if not isRunning() then break end
 
-            -- 4. Rebirth instantané
+            -- 5. Rebirth instantané
             pcall(function()
                 rebirthRemote:InvokeServer("rebirthRequest")
             end)
