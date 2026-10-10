@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR rework
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -125,7 +125,7 @@ local function saveCategoryConfig(categoryName, data)
 end
 
 -- ===================== SETTINGS =====================
-local REBIRTH_COOLDOWN = 3.2
+local REBIRTH_COOLDOWN = 6.0
 
 local E = {
     bolt = "⚡", cycle = "🔄", muscle = "💪", toolbox = "🧰",
@@ -459,7 +459,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (PET SWAP DIRECT ET UNIQUE) =====================
+-- ===================== FAST REBIRTH LOOP (6s TIMING & PET SWAP) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -592,16 +592,37 @@ local function fastRebirthLoop(myId)
         setEquipped(repTarget)
 
         local cycle = 0
+        local nextCycleTime = os.clock()
+
+        local function waitUntil(t)
+            while isRunning() and os.clock() < t do
+                task.wait()
+            end
+        end
+
         while isRunning() do
             cycle = cycle + 1
+            local targetTime = nextCycleTime
 
+            -- 1. On garde les Fast Rep Pets équipés pendant ~5 secondes (jusqu'à 1s avant la fin du cooldown de 6s)
+            waitUntil(targetTime - 1.0)
+            if not isRunning() then break end
+
+            -- 2. On équipe les Titanium Hydras / Tribal Overlords juste avant la renaissance
             setEquipped(hydraList)
-            
+
+            waitUntil(targetTime)
+            if not isRunning() then break end
+            local tFire = os.clock()
+
+            -- 3. On déclenche la renaissance
             pcall(function()
-                rebirthRemote:InvokeServer("rebirthRequest")
+                task.spawn(function()
+                    rebirthRemote:InvokeServer("rebirthRequest")
+                end)
             end)
 
-            task.wait(0.01)
+            -- 4. Juste après, on remet immédiatement les Fast Rep Pets
             setEquipped(repTarget)
 
             if cycle % LIST_REFRESH_EVERY == 0 then
@@ -609,7 +630,7 @@ local function fastRebirthLoop(myId)
                 rebuild()
             end
 
-            task.wait(REBIRTH_COOLDOWN)
+            nextCycleTime = tFire + REBIRTH_COOLDOWN
         end
     end)
 end
