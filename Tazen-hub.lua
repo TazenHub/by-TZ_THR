@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THRr
 
 local success, err = pcall(function()
 
@@ -191,19 +191,6 @@ local function setAntiAfk(state)
 end
 
 local function canRebirth()
-    local okC, result = pcall(function()
-        local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
-        if not leaderstats then return true end
-        local strength = leaderstats:FindFirstChild("Strength")
-            or leaderstats:FindFirstChild("Muscle")
-            or leaderstats:FindFirstChild("Multiplier")
-        if strength and strength.Value then
-            local v = tonumber(strength.Value)
-            if v then return v > 0 end
-        end
-        return true
-    end)
-    if okC then return result end
     return true
 end
 
@@ -397,7 +384,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (AVEC REQUÊTE ULTRA-RAPIDE DE REBIRTH & LOGIQUE DE REPS) =====================
+-- ===================== FAST REBIRTH LOOP (REQUÊTE DIRECTE RAPIDE) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -536,20 +523,13 @@ local function fastRebirthLoop(myId)
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
 
-            -- 4. Lancer le Rebirth ultra-rapide sans envoyer de reps (maximum de fluidité)[cite: 2]
+            -- 4. Lancer le Rebirth ultra-rapide (envoi direct de la requête)
             local startWait = tick()
-            while isRunning() and (tick() - startWait < 5) do
+            while isRunning() and (tick() - startWait < 3) do
                 RunService.Heartbeat:Wait()
                 pcall(function()
-                    if canRebirth() then
-                        rebirthRemote:InvokeServer("rebirthRequest")
-                    end
+                    rebirthRemote:InvokeServer("rebirthRequest")
                 end)
-                
-                local okC, canStillR = pcall(canRebirth)
-                if okC and not canStillR then
-                    break
-                end
             end
 
             -- 5. Retirer les Rebirth Pets pour boucler à nouveau
@@ -588,9 +568,7 @@ local function autoRebirthLoop(myId)
         RunService.Heartbeat:Wait()
         
         pcall(function()
-            if canRebirth() then
-                rebirthRemote:InvokeServer("rebirthRequest")
-            end
+            rebirthRemote:InvokeServer("rebirthRequest")
         end)
     end
 
