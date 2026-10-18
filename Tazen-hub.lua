@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THRr
 
 local success, err = pcall(function()
 
@@ -351,7 +351,7 @@ local function killTargetPlayerLoop(myId)
                             hrp.CFrame = pHrp.CFrame * CFrame.new(0, 3, 2)
                         end
                         
-                        local currentTool = character:FindFirstChild("Fight") or character:FindFirstChild("Punch")
+                        val = currentTool = character:FindFirstChild("Fight") or character:FindFirstChild("Punch")
                         if currentTool and currentTool:IsA("Tool") then
                             pcall(function()
                                 currentTool:Activate()
@@ -372,7 +372,39 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (FULL SWAP ROBUSTE & SYNCHRONISÉ) =====================
+-- ===================== FAST REBIRTH LOOP (AVEC DÉTECTEUR DE PET SLOTS DYNAMIQUE) =====================
+local function getMaxPetSlots()
+    local defaultSlots = 12
+    pcall(function()
+        -- Recherche dans les dossiers potentiels de stats/data du joueur
+        local containers = {
+            LocalPlayer:FindFirstChild("MaxPets"),
+            LocalPlayer:FindFirstChild("PetSlots"),
+            LocalPlayer:FindFirstChild("Data") and LocalPlayer.Data:FindFirstChild("MaxPets"),
+            LocalPlayer:FindFirstChild("Stats") and LocalPlayer.Stats:FindFirstChild("MaxPets"),
+            LocalPlayer:GetAttribute("MaxPets"),
+            LocalPlayer:GetAttribute("PetSlots")
+        }
+        for _, c in ipairs(containers) do
+            if type(c) == "number" and c > 0 then
+                return c
+            elseif typeof(c) == "Instance" and (c:IsA("IntValue") or c:IsA("NumberValue")) and c.Value > 0 then
+                return c.Value
+            end
+        end
+
+        -- Recherche par nom de valeur ou attribut similaire
+        for _, obj in ipairs(LocalPlayer:GetDescendants()) do
+            if (obj.Name:lower():find("pet") or obj.Name:lower():find("slot")) and (obj:IsA("IntValue") or obj:IsA("NumberValue")) and obj.Value > 0 and obj.Value <= 50 then
+                if obj.Value > defaultSlots then
+                    defaultSlots = obj.Value
+                end
+            end
+        end
+    end)
+    return defaultSlots
+end
+
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -388,8 +420,6 @@ local function fastRebirthLoop(myId)
         if savePlayerSizeEvent then
             pcall(function() savePlayerSizeEvent:FireServer("toggleAutoLift") end)
         end
-
-        local SLOTS = 12
 
         local function petRealName(pet)
             if pet:FindFirstChild("PetName") then return tostring(pet.PetName.Value) end
@@ -417,6 +447,9 @@ local function fastRebirthLoop(myId)
                 task.wait(1)
                 continue
             end
+
+            -- Détection dynamique du nombre maximal de slots de pets équipables
+            local SLOTS = getMaxPetSlots()
 
             local hydraList = {}
             local rawRepPets = {}
@@ -470,9 +503,9 @@ local function fastRebirthLoop(myId)
             for _, pet in ipairs(allPetsForUnequip) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
-            task.wait(0.15) -- Pause de sécurité pour le serveur
+            task.wait(0.15)
 
-            -- 2. Équiper les Fast Rep Pets
+            -- 2. Équiper les Fast Rep Pets jusqu'à la limite maximale détectée
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
@@ -499,9 +532,9 @@ local function fastRebirthLoop(myId)
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
-            task.wait(0.15) -- Pause de sécurité pour le serveur
+            task.wait(0.15)
 
-            -- 5. Équiper les Titanium Hydra
+            -- 5. Équiper les Titanium Hydra jusqu'à la limite maximale détectée
             if #hydraList > 0 then
                 for _, pet in ipairs(hydraList) do
                     pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
