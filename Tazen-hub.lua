@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THRr
 
 local success, err = pcall(function()
 
@@ -384,7 +384,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (BASÉ SUR AUTO REBIRTH + LOGIQUE PETS) =====================
+-- ===================== FAST REBIRTH LOOP CORRIGÉ =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -392,121 +392,104 @@ local function fastRebirthLoop(myId)
         local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
         local equipPetEvent = rEvents and rEvents:WaitForChild("equipPetEvent", 5)
         local savePlayerSizeEvent = rEvents and rEvents:WaitForChild("savePlayerSizeEvent", 5)
-        if not rebirthRemote or not equipPetEvent then return end
+        if not rebirthRemote or not equipPetEvent then
+            warn("[Tazen Hub] Remotes manquantes pour le Fast Rebirth !")
+            return
+        end
 
         if savePlayerSizeEvent then
-            pcall(function()
-                savePlayerSizeEvent:FireServer("toggleAutoLift")
-            end)
+            pcall(function() savePlayerSizeEvent:FireServer("toggleAutoLift") end)
         end
 
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
-        local SLOTS = 12                    
-        local STARTUP_UNEQUIP_PER_FRAME = 20
-        local LIST_REFRESH_EVERY = 10        
-        local INTERNAL_REP_RATE = 659        
+        local SLOTS = 12
 
         local function petRealName(pet)
             if pet:FindFirstChild("PetName") then return pet.PetName.Value end
             return pet.Name
         end
 
-        local function unequipAllPets(petsFolder)
-            local count = 0
-            for _, folderName in ipairs(FOLDERS) do
-                local folder = petsFolder:FindFirstChild(folderName)
-                if folder then
-                    for _, pet in ipairs(folder:GetChildren()) do
-                        pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
-                        count = count + 1
-                        if count % STARTUP_UNEQUIP_PER_FRAME == 0 then task.wait() end
-                    end
-                end
-            end
-            return count
+        local function getPetsFolder()
+            return LocalPlayer:FindFirstChild("petsFolder")
         end
 
-        local function buildHydraList(petsFolder, slots)
-            local list = {}
-            for _, folderName in ipairs(FOLDERS) do
-                local folder = petsFolder:FindFirstChild(folderName)
-                if folder then
-                    for _, pet in ipairs(folder:GetChildren()) do
-                        local name = petRealName(pet)
-                        if #list < slots and (name == "Titanium Hydra" or name == "Tribal Overlord") then
-                            table.insert(list, pet)
-                        end
-                    end
-                end
-            end
-            return list
-        end
-
-        local function buildRepList(petsFolder, slots)
-            local repPets = {}
-            for _, folderName in ipairs(FOLDERS) do
-                local folder = petsFolder:FindFirstChild(folderName)
-                if folder then
-                    for _, pet in ipairs(folder:GetChildren()) do
-                        local priority = repSpeedPetPriorities[petRealName(pet)] or 10
-                        table.insert(repPets, {
-                            Instance = pet,
-                            Priority = priority,
-                            Score = getPetScore(pet)
-                        })
-                    end
-                end
-            end
-
-            table.sort(repPets, function(a, b)
-                if a.Priority == b.Priority then
-                    return a.Score > b.Score
-                end
-                return a.Priority < b.Priority
-            end)
-
-            local list = {}
-            local count = 0
-            for _, entry in ipairs(repPets) do
-                if count >= slots then break end
-                table.insert(list, entry.Instance)
-                count = count + 1
-            end
-            return list
-        end
-
-        local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+        local petsFolder = getPetsFolder()
         while isRunning() and not petsFolder do
             task.wait(1)
-            petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+            petsFolder = getPetsFolder()
         end
         if not isRunning() then return end
 
-        local hydraList = buildHydraList(petsFolder, SLOTS)
-        local repList = buildRepList(petsFolder, SLOTS)
-
-        if #hydraList == 0 or #repList == 0 then return end
         local muscleEvent = findMuscleEvent(rEvents)
-
-        unequipAllPets(petsFolder)
-        if not isRunning() then return end
 
         local cycle = 0
         while isRunning() do
             cycle = cycle + 1
+            petsFolder = getPetsFolder()
+            
+            if not petsFolder then
+                warn("[Tazen Hub] petsFolder introuvable !")
+                task.wait(1)
+                continue
+            end
 
-            -- 1. Équiper les Fast Rep Pets
+            local hydraList = {}
+            local repList = {}
+            local allPetsForUnequip = {}
+
+            for _, folderName in ipairs(FOLDERS) do
+                local folder = petsFolder:FindFirstChild(folderName)
+                if folder then
+                    for _, pet in ipairs(folder:GetChildren()) do
+                        table.insert(allPetsForUnequip, pet)
+                        local name = petRealName(pet)
+                        if name == "Titanium Hydra" or name == "Tribal Overlord" then
+                            if #hydraList < SLOTS then
+                                table.insert(hydraList, pet)
+                            end
+                        end
+                        if repSpeedPetPriorities[name] and #repList < SLOTS then
+                            table.insert(repList, pet)
+                        end
+                    end
+                end
+            end
+
+            if #repList == 0 then
+                for _, folderName in ipairs(FOLDERS) do
+                    local folder = petsFolder:FindFirstChild(folderName)
+                    if folder then
+                        for _, pet in ipairs(folder:GetChildren()) do
+                            if #repList < SLOTS then
+                                table.insert(repList, pet)
+                            end
+                        end
+                    end
+                end
+            end
+
+            -- 1. Tout déséquiper proprement
+            for _, pet in ipairs(allPetsForUnequip) do
+                pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
+            end
+
+            -- 2. Équiper les Fast Rep Pets
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
 
-            -- 2. Faire les répétitions pendant que les Rep Pets sont équipés
+            -- 3. Faire les répétitions et tenter de rebirth en même temps
             local repTimer = tick()
             local carry = 0
             while isRunning() and (tick() - repTimer < 2.5) do
                 local dt = RunService.Heartbeat:Wait()
-                if muscleEvent and INTERNAL_REP_RATE > 0 then
-                    carry = carry + INTERNAL_REP_RATE * dt
+                
+                pcall(function()
+                    rebirthRemote:InvokeServer("rebirthRequest")
+                end)
+
+                if muscleEvent and REP_CAP > 0 then
+                    carry = carry + REP_CAP * dt
                     local n = math.floor(carry)
                     carry = carry - n
                     for _ = 1, n do
@@ -517,40 +500,34 @@ local function fastRebirthLoop(myId)
 
             if not isRunning() then break end
 
-            -- 3. Retirer les Rep Pets et équiper les Rebirth Pets (Hydra / Overlord)
+            -- 4. Retirer les Rep Pets et équiper les Rebirth Pets
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
-            for _, pet in ipairs(hydraList) do
-                pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
+            
+            if #hydraList > 0 then
+                for _, pet in ipairs(hydraList) do
+                    pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
+                end
             end
 
-            -- 4. Boucle de renaissance instantanée (exactement comme l'Auto Rebirth)
+            -- 5. Maintenir la requête de rebirth intensive
             local startWait = tick()
-            while isRunning() and (tick() - startWait < 3) do
+            while isRunning() and (tick() - startWait < 2) do
                 RunService.Heartbeat:Wait()
                 pcall(function()
                     rebirthRemote:InvokeServer("rebirthRequest")
                 end)
             end
 
-            -- 5. Retirer les Rebirth Pets pour boucler à nouveau
+            -- Nettoyage des hydras pour le prochain cycle
             for _, pet in ipairs(hydraList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
-            end
-
-            if cycle % LIST_REFRESH_EVERY == 0 then
-                petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
-                hydraList = buildHydraList(petsFolder, SLOTS)
-                repList = buildRepList(petsFolder, SLOTS)
-                muscleEvent = findMuscleEvent(rEvents or ReplicatedStorage) or muscleEvent
             end
         end
 
         if savePlayerSizeEvent then
-            pcall(function()
-                savePlayerSizeEvent:FireServer("toggleAutoLift")
-            end)
+            pcall(function() savePlayerSizeEvent:FireServer("toggleAutoLift") end)
         end
     end)
 end
