@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR r'ework
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -222,7 +222,8 @@ end
 local function findMuscleEvent(rEvents)
     return LocalPlayer:FindFirstChild("muscleEvent")
         or (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("muscleEvent"))
-        or rEvents:FindFirstChild("muscleEvent")
+        or (rEvents and rEvents:FindFirstChild("muscleEvent"))
+        or ReplicatedStorage:FindFirstChild("rEvents") and ReplicatedStorage.rEvents:FindFirstChild("muscleEvent")
 end
 
 local function equipToolByName(toolKeyword)
@@ -515,7 +516,7 @@ local function fastRebirthLoop(myId)
                     local n = math.floor(carry)
                     carry = carry - n
                     for _ = 1, n do
-                        pcall(muscleEvent.FireServer, muscleEvent, "rep")
+                        pcall(function() muscleEvent:FireServer("rep") end)
                     end
                 end
             end
@@ -560,16 +561,16 @@ end
 local function autoRebirthLoop(myId)
     local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
     local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
-    local muscleEvent = findMuscleEvent(rEvents)
     if not rebirthRemote then return end
 
     local carry = 0
     while autoRunId == myId and alive do
         local dt = RunService.Heartbeat:Wait()
+        local muscleEvent = findMuscleEvent(rEvents)
         
-        -- Auto rep léger et corrigé pour l'onglet Auto Rebirth
+        -- Auto rep fluide et fonctionnel sans pack (taux modéré pour économiser la mémoire)
         if muscleEvent and repRate > 0 then
-            carry = carry + (math.min(repRate, REP_CAP) * 0.5) * dt
+            carry = carry + (math.min(repRate, REP_CAP) * 0.4) * dt
             local n = math.floor(carry)
             carry = carry - n
             for _ = 1, n do
@@ -592,23 +593,19 @@ end
 local function fastRepLoop(myId)
     local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
     if not rEvents then return end
-    local muscleEvent = findMuscleEvent(rEvents)
-    if not muscleEvent then return end
-
+    
     local carry = 0
     local lastCheck = tick()
     while repRunId == myId and alive do
         local dt = RunService.Heartbeat:Wait()
+        local muscleEvent = findMuscleEvent(rEvents)
 
         if tick() - lastCheck > 1 then
             lastCheck = tick()
-            if not muscleEvent.Parent then
-                muscleEvent = findMuscleEvent(rEvents) or muscleEvent
-            end
         end
 
         local rate = math.min(repRate, REP_CAP)
-        if rate > 0 then
+        if muscleEvent and rate > 0 then
             carry = carry + rate * dt
             local n = math.floor(carry)
             carry = carry - n
@@ -1839,7 +1836,7 @@ local function autoEggLoop(myId)
     end
 end
 
-autoEggToggle = addToggle(miscPage, E.egg .. " Auto Eat Protein Egg", false, function(v)
+autoEggToggle = addSavedToggle(miscPage, E.egg .. " Auto Eat Protein Egg", "MiscTab", "AutoEatEgg", false, function(v)
     eggRunId = eggRunId + 1
     if v then
         eggEaten = 0
