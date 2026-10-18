@@ -1,4 +1,4 @@
--- Tazen Hub V2 - Complete Script (Fast Rebirth Fixed)
+-- Tazen Hub V2 - Complete Script (Fast Rebirth Swap Fixed)
 local success, err = pcall(function()
 
 if game.PlaceId ~= 3623096087 then
@@ -436,40 +436,22 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (FIXED & SECURE) =====================
+-- ===================== FAST REBIRTH LOOP (SWAP FIXED) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
         local rEvents = ReplicatedStorage:WaitForChild("rEvents", 10)
         local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 10)
         local equipPetEvent = rEvents and rEvents:WaitForChild("equipPetEvent", 10)
-        if not rebirthRemote then return end
+        if not rebirthRemote or not equipPetEvent then return end
 
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
         local SLOTS = 12                    
-        local STARTUP_UNEQUIP_PER_FRAME = 20
-        local LIST_REFRESH_EVERY = 10        
         local INTERNAL_REP_RATE = 659        
 
         local function petRealName(pet)
             if pet:FindFirstChild("PetName") then return tostring(pet.PetName.Value) end
             return tostring(pet.Name)
-        end
-
-        local function unequipAllPets(petsFolder)
-            if not equipPetEvent or not petsFolder then return end
-            local count = 0
-            for _, folderName in ipairs(FOLDERS) do
-                local folder = petsFolder:FindFirstChild(folderName)
-                if folder then
-                    for _, pet in ipairs(folder:GetChildren()) do
-                        pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
-                        count = count + 1
-                        if count % STARTUP_UNEQUIP_PER_FRAME == 0 then task.wait() end
-                    end
-                end
-            end
-            return count
         end
 
         local function buildHydraList(petsFolder, slots)
@@ -486,15 +468,12 @@ local function fastRebirthLoop(myId)
                     end
                 end
             end
-            -- Si aucune hydre/overlord n'est trouvée, on prend les premiers familiers dispos pour éviter de bloquer
             if #list == 0 then
                 for _, folderName in ipairs(FOLDERS) do
                     local folder = petsFolder:FindFirstChild(folderName)
                     if folder then
                         for _, pet in ipairs(folder:GetChildren()) do
-                            if #list < slots then
-                                table.insert(list, pet)
-                            end
+                            if #list < slots then table.insert(list, pet) end
                         end
                     end
                 end
@@ -521,9 +500,7 @@ local function fastRebirthLoop(myId)
             end
 
             table.sort(repPets, function(a, b)
-                if a.Priority == b.Priority then
-                    return a.Score > b.Score
-                end
+                if a.Priority == b.Priority then return a.Score > b.Score end
                 return a.Priority < b.Priority
             end)
 
@@ -537,27 +514,17 @@ local function fastRebirthLoop(myId)
             return list
         end
 
-        -- Attente sécurisée du dossier des familiers
         local petsFolder = LocalPlayer:WaitForChild("petsFolder", 5)
-        
         local hydraList = petsFolder and buildHydraList(petsFolder, SLOTS) or {}
         local repList = petsFolder and buildRepList(petsFolder, SLOTS) or {}
 
         local muscleEvent = findMuscleEvent(rEvents)
-        if petsFolder and equipPetEvent then
-            unequipAllPets(petsFolder)
-        end
         if not isRunning() then return end
 
-        local cycle = 0
         while isRunning() do
-            cycle = cycle + 1
-
             -- 1. Équiper les Rep Pets pendant 2.5 secondes[cite: 2]
-            if equipPetEvent then
-                for _, pet in ipairs(repList) do
-                    pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
-                end
+            for _, pet in ipairs(repList) do
+                pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
 
             local repTimer = tick()
@@ -577,44 +544,36 @@ local function fastRebirthLoop(myId)
             if not isRunning() then break end
 
             -- 2. Passer aux Rebirth Pets pour le rebirth[cite: 2]
-            if equipPetEvent then
-                for _, pet in ipairs(repList) do
-                    pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
-                end
-                for _, pet in ipairs(hydraList) do
-                    pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
-                end
+            for _, pet in ipairs(repList) do
+                pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
+            end
+            for _, pet in ipairs(hydraList) do
+                pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
 
-            -- Attente et validation du rebirth[cite: 2]
+            -- 3. Validation immédiate du rebirth[cite: 2]
             local startWait = tick()
-            while isRunning() and (tick() - startWait < 5) do
+            while isRunning() and (tick() - startWait < 2) do
                 pcall(function()
                     rebirthRemote:InvokeServer("rebirthRequest")
                 end)
-                task.wait(0.3)
-                
+                task.wait(0.2)
                 local okC, canStillR = pcall(canRebirth)
-                if okC and not canStillR then
-                    break
-                end
+                if okC and not canStillR then break end
             end
 
-            -- 3. Retirer les Rebirth Pets[cite: 2]
-            if equipPetEvent then
-                for _, pet in ipairs(hydraList) do
-                    pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
-                end
+            -- Nettoyage des Rebirth Pets pour repartir de plus belle[cite: 2]
+            for _, pet in ipairs(hydraList) do
+                pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
 
-            if cycle % LIST_REFRESH_EVERY == 0 then
-                petsFolder = LocalPlayer:FindFirstChild("petsFolder")
-                if petsFolder then
-                    hydraList = buildHydraList(petsFolder, SLOTS)
-                    repList = buildRepList(petsFolder, SLOTS)
-                end
-                muscleEvent = findMuscleEvent(rEvents or ReplicatedStorage) or muscleEvent
+            -- Actualisation dynamique des listes en arrière-plan
+            petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+            if petsFolder then
+                hydraList = buildHydraList(petsFolder, SLOTS)
+                repList = buildRepList(petsFolder, SLOTS)
             end
+            muscleEvent = findMuscleEvent(rEvents or ReplicatedStorage) or muscleEvent
         end
     end)
 end
@@ -1370,7 +1329,6 @@ local function addSavedToggle(page, name, settingKey, defaultState, callback)
 
     hit.Activated:Connect(function() obj:Set(not obj.Value) end)
 
-    -- Auto-execution lors du Server Hop si le toggle était actif
     if initialState and callback then
         task.spawn(function()
             task.wait(1.5)
@@ -1923,7 +1881,6 @@ end)
 
 selectTab(TAB_FAST)
 
--- Appliquer les configurations sauvegardées au démarrage et gérer les server hops
 task.spawn(function()
     task.wait(1)
     if hidePetsToggle and hidePetsToggle.Value then setHidePets(true) end
