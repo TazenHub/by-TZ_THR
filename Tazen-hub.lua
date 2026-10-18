@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THRr
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -372,7 +372,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP OPTIMISÉ (5.5s Timing) =====================
+-- ===================== FAST REBIRTH LOOP (UNUQIUE INSTANCE PETS SWAP) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -387,11 +387,6 @@ local function fastRebirthLoop(myId)
 
         if savePlayerSizeEvent then
             pcall(function() savePlayerSizeEvent:FireServer("toggleAutoLift") end)
-        end
-
-        local function petRealName(pet)
-            if pet:FindFirstChild("PetName") then return tostring(pet.PetName.Value) end
-            return tostring(pet.Name)
         end
 
         local function getPetsFolder()
@@ -424,52 +419,42 @@ local function fastRebirthLoop(myId)
                 if folder:IsA("Folder") then
                     for _, pet in ipairs(folder:GetChildren()) do
                         table.insert(allPetsForUnequip, pet)
-                        local name = petRealName(pet):lower()
+                        local name = pet.Name:lower()
+                        if pet:FindFirstChild("PetName") then
+                            name = name .. " " .. tostring(pet.PetName.Value):lower()
+                        end
                         
                         if name:find("hydra") or name:find("titanium") then
                             table.insert(hydraList, pet)
-                        elseif name:find("omega") or name:find("overlord") then
-                            table.insert(rawRepPets, { Instance = pet, Priority = 1, Score = getPetScore(pet) })
-                        elseif name:find("mythic") and name:find("boss") then
-                            table.insert(rawRepPets, { Instance = pet, Priority = 2, Score = getPetScore(pet) })
-                        elseif name:find("legendary") and name:find("boss") then
-                            table.insert(rawRepPets, { Instance = pet, Priority = 3, Score = getPetScore(pet) })
-                        elseif name:find("epic") and name:find("boss") then
-                            table.insert(rawRepPets, { Instance = pet, Priority = 4, Score = getPetScore(pet) })
+                        else
+                            table.insert(rawRepPets, { Instance = pet, Score = getPetScore(pet) })
                         end
                     end
                 end
             end
 
+            -- Trier par meilleur score de vitesse de rep
             table.sort(rawRepPets, function(a, b)
-                if a.Priority == b.Priority then
-                    return a.Score > b.Score
-                end
-                return a.Priority < b.Priority
+                return a.Score > b.Score
             end)
 
             local repList = {}
-            local seenNames = {}
             for _, entry in ipairs(rawRepPets) do
-                local rName = petRealName(entry.Instance)
-                if not seenNames[rName] then
-                    seenNames[rName] = true
-                    table.insert(repList, entry.Instance)
-                end
+                table.insert(repList, entry.Instance)
             end
 
-            -- 1. Déséquipement instantané global
+            -- 1. Déséquiper tout le monde proprement
             for _, pet in ipairs(allPetsForUnequip) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
 
-            -- 2. Équipement ultra-rapide et dynamique de TOUS les pets disponibles
+            -- 2. Équiper TOUS les familiers disponibles un par un sans filtre limitatif de nom
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
             task.wait(0.03)
 
-            -- 3. Phase Fast Rep optimisée à 2.5 secondes exactes
+            -- 3. Phase Fast Rep : 2.5 secondes exactes
             local repTimer = tick()
             local carry = 0
             while isRunning() and (tick() - repTimer < 2.5) do
@@ -491,7 +476,7 @@ local function fastRebirthLoop(myId)
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
 
-            -- 5. Équiper instantanément les Titanium Hydra disponibles
+            -- 5. Équiper les Titanium Hydra
             if #hydraList > 0 then
                 for _, pet in ipairs(hydraList) do
                     pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
@@ -499,7 +484,7 @@ local function fastRebirthLoop(myId)
             end
             task.wait(0.03)
 
-            -- 6. Spammer le rebirth de manière agressive pour atteindre le timing record de 5.5s
+            -- 6. Spammer le rebirth de manière agressive pour viser la performance maximale
             local initialRebirths = rebirthsStat and rebirthsStat.Value or 0
             local rebirthDone = false
             
