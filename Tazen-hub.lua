@@ -1,4 +1,4 @@
--- Tazen Hub V2 - Complete Script
+-- Tazen Hub V2 - Complete Script with Original Fast Rebirth
 local success, err = pcall(function()
 
 if game.PlaceId ~= 3623096087 then
@@ -436,7 +436,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP =====================
+-- ===================== FAST REBIRTH LOOP (ORIGINAL & ROBUST) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -446,6 +446,7 @@ local function fastRebirthLoop(myId)
         if not rebirthRemote or not equipPetEvent then return end
 
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
+
         local SLOTS = 12                    
         local STARTUP_UNEQUIP_PER_FRAME = 20
         local LIST_REFRESH_EVERY = 10        
@@ -531,6 +532,7 @@ local function fastRebirthLoop(myId)
         local repList = buildRepList(petsFolder, SLOTS)
 
         if #hydraList == 0 or #repList == 0 then return end
+
         local muscleEvent = findMuscleEvent(rEvents)
 
         unequipAllPets(petsFolder)
@@ -540,6 +542,7 @@ local function fastRebirthLoop(myId)
         while isRunning() do
             cycle = cycle + 1
 
+            -- 1. Équiper les Rep Pets pendant 2.5 secondes[cite: 2]
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
@@ -560,6 +563,7 @@ local function fastRebirthLoop(myId)
 
             if not isRunning() then break end
 
+            -- 2. Passer aux Rebirth Pets (x2 reb) pour le rebirth[cite: 2]
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
@@ -567,6 +571,7 @@ local function fastRebirthLoop(myId)
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
 
+            -- Attente et validation du rebirth[cite: 2]
             local startWait = tick()
             while isRunning() and (tick() - startWait < 5) do
                 pcall(function()
@@ -580,6 +585,7 @@ local function fastRebirthLoop(myId)
                 end
             end
 
+            -- 3. Retirer les Rebirth Pets[cite: 2]
             for _, pet in ipairs(hydraList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
