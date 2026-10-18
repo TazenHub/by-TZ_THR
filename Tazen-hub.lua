@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THRr
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -372,7 +372,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (FULL SWAP AVEC DOSSIER EXCLUSIVE) =====================
+-- ===================== FAST REBIRTH LOOP (FULL SWAP ROBUSTE & SYNCHRONISÉ) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -422,14 +422,14 @@ local function fastRebirthLoop(myId)
             local rawRepPets = {}
             local allPetsForUnequip = {}
 
-            -- Parcours de TOUS les dossiers de pets (y compris Exclusive)[cite: 5]
+            -- Parcours de TOUS les dossiers de pets (Unique, Exclusive, etc.)
             for _, folder in ipairs(petsFolder:GetChildren()) do
                 if folder:IsA("Folder") then
                     for _, pet in ipairs(folder:GetChildren()) do
                         table.insert(allPetsForUnequip, pet)
                         local name = petRealName(pet):lower()
                         
-                        -- Rebirth Pet : Titanium Hydra (dans Exclusive ou autres)[cite: 5]
+                        -- Rebirth Pet : Titanium Hydra
                         if name:find("hydra") or name:find("titanium") then
                             if #hydraList < SLOTS then
                                 table.insert(hydraList, pet)
@@ -466,16 +466,17 @@ local function fastRebirthLoop(myId)
                 end
             end
 
-            -- 1. FULL SWAP : Déséquiper TOUT le monde proprement
+            -- 1. FULL SWAP : Déséquiper ABSOLUMENT TOUT le monde
             for _, pet in ipairs(allPetsForUnequip) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
-            task.wait(0.08)
+            task.wait(0.15) -- Pause de sécurité pour le serveur
 
             -- 2. Équiper les Fast Rep Pets
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
+            task.wait(0.1)
 
             -- 3. Phase Fast Rep : exactement 2.5 secondes
             local repTimer = tick()
@@ -498,14 +499,15 @@ local function fastRebirthLoop(myId)
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
-            task.wait(0.08)
+            task.wait(0.15) -- Pause de sécurité pour le serveur
 
-            -- 5. Équiper les Titanium Hydra (depuis le dossier Exclusive)[cite: 5]
+            -- 5. Équiper les Titanium Hydra
             if #hydraList > 0 then
                 for _, pet in ipairs(hydraList) do
                     pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
                 end
             end
+            task.wait(0.1)
 
             -- 6. Maintenir les Hydra et spammer le rebirth jusqu'à la validation
             local initialRebirths = rebirthsStat and rebirthsStat.Value or 0
@@ -523,12 +525,13 @@ local function fastRebirthLoop(myId)
                 end
             end
 
-            -- 7. Nettoyage des Hydra
+            -- 7. Nettoyage des Hydra avant de boucler
             if #hydraList > 0 then
                 for _, pet in ipairs(hydraList) do
                     pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
                 end
             end
+            task.wait(0.1)
         end
 
         if savePlayerSizeEvent then
