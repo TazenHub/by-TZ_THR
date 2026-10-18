@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THRr
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -422,7 +422,7 @@ local function fastRebirthLoop(myId)
             local rawRepPets = {}
             local allPetsForUnequip = {}
 
-            -- Parcours de TOUS les dossiers de pets (y compris Exclusive vu sur ta capture)
+            -- Parcours de TOUS les dossiers de pets (y compris Exclusive)[cite: 5]
             for _, folder in ipairs(petsFolder:GetChildren()) do
                 if folder:IsA("Folder") then
                     for _, pet in ipairs(folder:GetChildren()) do
@@ -457,8 +457,11 @@ local function fastRebirthLoop(myId)
             end)
 
             local repList = {}
+            local seenNames = {}
             for _, entry in ipairs(rawRepPets) do
-                if #repList < SLOTS then
+                local rName = petRealName(entry.Instance)
+                if #repList < SLOTS and not seenNames[rName] then
+                    seenNames[rName] = true
                     table.insert(repList, entry.Instance)
                 end
             end
@@ -1338,19 +1341,21 @@ local function notify(title, text)
     end)
 end
 
-local TAB_FAST = E.bolt .. " Fast Rebirth"
-local TAB_AUTO = E.cycle .. " Auto Rebirth"
-local TAB_STR = E.muscle .. " Fast Strength"
-local TAB_KILL = E.sword .. " Killing"
+local TAB_FAST = E.bolt .. " Fast"
+local TAB_AUTO = E.cycle .. " Auto"
+local TAB_STR = E.muscle .. " Strength"
+local TAB_KILL = E.sword .. " Kill"
+local TAB_STATS = E.chart .. " Stats"
 local TAB_MISC = E.toolbox .. " Misc"
-local TAB_INFO = E.info .. " Infos"
+local TAB_INFO = E.info .. " Info"
 
-local fastPage = createTab(TAB_FAST, 95)
-local autoPage = createTab(TAB_AUTO, 95)
-local strPage = createTab(TAB_STR, 95)
-local killPage = createTab(TAB_KILL, 65)
+local fastPage = createTab(TAB_FAST, 65)
+local autoPage = createTab(TAB_AUTO, 60)
+local strPage = createTab(TAB_STR, 75)
+local killPage = createTab(TAB_KILL, 55)
+local statsPage = createTab(TAB_STATS, 65)
 local miscPage = createTab(TAB_MISC, 55)
-local infoPage = createTab(TAB_INFO, 55)
+local infoPage = createTab(TAB_INFO, 50)
 
 local fastToggle, autoToggle, repToggle, equipWeightFastToggle, equipWeightAutoToggle, equipPushupToggle, killAllToggle, killTargetToggle, antiAfkToggle, antiLagToggle, autoWheelToggle, autoEggToggle, hidePetsToggle, hidePopupsToggle, autoSaveConfigToggle, autoWhitelistToggle
 
@@ -1700,6 +1705,96 @@ end)
 connect(Players.PlayerAdded, refreshPlayerListUI)
 connect(Players.PlayerRemoving, removePlayerRow)
 task.spawn(refreshPlayerListUI)
+
+-- ===================== STATS VIEWER TAB =====================
+addSection(statsPage, E.chart .. " Server Stats Viewer")
+addLabel(statsPage, "💡 Click on a player below to view their live stats", 36)
+
+local statsDetailBox = addLabel(statsPage, E.info .. " Select a player from the list", 85)
+
+addSection(statsPage, E.game .. " Players List")
+local statsPlayerContainer = new("ScrollingFrame", {
+    Size = UDim2.new(1, 0, 0, 150),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 3,
+    ScrollBarImageColor3 = T.Accent,
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    ZIndex = 6,
+}, statsPage)
+new("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, statsPlayerContainer)
+
+local statsRows = {}
+
+local function removeStatsRow(plr)
+    local entry = statsRows[plr]
+    if entry then
+        pcall(function() entry.row:Destroy() end)
+        statsRows[plr] = nil
+    end
+end
+
+local function addStatsRow(plr)
+    local row = new("TextButton", {
+        Size = UDim2.new(1, -4, 0, 32),
+        BackgroundColor3 = T.Element,
+        Text = "",
+        BorderSizePixel = 0,
+        ZIndex = 6,
+    }, statsPlayerContainer)
+    corner(row, 4)
+
+    textLabel({
+        Size = UDim2.new(1, -12, 1, 0),
+        Position = UDim2.new(0, 8, 0, 0),
+        Text = plr.Name .. " (" .. plr.DisplayName .. ")",
+        TextSize = 11,
+        TextColor3 = T.Text,
+        ZIndex = 7,
+    }, row)
+
+    row.Activated:Connect(function()
+        pcall(function()
+            local ls = plr:FindFirstChild("leaderstats")
+            local statsText = "👤 Player : " .. plr.Name .. "\n"
+            if ls then
+                for _, stat in ipairs(ls:GetChildren()) do
+                    statsText = statsText .. "• " .. stat.Name .. " : " .. tostring(stat.Value) .. "\n"
+                end
+            else
+                statsText = statsText .. "⚠️ leaderstats not found for this player."
+            end
+            statsDetailBox:SetText(statsText)
+        end)
+    end)
+
+    statsRows[plr] = { row = row }
+end
+
+local function refreshStatsPlayerList()
+    pcall(function()
+        for plr in pairs(statsRows) do
+            if not plr.Parent then removeStatsRow(plr) end
+        end
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if not statsRows[plr] then
+                addStatsRow(plr)
+            end
+        end
+    end)
+end
+
+task.spawn(function()
+    while alive do
+        task.wait(2)
+        refreshStatsPlayerList()
+    end
+end)
+
+connect(Players.PlayerAdded, refreshStatsPlayerList)
+connect(Players.PlayerRemoving, removeStatsRow)
+task.spawn(refreshStatsPlayerList)
 
 -- Misc Tab
 addSection(miscPage, E.toolbox .. " Utilities")
