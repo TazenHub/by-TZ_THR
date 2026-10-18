@@ -120,8 +120,6 @@ local function saveCategoryConfig(categoryName, data)
 end
 
 -- ===================== SETTINGS =====================
-local REBIRTH_COOLDOWN = 4.0
-
 local E = {
     bolt = "⚡", cycle = "🔄", muscle = "💪", toolbox = "🧰",
     sleep = "😴", rocket = "🚀", sparkles = "✨", heart = "💕",
@@ -222,7 +220,8 @@ end
 local function findMuscleEvent(rEvents)
     return LocalPlayer:FindFirstChild("muscleEvent")
         or (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("muscleEvent"))
-        or rEvents:FindFirstChild("muscleEvent")
+        or (rEvents and rEvents:FindFirstChild("muscleEvent"))
+        or (ReplicatedStorage:FindFirstChild("rEvents") and ReplicatedStorage.rEvents:FindFirstChild("muscleEvent"))
 end
 
 local function equipToolByName(toolKeyword)
@@ -398,14 +397,16 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (2.5S REP PETS + REBIRTH) =====================
+-- ===================== FAST REBIRTH LOOP (RESTORÉ & OPTIMISÉ) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
-        local rebirthRemote = ReplicatedStorage.rEvents.rebirthRemote
-        local equipPetEvent = ReplicatedStorage.rEvents.equipPetEvent
-        local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
+        local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
+        local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
+        local equipPetEvent = rEvents and rEvents:WaitForChild("equipPetEvent", 5)
+        if not rebirthRemote or not equipPetEvent then return end
 
+        local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
         local SLOTS = 12                    
         local STARTUP_UNEQUIP_PER_FRAME = 20
         local LIST_REFRESH_EVERY = 10        
@@ -491,9 +492,7 @@ local function fastRebirthLoop(myId)
         local repList = buildRepList(petsFolder, SLOTS)
 
         if #hydraList == 0 or #repList == 0 then return end
-
-        local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
-        local muscleEvent = rEvents and findMuscleEvent(rEvents)
+        local muscleEvent = findMuscleEvent(rEvents)
 
         unequipAllPets(petsFolder)
         if not isRunning() then return end
@@ -515,7 +514,7 @@ local function fastRebirthLoop(myId)
                     local n = math.floor(carry)
                     carry = carry - n
                     for _ = 1, n do
-                        pcall(muscleEvent.FireServer, muscleEvent, "rep")
+                        pcall(function() muscleEvent:FireServer("rep") end)
                     end
                 end
             end
@@ -556,47 +555,60 @@ local function fastRebirthLoop(myId)
     end)
 end
 
+-- ===================== AUTO REBIRTH (NATIVE AUTO-LIFT + INSTANT REBIRTH) =====================
 local function autoRebirthLoop(myId)
     local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
     local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
+    local savePlayerSizeEvent = rEvents and rEvents:WaitForChild("savePlayerSizeEvent", 5)
     if not rebirthRemote then return end
 
-    while autoRunId == myId do
+    if savePlayerSizeEvent then
+        pcall(function()
+            savePlayerSizeEvent:FireServer("toggleAutoLift")
+        end)
+    end
+
+    while autoRunId == myId and alive do
+        RunService.Heartbeat:Wait()
+        
         pcall(function()
             if canRebirth() then
                 rebirthRemote:InvokeServer("rebirthRequest")
             end
         end)
-        task.wait(REBIRTH_COOLDOWN)
+    end
+
+    if savePlayerSizeEvent then
+        pcall(function()
+            savePlayerSizeEvent:FireServer("toggleAutoLift")
+        end)
     end
 end
 
 local function fastRepLoop(myId)
     local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
     if not rEvents then return end
-    local muscleEvent = findMuscleEvent(rEvents)
-    if not muscleEvent then return end
-
+    
     local carry = 0
     local lastCheck = tick()
     while repRunId == myId and alive do
         local dt = RunService.Heartbeat:Wait()
+        local muscleEvent = findMuscleEvent(rEvents)
 
         if tick() - lastCheck > 1 then
             lastCheck = tick()
-            if not muscleEvent.Parent then
-                muscleEvent = findMuscleEvent(rEvents) or muscleEvent
-            end
         end
 
         local rate = math.min(repRate, REP_CAP)
-        if rate > 0 then
+        if muscleEvent and rate > 0 then
             carry = carry + rate * dt
             local n = math.floor(carry)
             carry = carry - n
 
             for _ = 1, n do
-                pcall(muscleEvent.FireServer, muscleEvent, "rep")
+                pcall(function()
+                    muscleEvent:FireServer("rep")
+                end)
             end
             repTotal = repTotal + n
         end
@@ -1306,6 +1318,14 @@ local function addSavedToggle(page, name, categoryKey, settingKey, defaultState,
     end
 
     hit.Activated:Connect(function() obj:Set(not obj.Value) end)
+    
+    if initialState and callback then
+        task.spawn(function()
+            task.wait(1.5)
+            pcall(function() callback(true) end)
+        end)
+    end
+
     return obj
 end
 
@@ -1866,9 +1886,9 @@ end)
 
 selectTab(TAB_FAST)
 
--- Appliquer les configurations sauvegardées au démarrage
+-- Appliquer les configurations sauvegardées au démarrage et gérer les server hops
 task.spawn(function()
-    task.wait(1)
+    task.wait(1.5)
     if hidePetsToggle and hidePetsToggle.Value then setHidePets(true) end
     if hidePopupsToggle and hidePopupsToggle.Value then setHidePopups(true) end
     if antiAfkToggle and antiAfkToggle.Value then setAntiAfk(true) end
