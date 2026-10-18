@@ -397,7 +397,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (RESTORÉ & OPTIMISÉ) =====================
+-- ===================== FAST REBIRTH LOOP (CORRIGÉ AVEC LOGIQUE REPS & FLUIDITÉ) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -501,10 +501,12 @@ local function fastRebirthLoop(myId)
         while isRunning() do
             cycle = cycle + 1
 
+            -- 1. Équiper les Fast Rep Pets
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
 
+            -- 2. Faire les répétitions pendant que les Rep Pets sont équipés
             local repTimer = tick()
             local carry = 0
             while isRunning() and (tick() - repTimer < 2.5) do
@@ -521,6 +523,7 @@ local function fastRebirthLoop(myId)
 
             if not isRunning() then break end
 
+            -- 3. Retirer les Rep Pets et équiper les Rebirth Pets (Hydra / Overlord)
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
@@ -528,6 +531,7 @@ local function fastRebirthLoop(myId)
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
 
+            -- 4. Lancer le Rebirth (AUCUNE répétition envoyée ici pour économiser la fluidité)
             local startWait = tick()
             while isRunning() and (tick() - startWait < 5) do
                 pcall(function()
@@ -541,6 +545,7 @@ local function fastRebirthLoop(myId)
                 end
             end
 
+            -- 5. Retirer les Rebirth Pets pour boucler à nouveau
             for _, pet in ipairs(hydraList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
