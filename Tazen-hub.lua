@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THRr
 
 local success, err = pcall(function()
 
@@ -372,7 +372,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (FULL SWAP SYNCHRONISÉ) =====================
+-- ===================== FAST REBIRTH LOOP (FULL SWAP AVEC DOSSIER EXCLUSIVE) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -389,7 +389,6 @@ local function fastRebirthLoop(myId)
             pcall(function() savePlayerSizeEvent:FireServer("toggleAutoLift") end)
         end
 
-        local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
         local SLOTS = 12
 
         local function petRealName(pet)
@@ -423,20 +422,20 @@ local function fastRebirthLoop(myId)
             local rawRepPets = {}
             local allPetsForUnequip = {}
 
-            for _, folderName in ipairs(FOLDERS) do
-                local folder = petsFolder:FindFirstChild(folderName)
-                if folder then
+            -- Parcours de TOUS les dossiers de pets (y compris Exclusive vu sur ta capture)
+            for _, folder in ipairs(petsFolder:GetChildren()) do
+                if folder:IsA("Folder") then
                     for _, pet in ipairs(folder:GetChildren()) do
                         table.insert(allPetsForUnequip, pet)
                         local name = petRealName(pet):lower()
                         
-                        -- Rebirth Pet : Titanium Hydra
-                        if name:find("titanium hydra") then
+                        -- Rebirth Pet : Titanium Hydra (dans Exclusive ou autres)[cite: 5]
+                        if name:find("hydra") or name:find("titanium") then
                             if #hydraList < SLOTS then
                                 table.insert(hydraList, pet)
                             end
-                        -- Fast Rep Pets avec priorités strictes (1: Omega Overlord, 2: Mythic Boss, 3: Legendary Boss, 4: Epic Boss)
-                        elseif name:find("omega overlord") then
+                        -- Fast Rep Pets avec priorités strictes
+                        elseif name:find("omega") or name:find("overlord") then
                             table.insert(rawRepPets, { Instance = pet, Priority = 1, Score = getPetScore(pet) })
                         elseif name:find("mythic") and name:find("boss") then
                             table.insert(rawRepPets, { Instance = pet, Priority = 2, Score = getPetScore(pet) })
@@ -464,18 +463,18 @@ local function fastRebirthLoop(myId)
                 end
             end
 
-            -- 1. FULL SWAP : Déséquiper ABSOLUMENT TOUS les pets pour repartir à zéro
+            -- 1. FULL SWAP : Déséquiper TOUT le monde proprement
             for _, pet in ipairs(allPetsForUnequip) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
             task.wait(0.08)
 
-            -- 2. Équiper uniquement les Fast Rep Pets triés
+            -- 2. Équiper les Fast Rep Pets
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
 
-            -- 3. Phase Fast Rep : exactement 2.5 secondes de reps intensives
+            -- 3. Phase Fast Rep : exactement 2.5 secondes
             local repTimer = tick()
             local carry = 0
             while isRunning() and (tick() - repTimer < 2.5) do
@@ -492,13 +491,13 @@ local function fastRebirthLoop(myId)
 
             if not isRunning() then break end
 
-            -- 4. FULL SWAP : Déséquiper les Fast Rep Pets
+            -- 4. FULL SWAP : Retirer les Fast Rep Pets
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
             task.wait(0.08)
 
-            -- 5. Équiper les Titanium Hydra (Rebirth Pets)
+            -- 5. Équiper les Titanium Hydra (depuis le dossier Exclusive)[cite: 5]
             if #hydraList > 0 then
                 for _, pet in ipairs(hydraList) do
                     pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
@@ -521,7 +520,7 @@ local function fastRebirthLoop(myId)
                 end
             end
 
-            -- 7. Nettoyage final des Hydra avant de boucler à nouveau sur les Fast Rep Pets
+            -- 7. Nettoyage des Hydra
             if #hydraList > 0 then
                 for _, pet in ipairs(hydraList) do
                     pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
