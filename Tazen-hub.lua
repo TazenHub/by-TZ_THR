@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THRr
 
 local success, err = pcall(function()
 
@@ -327,7 +327,7 @@ local function killTargetPlayerLoop(myId)
                 if targetPlayer then
                     local pChar = targetPlayer.Character
                     local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
-                    local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
+                    local pHum = pChar and pChar:FindFirstChild("Humanoid")
 
                     killStatus = "Target : " .. targetPlayer.Name
                     equipFists()
@@ -372,7 +372,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (SLOTS FIXÉS À 12 ET STABILISÉS) =====================
+-- ===================== FAST REBIRTH LOOP (FIX 12 PETS & 2.5S STABLE) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -416,7 +416,6 @@ local function fastRebirthLoop(myId)
                 continue
             end
 
-            -- Slot fixé à 12 en dur comme demandé
             local SLOTS = 12
 
             local hydraList = {}
@@ -463,19 +462,21 @@ local function fastRebirthLoop(myId)
                 end
             end
 
-            -- 1. FULL SWAP : Déséquiper tout le monde
+            -- 1. Déséquiper tout proprement avec un léger délai pour éviter la saturation du serveur
             for _, pet in ipairs(allPetsForUnequip) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
+                task.wait(0.02)
             end
-            task.wait(0.2)
+            task.wait(0.1)
 
-            -- 2. Équiper exactement 12 Fast Rep Pets
+            -- 2. Équiper les 12 Fast Rep Pets un par un (anti-bug de blocage à 4 pets)
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
+                task.wait(0.08)
             end
             task.wait(0.15)
 
-            -- 3. Phase Fast Rep stable : exactement 2.5 secondes garanties
+            -- 3. Phase Fast Rep : GARANTI 2.5 secondes exactes d'entraînement avec les pets équipés
             local repTimer = tick()
             local carry = 0
             while isRunning() and (tick() - repTimer < 2.5) do
@@ -495,13 +496,15 @@ local function fastRebirthLoop(myId)
             -- 4. Retirer les Fast Rep Pets
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
+                task.wait(0.02)
             end
-            task.wait(0.2)
+            task.wait(0.1)
 
-            -- 5. Équiper les Titanium Hydra
+            -- 5. Équiper les 12 Titanium Hydra un par un
             if #hydraList > 0 then
                 for _, pet in ipairs(hydraList) do
                     pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
+                    task.wait(0.08)
                 end
             end
             task.wait(0.15)
@@ -522,10 +525,11 @@ local function fastRebirthLoop(myId)
                 end
             end
 
-            -- 7. Nettoyage des Hydra
+            -- 7. Nettoyage final des Hydra
             if #hydraList > 0 then
                 for _, pet in ipairs(hydraList) do
                     pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
+                    task.wait(0.02)
                 end
             end
             task.wait(0.1)
