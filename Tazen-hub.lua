@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THRr
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -327,7 +327,7 @@ local function killTargetPlayerLoop(myId)
                 if targetPlayer then
                     local pChar = targetPlayer.Character
                     local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
-                    local pHum = pChar and pChar:FindFirstChild("Humanoid")
+                    local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
 
                     killStatus = "Target : " .. targetPlayer.Name
                     equipFists()
@@ -372,7 +372,35 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (FIX 12 PETS & 2.5S STABLE) =====================
+-- ===================== DYNAMIC MAX SLOTS & FAST REBIRTH LOOP =====================
+local function getMaxPetSlots()
+    local slots = 4
+    pcall(function()
+        local containers = {
+            LocalPlayer:FindFirstChild("MaxPets"),
+            LocalPlayer:FindFirstChild("PetSlots"),
+            LocalPlayer:FindFirstChild("Data") and LocalPlayer.Data:FindFirstChild("MaxPets"),
+            LocalPlayer:FindFirstChild("Stats") and LocalPlayer.Stats:FindFirstChild("MaxPets"),
+            LocalPlayer:GetAttribute("MaxPets"),
+            LocalPlayer:GetAttribute("PetSlots")
+        }
+        for _, c in ipairs(containers) do
+            if type(c) == "number" and c > slots then slots = c
+            elseif typeof(c) == "Instance" and (c:IsA("IntValue") or c:IsA("NumberValue")) and c.Value > slots then
+                slots = c.Value
+            end
+        end
+        -- Recherche dynamique dans les attributs/dossiers du joueur si besoin
+        for _, obj in ipairs(LocalPlayer:GetDescendants()) do
+            if (obj.Name:lower():find("pet") or obj.Name:lower():find("slot")) and (obj:IsA("IntValue") or obj:IsA("NumberValue")) and obj.Value > slots and obj.Value <= 50 then
+                slots = obj.Value
+            end
+        end
+    end)
+    -- Si le jeu renvoie moins de 4, on force au moins 12 pour être tranquille
+    return math.max(slots, 12)
+end
+
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -416,7 +444,7 @@ local function fastRebirthLoop(myId)
                 continue
             end
 
-            local SLOTS = 12
+            local MAX_SLOTS = getMaxPetSlots()
 
             local hydraList = {}
             local rawRepPets = {}
@@ -429,7 +457,7 @@ local function fastRebirthLoop(myId)
                         local name = petRealName(pet):lower()
                         
                         if name:find("hydra") or name:find("titanium") then
-                            if #hydraList < SLOTS then
+                            if #hydraList < MAX_SLOTS then
                                 table.insert(hydraList, pet)
                             end
                         elseif name:find("omega") or name:find("overlord") then
@@ -456,27 +484,26 @@ local function fastRebirthLoop(myId)
             local seenNames = {}
             for _, entry in ipairs(rawRepPets) do
                 local rName = petRealName(entry.Instance)
-                if #repList < SLOTS and not seenNames[rName] then
+                if #repList < MAX_SLOTS and not seenNames[rName] then
                     seenNames[rName] = true
                     table.insert(repList, entry.Instance)
                 end
             end
 
-            -- 1. Déséquiper tout proprement avec un léger délai pour éviter la saturation du serveur
+            -- 1. Tout déséquiper
             for _, pet in ipairs(allPetsForUnequip) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
-                task.wait(0.02)
             end
             task.wait(0.1)
 
-            -- 2. Équiper les 12 Fast Rep Pets un par un (anti-bug de blocage à 4 pets)
+            -- 2. Équiper TOUS les Fast Rep Pets trouvés jusqu'à la limite maximale autorisée
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
-                task.wait(0.08)
+                task.wait(0.04)
             end
-            task.wait(0.15)
+            task.wait(0.1)
 
-            -- 3. Phase Fast Rep : GARANTI 2.5 secondes exactes d'entraînement avec les pets équipés
+            -- 3. Maintien strict de 2.5 secondes exactes
             local repTimer = tick()
             local carry = 0
             while isRunning() and (tick() - repTimer < 2.5) do
@@ -496,20 +523,19 @@ local function fastRebirthLoop(myId)
             -- 4. Retirer les Fast Rep Pets
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
-                task.wait(0.02)
             end
             task.wait(0.1)
 
-            -- 5. Équiper les 12 Titanium Hydra un par un
+            -- 5. Équiper les Titanium Hydra jusqu'au maximum
             if #hydraList > 0 then
                 for _, pet in ipairs(hydraList) do
                     pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
-                    task.wait(0.08)
+                    task.wait(0.04)
                 end
             end
-            task.wait(0.15)
+            task.wait(0.1)
 
-            -- 6. Maintenir les Hydra et spammer le rebirth jusqu'à la validation
+            -- 6. Spammer le rebirth jusqu'à la validation
             local initialRebirths = rebirthsStat and rebirthsStat.Value or 0
             local rebirthDone = false
             
@@ -525,11 +551,10 @@ local function fastRebirthLoop(myId)
                 end
             end
 
-            -- 7. Nettoyage final des Hydra
+            -- 7. Nettoyage des Hydra
             if #hydraList > 0 then
                 for _, pet in ipairs(hydraList) do
                     pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
-                    task.wait(0.02)
                 end
             end
             task.wait(0.1)
