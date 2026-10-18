@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR rework
 
 local success, err = pcall(function()
 
@@ -397,14 +397,19 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (CORRIGÉ AVEC LOGIQUE REPS & FLUIDITÉ) =====================
+-- ===================== FAST REBIRTH LOOP (AVEC REQUÊTE ULTRA-RAPIDE DE L'AUTO REBIRTH) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
         local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
         local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
         local equipPetEvent = rEvents and rEvents:WaitForChild("equipPetEvent", 5)
+        local savePlayerSizeEvent = rEvents and rEvents:WaitForChild("savePlayerSizeEvent", 5)
         if not rebirthRemote or not equipPetEvent then return end
+
+        if savePlayerSizeEvent then
+            pcall(function() savePlayerSizeEvent:FireServer("toggleAutoLift") end)
+        end
 
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
         local SLOTS = 12                    
@@ -531,13 +536,15 @@ local function fastRebirthLoop(myId)
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
 
-            -- 4. Lancer le Rebirth (AUCUNE répétition envoyée ici pour économiser la fluidité)
+            -- 4. Lancer le Rebirth ultra-rapide (méthode identique à l'Auto Rebirth avec Heartbeat)
             local startWait = tick()
             while isRunning() and (tick() - startWait < 5) do
+                RunService.Heartbeat:Wait()
                 pcall(function()
-                    rebirthRemote:InvokeServer("rebirthRequest")
+                    if canRebirth() then
+                        rebirthRemote:InvokeServer("rebirthRequest")
+                    end
                 end)
-                task.wait(0.3)
                 
                 local okC, canStillR = pcall(canRebirth)
                 if okC and not canStillR then
@@ -556,6 +563,10 @@ local function fastRebirthLoop(myId)
                 repList = buildRepList(petsFolder, SLOTS)
                 muscleEvent = findMuscleEvent(rEvents or ReplicatedStorage) or muscleEvent
             end
+        end
+
+        if savePlayerSizeEvent then
+            pcall(function() savePlayerSizeEvent:FireServer("toggleAutoLift") end)
         end
     end)
 end
