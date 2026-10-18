@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR rework
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -397,7 +397,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (AVEC REQUÊTE ULTRA-RAPIDE DE L'AUTO REBIRTH) =====================
+-- ===================== FAST REBIRTH LOOP (AVEC REQUÊTE ULTRA-RAPIDE DE REBIRTH & LOGIQUE DE REPS) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -536,7 +536,7 @@ local function fastRebirthLoop(myId)
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
 
-            -- 4. Lancer le Rebirth ultra-rapide (méthode identique à l'Auto Rebirth avec Heartbeat)
+            -- 4. Lancer le Rebirth ultra-rapide sans envoyer de reps (maximum de fluidité)[cite: 2]
             local startWait = tick()
             while isRunning() and (tick() - startWait < 5) do
                 RunService.Heartbeat:Wait()
