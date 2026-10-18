@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THRr
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -384,7 +384,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (REQUÊTE DIRECTE RAPIDE) =====================
+-- ===================== FAST REBIRTH LOOP (BASÉ SUR AUTO REBIRTH + LOGIQUE PETS) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -395,7 +395,9 @@ local function fastRebirthLoop(myId)
         if not rebirthRemote or not equipPetEvent then return end
 
         if savePlayerSizeEvent then
-            pcall(function() savePlayerSizeEvent:FireServer("toggleAutoLift") end)
+            pcall(function()
+                savePlayerSizeEvent:FireServer("toggleAutoLift")
+            end)
         end
 
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
@@ -523,7 +525,7 @@ local function fastRebirthLoop(myId)
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
 
-            -- 4. Lancer le Rebirth ultra-rapide (envoi direct de la requête)
+            -- 4. Boucle de renaissance instantanée (exactement comme l'Auto Rebirth)
             local startWait = tick()
             while isRunning() and (tick() - startWait < 3) do
                 RunService.Heartbeat:Wait()
@@ -546,7 +548,9 @@ local function fastRebirthLoop(myId)
         end
 
         if savePlayerSizeEvent then
-            pcall(function() savePlayerSizeEvent:FireServer("toggleAutoLift") end)
+            pcall(function()
+                savePlayerSizeEvent:FireServer("toggleAutoLift")
+            end)
         end
     end)
 end
