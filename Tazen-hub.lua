@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR rework
 
 local success, err = pcall(function()
 
@@ -223,7 +223,7 @@ local function findMuscleEvent(rEvents)
     return LocalPlayer:FindFirstChild("muscleEvent")
         or (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("muscleEvent"))
         or (rEvents and rEvents:FindFirstChild("muscleEvent"))
-        or ReplicatedStorage:FindFirstChild("rEvents") and ReplicatedStorage.rEvents:FindFirstChild("muscleEvent")
+        or (ReplicatedStorage:FindFirstChild("rEvents") and ReplicatedStorage.rEvents:FindFirstChild("muscleEvent"))
 end
 
 local function equipToolByName(toolKeyword)
@@ -568,9 +568,9 @@ local function autoRebirthLoop(myId)
         local dt = RunService.Heartbeat:Wait()
         local muscleEvent = findMuscleEvent(rEvents)
         
-        -- Auto rep fluide et fonctionnel sans pack (taux modéré pour économiser la mémoire)
-        if muscleEvent and repRate > 0 then
-            carry = carry + (math.min(repRate, REP_CAP) * 0.4) * dt
+        -- Auto rep inspiré du fast rebirth (utilise Heartbeat avec un taux fluide pour l'auto rebirth)
+        if muscleEvent and REP_CAP > 0 then
+            carry = carry + REP_CAP * dt
             local n = math.floor(carry)
             carry = carry - n
             for _ = 1, n do
