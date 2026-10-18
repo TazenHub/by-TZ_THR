@@ -1,5 +1,4 @@
--- Tazen hub V1 by TZ_THR
-
+-- Tazen Hub V2 - Complete Script
 local success, err = pcall(function()
 
 if game.PlaceId ~= 3623096087 then
@@ -96,28 +95,32 @@ task.spawn(function()
     end)
 end)
 
--- ===================== CONFIG & SAVE SYSTEM =====================
-local CONFIG_FILE_PREFIX = "TazenHub_Config_"
+-- ===================== CONFIG & GLOBAL SAVE SYSTEM (SERVER HOP PROOF) =====================
+local CONFIG_FILE_NAME = "TazenHub_Settings_V2.json"
+local savedConfigs = {}
 
-local function loadCategoryConfig(categoryName)
+local function loadAllConfigs()
     local ok, result = pcall(function()
-        if readfile and isfile and isfile(CONFIG_FILE_PREFIX .. categoryName .. ".json") then
-            return HttpService:JSONDecode(readfile(CONFIG_FILE_PREFIX .. categoryName .. ".json"))
+        if readfile and isfile and isfile(CONFIG_FILE_NAME) then
+            return HttpService:JSONDecode(readfile(CONFIG_FILE_NAME))
         end
     end)
     if ok and type(result) == "table" then
-        return result
+        savedConfigs = result
+    else
+        savedConfigs = {}
     end
-    return {}
 end
 
-local function saveCategoryConfig(categoryName, data)
+local function saveAllConfigs()
     pcall(function()
         if writefile then
-            writefile(CONFIG_FILE_PREFIX .. categoryName .. ".json", HttpService:JSONEncode(data))
+            writefile(CONFIG_FILE_NAME, HttpService:JSONEncode(savedConfigs))
         end
     end)
 end
+
+loadAllConfigs()
 
 -- ===================== SETTINGS =====================
 local REBIRTH_COOLDOWN = 4.0
@@ -433,7 +436,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (2.5S REP PETS + REBIRTH) =====================
+-- ===================== FAST REBIRTH LOOP =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -443,7 +446,6 @@ local function fastRebirthLoop(myId)
         if not rebirthRemote or not equipPetEvent then return end
 
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
-
         local SLOTS = 12                    
         local STARTUP_UNEQUIP_PER_FRAME = 20
         local LIST_REFRESH_EVERY = 10        
@@ -529,7 +531,6 @@ local function fastRebirthLoop(myId)
         local repList = buildRepList(petsFolder, SLOTS)
 
         if #hydraList == 0 or #repList == 0 then return end
-
         local muscleEvent = findMuscleEvent(rEvents)
 
         unequipAllPets(petsFolder)
@@ -539,7 +540,6 @@ local function fastRebirthLoop(myId)
         while isRunning() do
             cycle = cycle + 1
 
-            -- 1. Équiper les Rep Pets pendant 2.5 secondes
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
@@ -560,7 +560,6 @@ local function fastRebirthLoop(myId)
 
             if not isRunning() then break end
 
-            -- 2. Passer aux Rebirth Pets (x2 reb) pour le rebirth
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
@@ -568,7 +567,6 @@ local function fastRebirthLoop(myId)
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
 
-            -- Attente et validation du rebirth
             local startWait = tick()
             while isRunning() and (tick() - startWait < 5) do
                 pcall(function()
@@ -582,7 +580,6 @@ local function fastRebirthLoop(myId)
                 end
             end
 
-            -- 3. Retirer les Rebirth Pets
             for _, pet in ipairs(hydraList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
@@ -1290,61 +1287,11 @@ local function addLabel(page, text, height)
     return { SetText = function(_, t) l.Text = t end }
 end
 
-local function addToggle(page, name, defaultState, callback)
+local function addSavedToggle(page, name, settingKey, defaultState, callback)
     local initialState = defaultState
-    local f = new("Frame", {
-        Size = UDim2.new(1, 0, 0, 36),
-        BackgroundColor3 = T.Element,
-        BorderSizePixel = 0,
-        ZIndex = 6,
-    }, page)
-    corner(f, 4)
-
-    textLabel({
-        Size = UDim2.new(1, -60, 1, 0),
-        Position = UDim2.new(0, 8, 0, 0),
-        Text = name,
-        TextSize = 12,
-        ZIndex = 7,
-    }, f)
-
-    local sw = new("Frame", {
-        Size = UDim2.fromOffset(36, 18),
-        Position = UDim2.new(1, -44, 0.5, -9),
-        BackgroundColor3 = initialState and T.Accent or T.Off,
-        BorderSizePixel = 0,
-        ZIndex = 7,
-    }, f)
-    corner(sw, 9)
-    local knob = new("Frame", {
-        Size = UDim2.fromOffset(14, 14),
-        Position = initialState and UDim2.fromOffset(20, 2) or UDim2.fromOffset(2, 2),
-        BackgroundColor3 = Color3.new(1, 1, 1),
-        BorderSizePixel = 0,
-        ZIndex = 8,
-    }, sw)
-    corner(knob, 7)
-
-    local hit = new("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "", ZIndex = 9 }, f)
-
-    local obj = { Value = initialState }
-    function obj:Set(v, noSave)
-        if v == self.Value and not noSave then return end
-        self.Value = v
-        local info = TweenInfo.new(0.15, Enum.EasingStyle.Quad)
-        TweenService:Create(knob, info, { Position = v and UDim2.fromOffset(20, 2) or UDim2.fromOffset(2, 2) }):Play()
-        TweenService:Create(sw, info, { BackgroundColor3 = v and T.Accent or T.Off }):Play()
-        if callback then callback(v) end
+    if savedConfigs[settingKey] ~= nil then
+        initialState = savedConfigs[settingKey]
     end
-
-    hit.Activated:Connect(function() obj:Set(not obj.Value) end)
-    return obj
-end
-
-local function addSavedToggle(page, name, categoryKey, settingKey, defaultState, callback)
-    local configData = loadCategoryConfig(categoryKey)
-    local initialState = defaultState
-    if configData[settingKey] ~= nil then initialState = configData[settingKey] end
 
     local f = new("Frame", {
         Size = UDim2.new(1, 0, 0, 36),
@@ -1390,14 +1337,22 @@ local function addSavedToggle(page, name, categoryKey, settingKey, defaultState,
         TweenService:Create(sw, info, { BackgroundColor3 = v and T.Accent or T.Off }):Play()
         
         if not noSave then
-            local currentConfig = loadCategoryConfig(categoryKey)
-            currentConfig[settingKey] = v
-            saveCategoryConfig(categoryKey, currentConfig)
+            savedConfigs[settingKey] = v
+            saveAllConfigs()
         end
         if callback then callback(v) end
     end
 
     hit.Activated:Connect(function() obj:Set(not obj.Value) end)
+
+    -- Auto-execution lors du Server Hop si le toggle était actif
+    if initialState and callback then
+        task.spawn(function()
+            task.wait(1.5)
+            pcall(function() callback(true) end)
+        end)
+    end
+
     return obj
 end
 
@@ -1543,7 +1498,7 @@ end
 -- Fast Rebirth
 addSection(fastPage, E.fire .. " Fast Rebirth (Pack)")
 addLabel(fastPage, "⚠️ You need pack for fast rebirth", 32)
-fastToggle = addToggle(fastPage, E.bolt .. " Fast Rebirth", false, function(v)
+fastToggle = addSavedToggle(fastPage, E.bolt .. " Fast Rebirth", "FastRebirth", false, function(v)
     fastRunId = fastRunId + 1
     if v then
         fastStartTime = tick()
@@ -1558,7 +1513,7 @@ fastToggle = addToggle(fastPage, E.bolt .. " Fast Rebirth", false, function(v)
     end
 end)
 
-equipWeightFastToggle = addSavedToggle(fastPage, E.wrench .. " Equip Weight", "FastRebirthTab", "EquipWeightFast", false, function(v)
+equipWeightFastToggle = addSavedToggle(fastPage, E.wrench .. " Equip Weight", "EquipWeightFast", false, function(v)
     if v then
         equipToolByName("weight")
         notify("Equip", E.ok .. " Weight equipped")
@@ -1571,7 +1526,7 @@ local fastCalcLabel = addLabel(fastPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1
 -- Auto Rebirth
 addSection(autoPage, E.cycle .. " Auto Rebirth (No Pack)")
 addLabel(autoPage, "⚠️ This tab can be used by everyone", 32)
-autoToggle = addToggle(autoPage, E.cycle .. " Auto Rebirth", false, function(v)
+autoToggle = addSavedToggle(autoPage, E.cycle .. " Auto Rebirth", "AutoRebirth", false, function(v)
     autoRunId = autoRunId + 1
     if v then
         autoStartTime = tick()
@@ -1586,7 +1541,7 @@ autoToggle = addToggle(autoPage, E.cycle .. " Auto Rebirth", false, function(v)
     end
 end)
 
-equipWeightAutoToggle = addSavedToggle(autoPage, E.wrench .. " Equip Weight", "AutoRebirthTab", "EquipWeightAuto", false, function(v)
+equipWeightAutoToggle = addSavedToggle(autoPage, E.wrench .. " Equip Weight", "EquipWeightAuto", false, function(v)
     if v then
         equipToolByName("weight")
         notify("Equip", E.ok .. " Weight equipped")
@@ -1598,7 +1553,7 @@ local autoCalcLabel = addLabel(autoPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1
 
 -- Fast Strength & Durability
 addSection(strPage, E.muscle .. " Fast Strength & Durability")
-repToggle = addToggle(strPage, E.muscle .. " Fast Strength", false, function(v)
+repToggle = addSavedToggle(strPage, E.muscle .. " Fast Strength", "FastStrength", false, function(v)
     repRunId = repRunId + 1
     if v then
         repStartTime = tick()
@@ -1613,7 +1568,7 @@ repToggle = addToggle(strPage, E.muscle .. " Fast Strength", false, function(v)
     end
 end)
 
-equipPushupToggle = addSavedToggle(strPage, E.wrench .. " Equip Pushup", "StrengthTab", "EquipPushup", false, function(v)
+equipPushupToggle = addSavedToggle(strPage, E.wrench .. " Equip Pushup", "EquipPushup", false, function(v)
     if v then
         equipToolByName("pushup")
         notify("Equip", E.ok .. " Pushup equipped")
@@ -1627,7 +1582,7 @@ local durabilityCalcLabel = addLabel(strPage, E.shieldAlt .. " Durability Tot: 0
 
 -- Killing Tab
 addSection(killPage, E.sword .. " Killing")
-killAllToggle = addSavedToggle(killPage, E.sword .. " Auto Kill All Players", "Killing", "AutoKillAll", false, function(v)
+killAllToggle = addSavedToggle(killPage, E.sword .. " Auto Kill All Players", "AutoKillAll", false, function(v)
     killRunId = killRunId + 1
     if v then
         if killTargetToggle and killTargetToggle.Value then killTargetToggle:Set(false) end
@@ -1638,7 +1593,7 @@ killAllToggle = addSavedToggle(killPage, E.sword .. " Auto Kill All Players", "K
     end
 end)
 
-killTargetToggle = addSavedToggle(killPage, E.target .. " Kill Target Players Only", "Killing", "KillTarget", false, function(v)
+killTargetToggle = addSavedToggle(killPage, E.target .. " Kill Target Players Only", "KillTarget", false, function(v)
     killRunId = killRunId + 1
     if v then
         if killAllToggle and killAllToggle.Value then killAllToggle:Set(false) end
@@ -1649,20 +1604,10 @@ killTargetToggle = addSavedToggle(killPage, E.target .. " Kill Target Players On
     end
 end)
 
-task.spawn(function()
-    task.wait(2)
-    if not alive then return end
-    if killAllToggle.Value then
-        killAllToggle:Set(true, true)
-    elseif killTargetToggle.Value then
-        killTargetToggle:Set(true, true)
-    end
-end)
-
 local killStatusLabel = addLabel(killPage, E.clip .. " " .. killStatus, 36)
 
 addSection(killPage, E.shield .. " White List")
-autoWhitelistToggle = addToggle(killPage, E.heart .. " Auto White List Friends", false, function(v)
+autoWhitelistToggle = addSavedToggle(killPage, E.heart .. " Auto White List Friends", "AutoWhitelist", false, function(v)
     if v then
         local count = 0
         for _, plr in ipairs(Players:GetPlayers()) do
@@ -1793,17 +1738,17 @@ task.spawn(refreshPlayerListUI)
 
 -- Misc Tab
 addSection(miscPage, E.toolbox .. " Utilities")
-antiAfkToggle = addToggle(miscPage, E.sleep .. " Anti AFK", false, function(v)
+antiAfkToggle = addSavedToggle(miscPage, E.sleep .. " Anti AFK", "AntiAfk", false, function(v)
     setAntiAfk(v)
     notifyState(E.sleep .. " Anti AFK", v)
 end)
 
-antiLagToggle = addToggle(miscPage, E.rocket .. " Anti Lag", false, function(v)
+antiLagToggle = addSavedToggle(miscPage, E.rocket .. " Anti Lag", "AntiLag", false, function(v)
     if v then antiLagStart() else antiLagStop() end
     notifyState(E.rocket .. " Anti Lag", v)
 end)
 
-autoWheelToggle = addToggle(miscPage, E.wheel .. " Auto Wheel", false, function(v)
+autoWheelToggle = addSavedToggle(miscPage, E.wheel .. " Auto Wheel", "AutoWheel", false, function(v)
     wheelRunId = wheelRunId + 1
     if v then
         notifyState(E.wheel .. " Auto Wheel", true)
@@ -1813,17 +1758,17 @@ autoWheelToggle = addToggle(miscPage, E.wheel .. " Auto Wheel", false, function(
     end
 end)
 
-hidePetsToggle = addSavedToggle(miscPage, E.sparkles .. " Hide Pets", "MiscTab", "HidePets", false, function(v)
+hidePetsToggle = addSavedToggle(miscPage, E.sparkles .. " Hide Pets", "HidePets", false, function(v)
     setHidePets(v)
     notifyState("Hide Pets", v)
 end)
 
-hidePopupsToggle = addSavedToggle(miscPage, E.clip .. " Hide Popups", "MiscTab", "HidePopups", false, function(v)
+hidePopupsToggle = addSavedToggle(miscPage, E.clip .. " Hide Popups", "HidePopups", false, function(v)
     setHidePopups(v)
     notifyState("Hide Popups", v)
 end)
 
-autoSaveConfigToggle = addSavedToggle(miscPage, E.wrench .. " Save Config", "MiscTab", "AutoSaveConfig", true, function(v)
+autoSaveConfigToggle = addSavedToggle(miscPage, E.wrench .. " Save Config", "AutoSaveConfig", true, function(v)
     notify("Config", v and (E.ok .. " Auto-save enabled") or (E.no .. " Auto-save disabled"))
 end)
 
@@ -1906,7 +1851,7 @@ local function autoEggLoop(myId)
     end
 end
 
-autoEggToggle = addToggle(miscPage, E.egg .. " Auto Eat Protein Egg", false, function(v)
+autoEggToggle = addSavedToggle(miscPage, E.egg .. " Auto Eat Protein Egg", "AutoEatEgg", false, function(v)
     eggRunId = eggRunId + 1
     if v then
         eggEaten = 0
@@ -1953,7 +1898,7 @@ end)
 
 selectTab(TAB_FAST)
 
--- Appliquer les configurations sauvegardées au démarrage
+-- Appliquer les configurations sauvegardées au démarrage et gérer les server hops
 task.spawn(function()
     task.wait(1)
     if hidePetsToggle and hidePetsToggle.Value then setHidePets(true) end
