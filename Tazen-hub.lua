@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR rework
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -96,28 +96,62 @@ task.spawn(function()
     end)
 end)
 
--- ===================== CONFIG & SAVE SYSTEM =====================
+-- ===================== CONFIG & SAVE SYSTEM (ROBUST & AUTO-SYNC) =====================
 local CONFIG_FILE_PREFIX = "TazenHub_Config_"
+local activeConfigs = {}
+local autoSaveConfigToggleInstance = nil
 
 local function loadCategoryConfig(categoryName)
+    if activeConfigs[categoryName] then
+        return activeConfigs[categoryName]
+    end
     local ok, result = pcall(function()
         if readfile and isfile and isfile(CONFIG_FILE_PREFIX .. categoryName .. ".json") then
             return HttpService:JSONDecode(readfile(CONFIG_FILE_PREFIX .. categoryName .. ".json"))
         end
     end)
     if ok and type(result) == "table" then
+        activeConfigs[categoryName] = result
         return result
     end
-    return {}
+    activeConfigs[categoryName] = {}
+    return activeConfigs[categoryName]
 end
 
 local function saveCategoryConfig(categoryName, data)
+    activeConfigs[categoryName] = data
     pcall(function()
         if writefile then
             writefile(CONFIG_FILE_PREFIX .. categoryName .. ".json", HttpService:JSONEncode(data))
         end
     end)
 end
+
+-- Sauvegarde globale de toutes les configurations en mémoire (utile en cas de Server Hop / Mise à jour)
+local function saveAllConfigs()
+    if autoSaveConfigToggleInstance and not autoSaveConfigToggleInstance.Value then return end
+    for categoryName, data in pairs(activeConfigs) do
+        pcall(function()
+            if writefile then
+                writefile(CONFIG_FILE_PREFIX .. categoryName .. ".json", HttpService:JSONEncode(data))
+            end
+        end)
+    end
+end
+
+-- Sauvegarde automatique en arrière-plan toutes les 10 secondes + à la fermeture
+task.spawn(function()
+    while true do
+        task.wait(10)
+        saveAllConfigs()
+    end
+end)
+
+pcall(function()
+    game:BindToClose(function()
+        saveAllConfigs()
+    end)
+end)
 
 -- ===================== SETTINGS =====================
 local E = {
@@ -562,7 +596,7 @@ local function autoRebirthLoop(myId)
     local savePlayerSizeEvent = rEvents and rEvents:WaitForChild("savePlayerSizeEvent", 5)
     if not rebirthRemote then return end
 
-    -- Active l'auto-lift natif du jeu[cite: 3]
+    -- Active l'auto-lift natif du jeu
     if savePlayerSizeEvent then
         pcall(function()
             savePlayerSizeEvent:FireServer("toggleAutoLift")
@@ -1311,12 +1345,11 @@ local function addSavedToggle(page, name, categoryKey, settingKey, defaultState,
         TweenService:Create(knob, info, { Position = v and UDim2.fromOffset(20, 2) or UDim2.fromOffset(2, 2) }):Play()
         TweenService:Create(sw, info, { BackgroundColor3 = v and T.Accent or T.Off }):Play()
         
-        if not noSave then
-            local currentConfig = loadCategoryConfig(categoryKey)
-            currentConfig[settingKey] = v
-            saveCategoryConfig(categoryKey, currentConfig)
-        end
-        if callback then callback(v) end
+        local currentConfig = loadCategoryConfig(categoryKey)
+        currentConfig[settingKey] = v
+        saveCategoryConfig(categoryKey, currentConfig)
+        
+        if not noSave and callback then callback(v) end
     end
 
     hit.Activated:Connect(function() obj:Set(not obj.Value) end)
@@ -1753,6 +1786,7 @@ end)
 autoSaveConfigToggle = addSavedToggle(miscPage, E.wrench .. " Save Config", "MiscTab", "AutoSaveConfig", true, function(v)
     notify("Config", v and (E.ok .. " Auto-save enabled") or (E.no .. " Auto-save disabled"))
 end)
+autoSaveConfigToggleInstance = autoSaveConfigToggle
 
 -- ===================== AUTO EAT PROTEIN EGG =====================
 local eggEaten = 0
@@ -1947,6 +1981,7 @@ end)
 
 closeBtn.Activated:Connect(function()
     alive = false
+    saveAllConfigs()
     fastRunId = fastRunId + 1
     autoRunId = autoRunId + 1
     repRunId = repRunId + 1
