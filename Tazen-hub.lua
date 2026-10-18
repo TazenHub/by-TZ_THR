@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR rework
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -120,6 +120,8 @@ local function saveCategoryConfig(categoryName, data)
 end
 
 -- ===================== SETTINGS =====================
+local REBIRTH_COOLDOWN = 4.0
+
 local E = {
     bolt = "⚡", cycle = "🔄", muscle = "💪", toolbox = "🧰",
     sleep = "😴", rocket = "🚀", sparkles = "✨", heart = "💕",
@@ -170,6 +172,7 @@ local repStartTime = nil
 
 local whitelistPlayers = {}
 local targetPlayers = {}
+local lastKillTick = tick()
 
 local antiAfkConnection = nil
 local function setAntiAfk(state)
@@ -247,7 +250,31 @@ local function equipFists()
     equipToolByName("punch")
 end
 
+local lastHopTry = 0
+local function serverHop()
+    killStatus = "Changing server..."
+    pcall(function()
+        local servers = {}
+        local req = game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100")
+        local data = HttpService:JSONDecode(req)
+        if data and data.data then
+            for _, s in ipairs(data.data) do
+                if type(s) == "table" and s.playing < s.maxPlayers and s.id ~= game.JobId then
+                    table.insert(servers, s.id)
+                end
+            end
+        end
+        if #servers > 0 then
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, servers[math.random(1, #servers)], LocalPlayer)
+        else
+            TeleportService:Teleport(game.PlaceId, LocalPlayer)
+        end
+    end)
+end
+
 local function autoKillAllLoop(myId)
+    lastKillTick = tick()
+
     while killRunId == myId and alive do
         pcall(function()
             local character = LocalPlayer.Character
@@ -287,6 +314,7 @@ local function autoKillAllLoop(myId)
                     if pHum then
                         deathConn = pHum.Died:Connect(function()
                             wasAlive = false
+                            lastKillTick = tick()
                             if deathConn then deathConn:Disconnect() end
                         end)
                     end
@@ -317,12 +345,19 @@ local function autoKillAllLoop(myId)
                     task.wait(0.5)
                 end
             end
+
+            if tick() - lastKillTick > 60 and tick() - lastHopTry > 20 then
+                lastHopTry = tick()
+                task.spawn(serverHop)
+            end
         end)
         task.wait(0.1)
     end
 end
 
 local function killTargetPlayerLoop(myId)
+    lastKillTick = tick()
+
     while killRunId == myId and alive do
         pcall(function()
             local character = LocalPlayer.Character
@@ -362,6 +397,7 @@ local function killTargetPlayerLoop(myId)
                     if pHum then
                         deathConn = pHum.Died:Connect(function()
                             wasAlive = false
+                            lastKillTick = tick()
                             if deathConn then deathConn:Disconnect() end
                         end)
                     end
@@ -397,7 +433,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (RESTORÉ & OPTIMISÉ) =====================
+-- ===================== FAST REBIRTH LOOP (2.5S REP PETS + REBIRTH) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -407,6 +443,7 @@ local function fastRebirthLoop(myId)
         if not rebirthRemote or not equipPetEvent then return end
 
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
+
         local SLOTS = 12                    
         local STARTUP_UNEQUIP_PER_FRAME = 20
         local LIST_REFRESH_EVERY = 10        
@@ -492,6 +529,7 @@ local function fastRebirthLoop(myId)
         local repList = buildRepList(petsFolder, SLOTS)
 
         if #hydraList == 0 or #repList == 0 then return end
+
         local muscleEvent = findMuscleEvent(rEvents)
 
         unequipAllPets(petsFolder)
@@ -501,6 +539,7 @@ local function fastRebirthLoop(myId)
         while isRunning() do
             cycle = cycle + 1
 
+            -- 1. Équiper les Rep Pets pendant 2.5 secondes
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
@@ -521,6 +560,7 @@ local function fastRebirthLoop(myId)
 
             if not isRunning() then break end
 
+            -- 2. Passer aux Rebirth Pets (x2 reb) pour le rebirth
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
@@ -528,6 +568,7 @@ local function fastRebirthLoop(myId)
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
 
+            -- Attente et validation du rebirth
             local startWait = tick()
             while isRunning() and (tick() - startWait < 5) do
                 pcall(function()
@@ -541,6 +582,7 @@ local function fastRebirthLoop(myId)
                 end
             end
 
+            -- 3. Retirer les Rebirth Pets
             for _, pet in ipairs(hydraList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
@@ -555,60 +597,47 @@ local function fastRebirthLoop(myId)
     end)
 end
 
--- ===================== AUTO REBIRTH (NATIVE AUTO-LIFT + INSTANT REBIRTH) =====================
 local function autoRebirthLoop(myId)
     local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
     local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
-    local savePlayerSizeEvent = rEvents and rEvents:WaitForChild("savePlayerSizeEvent", 5)
     if not rebirthRemote then return end
 
-    if savePlayerSizeEvent then
-        pcall(function()
-            savePlayerSizeEvent:FireServer("toggleAutoLift")
-        end)
-    end
-
-    while autoRunId == myId and alive do
-        RunService.Heartbeat:Wait()
-        
+    while autoRunId == myId do
         pcall(function()
             if canRebirth() then
                 rebirthRemote:InvokeServer("rebirthRequest")
             end
         end)
-    end
-
-    if savePlayerSizeEvent then
-        pcall(function()
-            savePlayerSizeEvent:FireServer("toggleAutoLift")
-        end)
+        task.wait(REBIRTH_COOLDOWN)
     end
 end
 
 local function fastRepLoop(myId)
     local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
     if not rEvents then return end
-    
+    local muscleEvent = findMuscleEvent(rEvents)
+    if not muscleEvent then return end
+
     local carry = 0
     local lastCheck = tick()
     while repRunId == myId and alive do
         local dt = RunService.Heartbeat:Wait()
-        local muscleEvent = findMuscleEvent(rEvents)
 
         if tick() - lastCheck > 1 then
             lastCheck = tick()
+            if not muscleEvent.Parent then
+                muscleEvent = findMuscleEvent(rEvents) or muscleEvent
+            end
         end
 
         local rate = math.min(repRate, REP_CAP)
-        if muscleEvent and rate > 0 then
+        if rate > 0 then
             carry = carry + rate * dt
             local n = math.floor(carry)
             carry = carry - n
 
             for _ = 1, n do
-                pcall(function()
-                    muscleEvent:FireServer("rep")
-                end)
+                pcall(function() muscleEvent:FireServer("rep") end)
             end
             repTotal = repTotal + n
         end
@@ -1261,6 +1290,57 @@ local function addLabel(page, text, height)
     return { SetText = function(_, t) l.Text = t end }
 end
 
+local function addToggle(page, name, defaultState, callback)
+    local initialState = defaultState
+    local f = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 36),
+        BackgroundColor3 = T.Element,
+        BorderSizePixel = 0,
+        ZIndex = 6,
+    }, page)
+    corner(f, 4)
+
+    textLabel({
+        Size = UDim2.new(1, -60, 1, 0),
+        Position = UDim2.new(0, 8, 0, 0),
+        Text = name,
+        TextSize = 12,
+        ZIndex = 7,
+    }, f)
+
+    local sw = new("Frame", {
+        Size = UDim2.fromOffset(36, 18),
+        Position = UDim2.new(1, -44, 0.5, -9),
+        BackgroundColor3 = initialState and T.Accent or T.Off,
+        BorderSizePixel = 0,
+        ZIndex = 7,
+    }, f)
+    corner(sw, 9)
+    local knob = new("Frame", {
+        Size = UDim2.fromOffset(14, 14),
+        Position = initialState and UDim2.fromOffset(20, 2) or UDim2.fromOffset(2, 2),
+        BackgroundColor3 = Color3.new(1, 1, 1),
+        BorderSizePixel = 0,
+        ZIndex = 8,
+    }, sw)
+    corner(knob, 7)
+
+    local hit = new("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "", ZIndex = 9 }, f)
+
+    local obj = { Value = initialState }
+    function obj:Set(v, noSave)
+        if v == self.Value and not noSave then return end
+        self.Value = v
+        local info = TweenInfo.new(0.15, Enum.EasingStyle.Quad)
+        TweenService:Create(knob, info, { Position = v and UDim2.fromOffset(20, 2) or UDim2.fromOffset(2, 2) }):Play()
+        TweenService:Create(sw, info, { BackgroundColor3 = v and T.Accent or T.Off }):Play()
+        if callback then callback(v) end
+    end
+
+    hit.Activated:Connect(function() obj:Set(not obj.Value) end)
+    return obj
+end
+
 local function addSavedToggle(page, name, categoryKey, settingKey, defaultState, callback)
     local configData = loadCategoryConfig(categoryKey)
     local initialState = defaultState
@@ -1318,15 +1398,94 @@ local function addSavedToggle(page, name, categoryKey, settingKey, defaultState,
     end
 
     hit.Activated:Connect(function() obj:Set(not obj.Value) end)
-    
-    if initialState and callback then
-        task.spawn(function()
-            task.wait(1.5)
-            pcall(function() callback(true) end)
-        end)
+    return obj
+end
+
+local repSliderUpdateFunc = function() end
+
+local function addSlider(page, name, min, max, default, callback)
+    local initialVal = default
+    local f = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 52),
+        BackgroundColor3 = T.Element,
+        BorderSizePixel = 0,
+        ZIndex = 6,
+    }, page)
+    corner(f, 4)
+
+    textLabel({ Size = UDim2.new(1, -80, 0, 20), Position = UDim2.new(0, 8, 0, 6), Text = name, TextSize = 12, ZIndex = 7 }, f)
+    local valueLabel = textLabel({
+        Size = UDim2.fromOffset(70, 20),
+        Position = UDim2.new(1, -78, 0, 6),
+        Text = tostring(initialVal),
+        TextXAlignment = Enum.TextXAlignment.Right,
+        TextColor3 = T.Accent,
+        Font = Enum.Font.GothamBold,
+        TextSize = 12,
+        ZIndex = 7,
+    }, f)
+
+    local track = new("Frame", {
+        Size = UDim2.new(1, -16, 0, 6),
+        Position = UDim2.new(0, 8, 0, 34),
+        BackgroundColor3 = T.Off,
+        BorderSizePixel = 0,
+        ZIndex = 7,
+    }, f)
+    corner(track, 3)
+    local fill = new("Frame", {
+        Size = UDim2.new((initialVal - min) / (max - min), 0, 1, 0),
+        BackgroundColor3 = T.Accent,
+        BorderSizePixel = 0,
+        ZIndex = 8,
+    }, track)
+    corner(fill, 3)
+
+    local hit = new("TextButton", {
+        Size = UDim2.new(1, -8, 0, 24),
+        Position = UDim2.new(0, 4, 0, 28),
+        BackgroundTransparency = 1,
+        Text = "",
+        ZIndex = 9,
+    }, f)
+
+    local function setValue(val)
+        val = math.clamp(val, min, max)
+        fill.Size = UDim2.new((val - min) / (max - min), 0, 1, 0)
+        valueLabel.Text = tostring(val)
+        callback(val)
     end
 
-    return obj
+    local dragging = false
+    local function update(x)
+        local rel = math.clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
+        local value = math.floor(min + rel * (max - min) + 0.5)
+        setValue(value)
+    end
+
+    hit.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            page.ScrollingEnabled = false
+            update(input.Position.X)
+        end
+    end)
+    connect(UserInputService.InputChanged, function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch) then
+            update(input.Position.X)
+        end
+    end)
+    connect(UserInputService.InputEnded, function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch) then
+            dragging = false
+            page.ScrollingEnabled = true
+        end
+    end)
+
+    return setValue
 end
 
 local function notify(title, text)
@@ -1384,13 +1543,13 @@ end
 -- Fast Rebirth
 addSection(fastPage, E.fire .. " Fast Rebirth (Pack)")
 addLabel(fastPage, "⚠️ You need pack for fast rebirth", 32)
-fastToggle = addSavedToggle(fastPage, E.bolt .. " Fast Rebirth", "FastRebirthTab", "FastRebirth", false, function(v)
+fastToggle = addToggle(fastPage, E.bolt .. " Fast Rebirth", false, function(v)
     fastRunId = fastRunId + 1
     if v then
         fastStartTime = tick()
         StatTracker.reset("rebirths")
         autoRunId = autoRunId + 1
-        if autoToggle then autoToggle:Set(false, true) end
+        if autoToggle then autoToggle:Set(false) end
         notifyState(E.bolt .. " Fast Rebirth", true)
         task.spawn(fastRebirthLoop, fastRunId)
     else
@@ -1412,13 +1571,13 @@ local fastCalcLabel = addLabel(fastPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1
 -- Auto Rebirth
 addSection(autoPage, E.cycle .. " Auto Rebirth (No Pack)")
 addLabel(autoPage, "⚠️ This tab can be used by everyone", 32)
-autoToggle = addSavedToggle(autoPage, E.cycle .. " Auto Rebirth", "AutoRebirthTab", "AutoRebirth", false, function(v)
+autoToggle = addToggle(autoPage, E.cycle .. " Auto Rebirth", false, function(v)
     autoRunId = autoRunId + 1
     if v then
         autoStartTime = tick()
         StatTracker.reset("rebirths")
         fastRunId = fastRunId + 1
-        if fastToggle then fastToggle:Set(false, true) end
+        if fastToggle then fastToggle:Set(false) end
         notifyState(E.cycle .. " Auto Rebirth", true)
         task.spawn(autoRebirthLoop, autoRunId)
     else
@@ -1439,7 +1598,7 @@ local autoCalcLabel = addLabel(autoPage, E.chart .. " Tot: 0 | 1m: 0 | 1h: 0 | 1
 
 -- Fast Strength & Durability
 addSection(strPage, E.muscle .. " Fast Strength & Durability")
-repToggle = addSavedToggle(strPage, E.muscle .. " Fast Strength", "StrengthTab", "FastStrength", false, function(v)
+repToggle = addToggle(strPage, E.muscle .. " Fast Strength", false, function(v)
     repRunId = repRunId + 1
     if v then
         repStartTime = tick()
@@ -1461,99 +1620,7 @@ equipPushupToggle = addSavedToggle(strPage, E.wrench .. " Equip Pushup", "Streng
     end
 end)
 
-local function addSavedSlider(page, name, categoryKey, settingKey, min, max, default, callback)
-    local configData = loadCategoryConfig(categoryKey)
-    local initialVal = default
-    if configData[settingKey] ~= nil then initialVal = configData[settingKey] end
-    
-    local f = new("Frame", {
-        Size = UDim2.new(1, 0, 0, 52),
-        BackgroundColor3 = T.Element,
-        BorderSizePixel = 0,
-        ZIndex = 6,
-    }, page)
-    corner(f, 4)
-
-    textLabel({ Size = UDim2.new(1, -80, 0, 20), Position = UDim2.new(0, 8, 0, 6), Text = name, TextSize = 12, ZIndex = 7 }, f)
-    local valueLabel = textLabel({
-        Size = UDim2.fromOffset(70, 20),
-        Position = UDim2.new(1, -78, 0, 6),
-        Text = tostring(initialVal),
-        TextXAlignment = Enum.TextXAlignment.Right,
-        TextColor3 = T.Accent,
-        Font = Enum.Font.GothamBold,
-        TextSize = 12,
-        ZIndex = 7,
-    }, f)
-
-    local track = new("Frame", {
-        Size = UDim2.new(1, -16, 0, 6),
-        Position = UDim2.new(0, 8, 0, 34),
-        BackgroundColor3 = T.Off,
-        BorderSizePixel = 0,
-        ZIndex = 7,
-    }, f)
-    corner(track, 3)
-    local fill = new("Frame", {
-        Size = UDim2.new((initialVal - min) / (max - min), 0, 1, 0),
-        BackgroundColor3 = T.Accent,
-        BorderSizePixel = 0,
-        ZIndex = 8,
-    }, track)
-    corner(fill, 3)
-
-    local hit = new("TextButton", {
-        Size = UDim2.new(1, -8, 0, 24),
-        Position = UDim2.new(0, 4, 0, 28),
-        BackgroundTransparency = 1,
-        Text = "",
-        ZIndex = 9,
-    }, f)
-
-    local function setValue(val)
-        val = math.clamp(val, min, max)
-        fill.Size = UDim2.new((val - min) / (max - min), 0, 1, 0)
-        valueLabel.Text = tostring(val)
-        local currentConfig = loadCategoryConfig(categoryKey)
-        currentConfig[settingKey] = val
-        saveCategoryConfig(categoryKey, currentConfig)
-        callback(val)
-    end
-
-    local dragging = false
-    local function update(x)
-        local rel = math.clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
-        local value = math.floor(min + rel * (max - min) + 0.5)
-        setValue(value)
-    end
-
-    hit.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            page.ScrollingEnabled = false
-            update(input.Position.X)
-        end
-    end)
-    connect(UserInputService.InputChanged, function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
-            or input.UserInputType == Enum.UserInputType.Touch) then
-            update(input.Position.X)
-        end
-    end)
-    connect(UserInputService.InputEnded, function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch) then
-            dragging = false
-            page.ScrollingEnabled = true
-        end
-    end)
-
-    callback(initialVal)
-    return setValue
-end
-
-addSavedSlider(strPage, E.wrench .. " Reps per second", "StrengthTab", "RepsPerSec", 0, REP_CAP, math.min(repRate, REP_CAP), function(v) repRate = math.min(v, REP_CAP) end)
+repSliderUpdateFunc = addSlider(strPage, E.wrench .. " Reps per second", 0, REP_CAP, math.min(repRate, REP_CAP), function(v) repRate = math.min(v, REP_CAP) end)
 local repTimerLabel = addLabel(strPage, E.clock .. " Session Time: 0s | Avg Reps/s: 0", 34)
 local repCalcLabel = addLabel(strPage, E.muscle .. " Strength Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
 local durabilityCalcLabel = addLabel(strPage, E.shieldAlt .. " Durability Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
@@ -1563,7 +1630,7 @@ addSection(killPage, E.sword .. " Killing")
 killAllToggle = addSavedToggle(killPage, E.sword .. " Auto Kill All Players", "Killing", "AutoKillAll", false, function(v)
     killRunId = killRunId + 1
     if v then
-        if killTargetToggle and killTargetToggle.Value then killTargetToggle:Set(false, true) end
+        if killTargetToggle and killTargetToggle.Value then killTargetToggle:Set(false) end
         notifyState("Auto Kill All", true)
         task.spawn(autoKillAllLoop, killRunId)
     else
@@ -1574,7 +1641,7 @@ end)
 killTargetToggle = addSavedToggle(killPage, E.target .. " Kill Target Players Only", "Killing", "KillTarget", false, function(v)
     killRunId = killRunId + 1
     if v then
-        if killAllToggle and killAllToggle.Value then killAllToggle:Set(false, true) end
+        if killAllToggle and killAllToggle.Value then killAllToggle:Set(false) end
         notifyState("Kill Target Only", true)
         task.spawn(killTargetPlayerLoop, killRunId)
     else
@@ -1595,7 +1662,7 @@ end)
 local killStatusLabel = addLabel(killPage, E.clip .. " " .. killStatus, 36)
 
 addSection(killPage, E.shield .. " White List")
-autoWhitelistToggle = addSavedToggle(killPage, E.heart .. " Auto White List Friends", "Killing", "AutoWhitelist", false, function(v)
+autoWhitelistToggle = addToggle(killPage, E.heart .. " Auto White List Friends", false, function(v)
     if v then
         local count = 0
         for _, plr in ipairs(Players:GetPlayers()) do
@@ -1726,17 +1793,17 @@ task.spawn(refreshPlayerListUI)
 
 -- Misc Tab
 addSection(miscPage, E.toolbox .. " Utilities")
-antiAfkToggle = addSavedToggle(miscPage, E.sleep .. " Anti AFK", "MiscTab", "AntiAfk", false, function(v)
+antiAfkToggle = addToggle(miscPage, E.sleep .. " Anti AFK", false, function(v)
     setAntiAfk(v)
     notifyState(E.sleep .. " Anti AFK", v)
 end)
 
-antiLagToggle = addSavedToggle(miscPage, E.rocket .. " Anti Lag", "MiscTab", "AntiLag", false, function(v)
+antiLagToggle = addToggle(miscPage, E.rocket .. " Anti Lag", false, function(v)
     if v then antiLagStart() else antiLagStop() end
     notifyState(E.rocket .. " Anti Lag", v)
 end)
 
-autoWheelToggle = addSavedToggle(miscPage, E.wheel .. " Auto Wheel", "MiscTab", "AutoWheel", false, function(v)
+autoWheelToggle = addToggle(miscPage, E.wheel .. " Auto Wheel", false, function(v)
     wheelRunId = wheelRunId + 1
     if v then
         notifyState(E.wheel .. " Auto Wheel", true)
@@ -1823,7 +1890,7 @@ local function autoEggLoop(myId)
                 if noEgg >= 3 then
                     pcall(updateEggLabel)
                     notify(E.egg .. " Protein Egg", "No Protein Egg left in inventory")
-                    if autoEggToggle then autoEggToggle:Set(false, true) end
+                    if autoEggToggle then autoEggToggle:Set(false) end
                     return
                 end
             elseif res == "eaten" then
@@ -1839,7 +1906,7 @@ local function autoEggLoop(myId)
     end
 end
 
-autoEggToggle = addSavedToggle(miscPage, E.egg .. " Auto Eat Protein Egg", "MiscTab", "AutoEatEgg", false, function(v)
+autoEggToggle = addToggle(miscPage, E.egg .. " Auto Eat Protein Egg", false, function(v)
     eggRunId = eggRunId + 1
     if v then
         eggEaten = 0
@@ -1886,13 +1953,11 @@ end)
 
 selectTab(TAB_FAST)
 
--- Appliquer les configurations sauvegardées au démarrage et gérer les server hops
+-- Appliquer les configurations sauvegardées au démarrage
 task.spawn(function()
-    task.wait(1.5)
+    task.wait(1)
     if hidePetsToggle and hidePetsToggle.Value then setHidePets(true) end
     if hidePopupsToggle and hidePopupsToggle.Value then setHidePopups(true) end
-    if antiAfkToggle and antiAfkToggle.Value then setAntiAfk(true) end
-    if antiLagToggle and antiLagToggle.Value then antiLagStart() end
 end)
 
 -- ===================== STAT TRACKER =====================
