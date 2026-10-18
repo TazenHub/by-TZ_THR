@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR rework
 
 local success, err = pcall(function()
 
@@ -120,8 +120,6 @@ local function saveCategoryConfig(categoryName, data)
 end
 
 -- ===================== SETTINGS =====================
-local REBIRTH_COOLDOWN = 6.0
-
 local E = {
     bolt = "⚡", cycle = "🔄", muscle = "💪", toolbox = "🧰",
     sleep = "😴", rocket = "🚀", sparkles = "✨", heart = "💕",
@@ -557,14 +555,14 @@ local function fastRebirthLoop(myId)
     end)
 end
 
--- ===================== AUTO REBIRTH (NATIVE AUTO-LIFT + 6S REBIRTH) =====================
+-- ===================== AUTO REBIRTH (NATIVE AUTO-LIFT + INSTANT REBIRTH) =====================
 local function autoRebirthLoop(myId)
     local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
     local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
     local savePlayerSizeEvent = rEvents and rEvents:WaitForChild("savePlayerSizeEvent", 5)
     if not rebirthRemote then return end
 
-    -- Active l'auto-lift natif du jeu (fourni par le screen de Cobalt)[cite: 3]
+    -- Active l'auto-lift natif du jeu[cite: 3]
     if savePlayerSizeEvent then
         pcall(function()
             savePlayerSizeEvent:FireServer("toggleAutoLift")
@@ -572,13 +570,13 @@ local function autoRebirthLoop(myId)
     end
 
     while autoRunId == myId and alive do
+        RunService.Heartbeat:Wait()
+        
         pcall(function()
             if canRebirth() then
                 rebirthRemote:InvokeServer("rebirthRequest")
             end
         end)
-        
-        task.wait(REBIRTH_COOLDOWN)
     end
 
     -- Désactive l'auto-lift si on éteint la fonction
