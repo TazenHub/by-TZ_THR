@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THR r'ework
 
 local success, err = pcall(function()
 
@@ -567,13 +567,15 @@ local function autoRebirthLoop(myId)
     while autoRunId == myId and alive do
         local dt = RunService.Heartbeat:Wait()
         
-        -- Utilise son propre auto rep léger (proportionnel au taux configuré) pour ne pas saturer la mémoire
+        -- Auto rep léger et corrigé pour l'onglet Auto Rebirth
         if muscleEvent and repRate > 0 then
-            carry = carry + (repRate * 0.5) * dt
+            carry = carry + (math.min(repRate, REP_CAP) * 0.5) * dt
             local n = math.floor(carry)
             carry = carry - n
             for _ = 1, n do
-                pcall(muscleEvent.FireServer, muscleEvent, "rep")
+                pcall(function()
+                    muscleEvent:FireServer("rep")
+                end)
             end
         end
 
@@ -583,7 +585,6 @@ local function autoRebirthLoop(myId)
             end
         end)
         
-        -- Respecte le cooldown de 6 secondes
         task.wait(REBIRTH_COOLDOWN)
     end
 end
@@ -613,7 +614,9 @@ local function fastRepLoop(myId)
             carry = carry - n
 
             for _ = 1, n do
-                pcall(muscleEvent.FireServer, muscleEvent, "rep")
+                pcall(function()
+                    muscleEvent:FireServer("rep")
+                end)
             end
             repTotal = repTotal + n
         end
@@ -1836,7 +1839,7 @@ local function autoEggLoop(myId)
     end
 end
 
-autoEggToggle = addSavedToggle(miscPage, E.egg .. " Auto Eat Protein Egg", "MiscTab", "AutoEatEgg", false, function(v)
+autoEggToggle = addToggle(miscPage, E.egg .. " Auto Eat Protein Egg", false, function(v)
     eggRunId = eggRunId + 1
     if v then
         eggEaten = 0
