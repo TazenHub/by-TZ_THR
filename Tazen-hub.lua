@@ -372,37 +372,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (AVEC DÉTECTEUR DE PET SLOTS DYNAMIQUE) =====================
-local function getMaxPetSlots()
-    local defaultSlots = 12
-    pcall(function()
-        local containers = {
-            LocalPlayer:FindFirstChild("MaxPets"),
-            LocalPlayer:FindFirstChild("PetSlots"),
-            LocalPlayer:FindFirstChild("Data") and LocalPlayer.Data:FindFirstChild("MaxPets"),
-            LocalPlayer:FindFirstChild("Stats") and LocalPlayer.Stats:FindFirstChild("MaxPets"),
-            LocalPlayer:GetAttribute("MaxPets"),
-            LocalPlayer:GetAttribute("PetSlots")
-        }
-        for _, c in ipairs(containers) do
-            if type(c) == "number" and c > 0 then
-                return c
-            elseif typeof(c) == "Instance" and (c:IsA("IntValue") or c:IsA("NumberValue")) and c.Value > 0 then
-                return c.Value
-            end
-        end
-
-        for _, obj in ipairs(LocalPlayer:GetDescendants()) do
-            if (obj.Name:lower():find("pet") or obj.Name:lower():find("slot")) and (obj:IsA("IntValue") or obj:IsA("NumberValue")) and obj.Value > 0 and obj.Value <= 50 then
-                if obj.Value > defaultSlots then
-                    defaultSlots = obj.Value
-                end
-            end
-        end
-    end)
-    return defaultSlots
-end
-
+-- ===================== FAST REBIRTH LOOP (SLOTS FIXÉS À 12 ET STABILISÉS) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -446,7 +416,8 @@ local function fastRebirthLoop(myId)
                 continue
             end
 
-            local SLOTS = getMaxPetSlots()
+            -- Slot fixé à 12 en dur comme demandé
+            local SLOTS = 12
 
             local hydraList = {}
             local rawRepPets = {}
@@ -492,16 +463,19 @@ local function fastRebirthLoop(myId)
                 end
             end
 
+            -- 1. FULL SWAP : Déséquiper tout le monde
             for _, pet in ipairs(allPetsForUnequip) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
-            task.wait(0.15)
+            task.wait(0.2)
 
+            -- 2. Équiper exactement 12 Fast Rep Pets
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
-            task.wait(0.1)
+            task.wait(0.15)
 
+            -- 3. Phase Fast Rep stable : exactement 2.5 secondes garanties
             local repTimer = tick()
             local carry = 0
             while isRunning() and (tick() - repTimer < 2.5) do
@@ -518,18 +492,21 @@ local function fastRebirthLoop(myId)
 
             if not isRunning() then break end
 
+            -- 4. Retirer les Fast Rep Pets
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
-            task.wait(0.15)
+            task.wait(0.2)
 
+            -- 5. Équiper les Titanium Hydra
             if #hydraList > 0 then
                 for _, pet in ipairs(hydraList) do
                     pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
                 end
             end
-            task.wait(0.1)
+            task.wait(0.15)
 
+            -- 6. Maintenir les Hydra et spammer le rebirth jusqu'à la validation
             local initialRebirths = rebirthsStat and rebirthsStat.Value or 0
             local rebirthDone = false
             
@@ -545,6 +522,7 @@ local function fastRebirthLoop(myId)
                 end
             end
 
+            -- 7. Nettoyage des Hydra
             if #hydraList > 0 then
                 for _, pet in ipairs(hydraList) do
                     pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
