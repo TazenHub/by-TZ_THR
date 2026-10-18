@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THRr
+-- Tazen hub V1 by TZ_THR
 
 local success, err = pcall(function()
 
@@ -384,7 +384,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP CORRIGÉ =====================
+-- ===================== FAST REBIRTH LOOP OPTIMISÉ (PETS DYNAMIQUES JUSQU'AU REBIRTH) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -422,13 +422,15 @@ local function fastRebirthLoop(myId)
 
         local muscleEvent = findMuscleEvent(rEvents)
 
+        local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+        local rebirthsStat = leaderstats and leaderstats:FindFirstChild("Rebirths")
+
         local cycle = 0
         while isRunning() do
             cycle = cycle + 1
             petsFolder = getPetsFolder()
             
             if not petsFolder then
-                warn("[Tazen Hub] petsFolder introuvable !")
                 task.wait(1)
                 continue
             end
@@ -440,7 +442,8 @@ local function fastRebirthLoop(myId)
             for _, folderName in ipairs(FOLDERS) do
                 local folder = petsFolder:FindFirstChild(folderName)
                 if folder then
-                    for _, pet in ipairs(folder:GetChildren()) do
+                    local children = folder:GetChildren()
+                    for _, pet in ipairs(children) do
                         table.insert(allPetsForUnequip, pet)
                         local name = petRealName(pet)
                         if name == "Titanium Hydra" or name == "Tribal Overlord" then
@@ -468,7 +471,7 @@ local function fastRebirthLoop(myId)
                 end
             end
 
-            -- 1. Tout déséquiper proprement
+            -- 1. Tout déséquiper
             for _, pet in ipairs(allPetsForUnequip) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
@@ -478,16 +481,11 @@ local function fastRebirthLoop(myId)
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
 
-            -- 3. Faire les répétitions et tenter de rebirth en même temps
+            -- 3. Phase de reps pendant exactement 2.5 secondes
             local repTimer = tick()
             local carry = 0
             while isRunning() and (tick() - repTimer < 2.5) do
                 local dt = RunService.Heartbeat:Wait()
-                
-                pcall(function()
-                    rebirthRemote:InvokeServer("rebirthRequest")
-                end)
-
                 if muscleEvent and REP_CAP > 0 then
                     carry = carry + REP_CAP * dt
                     local n = math.floor(carry)
@@ -500,7 +498,7 @@ local function fastRebirthLoop(myId)
 
             if not isRunning() then break end
 
-            -- 4. Retirer les Rep Pets et équiper les Rebirth Pets
+            -- 4. Retirer les Rep Pets et équiper les Rebirth Pets (Hydra / Overlord)
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
@@ -511,18 +509,27 @@ local function fastRebirthLoop(myId)
                 end
             end
 
-            -- 5. Maintenir la requête de rebirth intensive
-            local startWait = tick()
-            while isRunning() and (tick() - startWait < 2) do
+            -- 5. Maintenir les Rebirth Pets et spammer le rebirth JUSQU'À CE QUE LA RENAISSANCE SE FASSE
+            local initialRebirths = rebirthsStat and rebirthsStat.Value or 0
+            local rebirthDone = false
+            
+            while isRunning() and not rebirthDone do
                 RunService.Heartbeat:Wait()
+                
                 pcall(function()
                     rebirthRemote:InvokeServer("rebirthRequest")
                 end)
+
+                if rebirthsStat and rebirthsStat.Value > initialRebirths then
+                    rebirthDone = true
+                end
             end
 
-            -- Nettoyage des hydras pour le prochain cycle
-            for _, pet in ipairs(hydraList) do
-                pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
+            -- 6. Retirer les Rebirth Pets pour boucler à nouveau
+            if #hydraList > 0 then
+                for _, pet in ipairs(hydraList) do
+                    pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
+                end
             end
         end
 
