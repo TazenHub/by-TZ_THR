@@ -1,4 +1,4 @@
--- Tazen Hub V2 - Complete Script (Original Fast Rebirth & Priority Pets Restored)
+-- Tazen Hub V2 - Complete Script (Fast Rebirth & Reps Fix)
 local success, err = pcall(function()
 
 if game.PlaceId ~= 3623096087 then
@@ -436,7 +436,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (ORIGINAL & PRIORITY RESTORED) =====================
+-- ===================== FAST REBIRTH LOOP (FIXED & FULL SWAP) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -447,28 +447,11 @@ local function fastRebirthLoop(myId)
 
         local FOLDERS = {"Unique", "Rare", "Epic", "Mythic", "Legendary"}
         local SLOTS = 12                    
-        local STARTUP_UNEQUIP_PER_FRAME = 20
-        local LIST_REFRESH_EVERY = 10        
         local INTERNAL_REP_RATE = 659        
 
         local function petRealName(pet)
             if pet:FindFirstChild("PetName") then return tostring(pet.PetName.Value) end
             return tostring(pet.Name)
-        end
-
-        local function unequipAllPets(petsFolder)
-            local count = 0
-            for _, folderName in ipairs(FOLDERS) do
-                local folder = petsFolder:FindFirstChild(folderName)
-                if folder then
-                    for _, pet in ipairs(folder:GetChildren()) do
-                        pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
-                        count = count + 1
-                        if count % STARTUP_UNEQUIP_PER_FRAME == 0 then task.wait() end
-                    end
-                end
-            end
-            return count
         end
 
         local function buildHydraList(petsFolder, slots)
@@ -532,20 +515,21 @@ local function fastRebirthLoop(myId)
         local repList = buildRepList(petsFolder, SLOTS)
 
         if #hydraList == 0 or #repList == 0 then return end
+        
         local muscleEvent = findMuscleEvent(rEvents)
 
-        unequipAllPets(petsFolder)
-        if not isRunning() then return end
-
-        local cycle = 0
         while isRunning() do
-            cycle = cycle + 1
+            -- S'assurer que le muscleEvent est bien actualisé à chaque tour
+            if not muscleEvent or not muscleEvent.Parent then
+                muscleEvent = findMuscleEvent(rEvents or ReplicatedStorage)
+            end
 
-            -- 1. Équiper les Rep Pets (triés par priorité) pendant 2.5 secondes[cite: 2]
+            -- 1. Équiper les Rep Pets (triés par priorité)
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
 
+            -- 2. Envoyer les requêtes de répétition pendant 2.5 secondes
             local repTimer = tick()
             local carry = 0
             while isRunning() and (tick() - repTimer < 2.5) do
@@ -562,7 +546,7 @@ local function fastRebirthLoop(myId)
 
             if not isRunning() then break end
 
-            -- 2. Passer aux Rebirth Pets (Hydra / Overlord) pour le rebirth[cite: 2]
+            -- 3. Retirer les Rep Pets et équiper les Rebirth Pets (Hydra / Overlord)
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
@@ -570,7 +554,7 @@ local function fastRebirthLoop(myId)
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
 
-            -- Attente et validation rapide du rebirth[cite: 2]
+            -- 4. Déclencher le rebirth de manière agressive
             local startWait = tick()
             while isRunning() and (tick() - startWait < 3) do
                 pcall(function()
@@ -584,18 +568,9 @@ local function fastRebirthLoop(myId)
                 end
             end
 
-            -- 3. Retirer les Rebirth Pets pour recommencer[cite: 2]
+            -- 5. Retirer les Rebirth Pets pour relancer la boucle
             for _, pet in ipairs(hydraList) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
-            end
-
-            if cycle % LIST_REFRESH_EVERY == 0 then
-                petsFolder = LocalPlayer:FindFirstChild("petsFolder") or petsFolder
-                if petsFolder then
-                    hydraList = buildHydraList(petsFolder, SLOTS)
-                    repList = buildRepList(petsFolder, SLOTS)
-                end
-                muscleEvent = findMuscleEvent(rEvents or ReplicatedStorage) or muscleEvent
             end
         end
     end)
