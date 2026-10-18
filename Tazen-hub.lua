@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THRr
 
 local success, err = pcall(function()
 
@@ -372,7 +372,7 @@ local function killTargetPlayerLoop(myId)
     end
 end
 
--- ===================== FAST REBIRTH LOOP (UNUQIUE INSTANCE PETS SWAP) =====================
+-- ===================== FAST REBIRTH LOOP (TRI STRICT & PERFORMANCE MAX) =====================
 local function fastRebirthLoop(myId)
     local function isRunning() return fastRunId == myId end
     pcall(function()
@@ -426,14 +426,14 @@ local function fastRebirthLoop(myId)
                         
                         if name:find("hydra") or name:find("titanium") then
                             table.insert(hydraList, pet)
-                        else
+                        elseif name:find("omega") or name:find("overlord") or name:find("boss") or name:find("mythic") or name:find("legendary") then
                             table.insert(rawRepPets, { Instance = pet, Score = getPetScore(pet) })
                         end
                     end
                 end
             end
 
-            -- Trier par meilleur score de vitesse de rep
+            -- Trier strictement par les meilleurs scores de réputation pour ne garder que le top
             table.sort(rawRepPets, function(a, b)
                 return a.Score > b.Score
             end)
@@ -443,18 +443,17 @@ local function fastRebirthLoop(myId)
                 table.insert(repList, entry.Instance)
             end
 
-            -- 1. Déséquiper tout le monde proprement
+            -- 1. Tout déséquiper instantanément
             for _, pet in ipairs(allPetsForUnequip) do
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
 
-            -- 2. Équiper TOUS les familiers disponibles un par un sans filtre limitatif de nom
+            -- 2. Équiper rapidement les meilleurs Fast Rep Pets disponibles
             for _, pet in ipairs(repList) do
                 pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
             end
-            task.wait(0.03)
 
-            -- 3. Phase Fast Rep : 2.5 secondes exactes
+            -- 3. Phase Fast Rep : exactement 2.5 secondes
             local repTimer = tick()
             local carry = 0
             while isRunning() and (tick() - repTimer < 2.5) do
@@ -476,15 +475,14 @@ local function fastRebirthLoop(myId)
                 pcall(function() equipPetEvent:FireServer("unequipPet", pet) end)
             end
 
-            -- 5. Équiper les Titanium Hydra
+            -- 5. Équiper instantanément les Titanium Hydra
             if #hydraList > 0 then
                 for _, pet in ipairs(hydraList) do
                     pcall(function() equipPetEvent:FireServer("equipPet", pet) end)
                 end
             end
-            task.wait(0.03)
 
-            -- 6. Spammer le rebirth de manière agressive pour viser la performance maximale
+            -- 6. Spammer le rebirth agressivement pour viser la performance maximale (< 6s)
             local initialRebirths = rebirthsStat and rebirthsStat.Value or 0
             local rebirthDone = false
             
