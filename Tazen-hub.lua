@@ -1,4 +1,4 @@
--- Tazen hub V1 by TZ_THR
+-- Tazen hub V1 by TZ_THRr
 
 local success, err = pcall(function()
 
@@ -629,7 +629,7 @@ local function formatSeconds(totalSeconds)
 end
 
 local FORMAT_UNITS = {
-    {1e33, "Dc"}, {1e30, "No"}, {1e27, "Oc"}, {1e24, "Sp"}, {1e21, "Sx"},
+    {1e36, "Ud"}, {1e33, "Dc"}, {1e30, "No"}, {1e27, "Oc"}, {1e24, "Sp"}, {1e21, "Sx"},
     {1e18, "Qi"}, {1e15, "Qa"}, {1e12, "T"}, {1e9, "B"}, {1e6, "M"}, {1e3, "k"},
 }
 local function formatNumber(val)
@@ -645,7 +645,7 @@ local StatTracker = {}
 do
     local SUFFIX = {
         k = 1e3, m = 1e6, b = 1e9, t = 1e12, qa = 1e15, qi = 1e18,
-        sx = 1e21, sp = 1e24, oc = 1e27, no = 1e30, dc = 1e33,
+        sx = 1e21, sp = 1e24, oc = 1e27, no = 1e30, dc = 1e33, ud = 1e36,
     }
     local WINDOW = 30
 
@@ -1760,7 +1760,9 @@ local function addStatsRow(plr)
             local statsText = "👤 Player : " .. plr.Name .. "\n"
             if ls then
                 for _, stat in ipairs(ls:GetChildren()) do
-                    statsText = statsText .. "• " .. stat.Name .. " : " .. tostring(stat.Value) .. "\n"
+                    local val = stat.Value
+                    local formattedVal = (type(val) == "number") and formatNumber(val) or tostring(val)
+                    statsText = statsText .. "• " .. stat.Name .. " : " .. formattedVal .. "\n"
                 end
             else
                 statsText = statsText .. "⚠️ leaderstats not found for this player."
